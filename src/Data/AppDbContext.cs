@@ -16,7 +16,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     {
         // Índices únicos
         mb.Entity<Usuario>().HasIndex(u => u.Email).IsUnique();
-        mb.Entity<Cliente>().HasIndex(c => c.Cpf).IsUnique().HasFilter("cpf IS NOT NULL");
         mb.Entity<Produto>().HasIndex(p => p.CodigoBarras).IsUnique().HasFilter("codigo_barras IS NOT NULL");
 
         // Relacionamentos
