@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 using LojaApi.Data;
 using LojaApi.DTOs;
 using LojaApi.Services;
@@ -38,13 +40,20 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
     }
 
     [HttpGet("me")]
-    [Microsoft.AspNetCore.Authorization.Authorize]
+    [Authorize]
     public IActionResult Me()
     {
-        var id = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        var nome = User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
-        var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value;
-        var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        var id = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var nome = User.FindFirstValue(ClaimTypes.Name);
+        var email = User.FindFirstValue(ClaimTypes.Email);
+        var role = User.FindFirstValue(ClaimTypes.Role);
         return Ok(new { id, nome, email, role });
+    }
+
+    [HttpGet("gerar-hash/{senha}")]
+    [AllowAnonymous]
+    public IActionResult GerarHash(string senha)
+    {
+        return Ok(new { hash = BCrypt.Net.BCrypt.HashPassword(senha) });
     }
 }
