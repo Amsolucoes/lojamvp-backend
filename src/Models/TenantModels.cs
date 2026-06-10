@@ -112,10 +112,10 @@ public class Pagamento
     [MaxLength(100)]
     public string? MpPaymentId { get; set; }
 
-    [MaxLength(500)]
+    [MaxLength(5000)]
     public string? MpQrCode { get; set; }       // QR Code do Pix
 
-    [MaxLength(1000)]
+    [MaxLength(10000)]
     public string? MpQrCodeBase64 { get; set; } // QR Code imagem
 
     [MaxLength(200)]
