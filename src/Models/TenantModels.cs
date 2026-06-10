@@ -1,0 +1,129 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace LojaApi.Models;
+
+// ── Usuario (já existe — adicionar campo LojaId opcional) ─────────
+// Não alterar o modelo existente, apenas adicionar via UsuarioLoja
+
+// ── Status da loja ────────────────────────────────────────────────
+public enum StatusLoja
+{
+    Trial,
+    Ativo,
+    Bloqueado,
+    Cancelado,
+}
+
+// ── Loja ──────────────────────────────────────────────────────────
+public class Loja
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Required, MaxLength(150)]
+    public string Nome { get; set; } = "";
+
+    [MaxLength(18)]
+    public string? Cnpj { get; set; }
+
+    [MaxLength(14)]
+    public string? Cpf { get; set; }
+
+    [Required, MaxLength(150)]
+    public string Email { get; set; } = "";
+
+    [MaxLength(20)]
+    public string? Telefone { get; set; }
+
+    [MaxLength(200)]
+    public string? Endereco { get; set; }
+
+    // Personalização visual
+    [MaxLength(7)]
+    public string CorPrimaria { get; set; } = "#e8945a";
+
+    [MaxLength(500)]
+    public string? LogoUrl { get; set; }
+
+    // Controle de acesso
+    public StatusLoja Status { get; set; } = StatusLoja.Trial;
+    public DateTime TrialAte { get; set; } = DateTime.UtcNow.AddDays(7);
+    public int MensalidadeDia { get; set; } = 10;
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal MensalidadeValor { get; set; } = 120.00m;
+
+    public DateTime? UltimaCobranca { get; set; }
+    public DateTime? ProximoVencimento { get; set; }
+
+    [MaxLength(50)]
+    public string SchemaNome { get; set; } = "";
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+
+    // Navegação
+    public ICollection<UsuarioLoja> Usuarios { get; set; } = [];
+    public ICollection<Pagamento> Pagamentos { get; set; } = [];
+}
+
+// ── Vínculo usuário ↔ loja ────────────────────────────────────────
+public class UsuarioLoja
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid LojaId { get; set; }
+    public Loja Loja { get; set; } = null!;
+
+    public Guid UsuarioId { get; set; }
+    public Usuario Usuario { get; set; } = null!;
+
+    [MaxLength(20)]
+    public string Role { get; set; } = "operador";
+
+    public bool Ativo { get; set; } = true;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Pagamento ─────────────────────────────────────────────────────
+public class Pagamento
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid LojaId { get; set; }
+    public Loja Loja { get; set; } = null!;
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal Valor { get; set; }
+
+    [MaxLength(20)]
+    public string Status { get; set; } = "pendente"; // pendente | pago | atrasado
+
+    public DateTime Vencimento { get; set; }
+    public DateTime? PagoEm { get; set; }
+
+    [MaxLength(20)]
+    public string? FormaPagamento { get; set; } // pix | boleto | cartao
+
+    [MaxLength(300)]
+    public string? Observacao { get; set; }
+
+    // Mercado Pago
+    [MaxLength(100)]
+    public string? MpPaymentId { get; set; }
+
+    [MaxLength(500)]
+    public string? MpQrCode { get; set; }       // QR Code do Pix
+
+    [MaxLength(1000)]
+    public string? MpQrCodeBase64 { get; set; } // QR Code imagem
+
+    [MaxLength(200)]
+    public string? MpBoletoUrl { get; set; }    // URL do boleto
+
+    [MaxLength(200)]
+    public string? MpBoletoBarcode { get; set; } // Código de barras
+
+    public Guid? RegistradoPorId { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}

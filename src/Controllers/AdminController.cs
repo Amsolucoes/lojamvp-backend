@@ -1,0 +1,244 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using LojaApi.Data;
+using LojaApi.DTOs;
+using LojaApi.Models;
+using LojaApi.Services;
+
+namespace LojaApi.Controllers;
+
+[ApiController]
+[Route("api/admin")]
+[Authorize(Roles = "superadmin")]
+public class AdminController(AppDbContext db, TenantService tenantService) : ControllerBase
+{
+    private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    // ── Dashboard ─────────────────────────────────────────────────
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> Dashboard()
+    {
+        var lojas = await db.Lojas.Include(l => l.Pagamentos).ToListAsync();
+        var agora = DateTime.UtcNow;
+
+        var atrasadas = lojas
+            .Where(l => l.ProximoVencimento.HasValue &&
+                        (agora - l.ProximoVencimento.Value).TotalDays > 0 &&
+                        l.Status != StatusLoja.Cancelado)
+            .Select(l => ToResumoDto(l, agora))
+            .ToList();
+
+        var ultimosPagamentos = await db.Pagamentos
+            .Include(p => p.Loja)
+            .Where(p => p.Status == "pago")
+            .OrderByDescending(p => p.PagoEm)
+            .Take(10)
+            .Select(p => ToDto(p))
+            .ToListAsync();
+
+        return Ok(new DashboardAdminDto(
+            TotalLojas:        lojas.Count,
+            LojasAtivas:       lojas.Count(l => l.Status == StatusLoja.Ativo),
+            LojasTrial:        lojas.Count(l => l.Status == StatusLoja.Trial),
+            LojasBloqueadas:   lojas.Count(l => l.Status == StatusLoja.Bloqueado),
+            LojasEmAtraso:     atrasadas.Count,
+            ReceitaMensal:     lojas.Where(l => l.Status == StatusLoja.Ativo).Sum(l => l.MensalidadeValor),
+            ReceitaTotal:      lojas.SelectMany(l => l.Pagamentos).Where(p => p.Status == "pago").Sum(p => p.Valor),
+            LojasAtrasadas:    atrasadas,
+            UltimosPagamentos: ultimosPagamentos
+        ));
+    }
+
+    // ── Listar lojas ──────────────────────────────────────────────
+    [HttpGet("lojas")]
+    public async Task<IActionResult> Listar([FromQuery] string? status, [FromQuery] string? busca)
+    {
+        var q = db.Lojas.Include(l => l.Pagamentos).Include(l => l.Usuarios).AsQueryable();
+
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLoja>(status, true, out var s))
+            q = q.Where(l => l.Status == s);
+
+        if (!string.IsNullOrEmpty(busca))
+            q = q.Where(l => l.Nome.ToLower().Contains(busca.ToLower()) ||
+                              l.Email.Contains(busca) ||
+                              (l.Cnpj != null && l.Cnpj.Contains(busca)));
+
+        var agora = DateTime.UtcNow;
+        var lista = await q.OrderByDescending(l => l.CriadoEm).ToListAsync();
+        return Ok(lista.Select(l => ToLojaDto(l, agora)));
+    }
+
+    // ── Buscar loja ───────────────────────────────────────────────
+    [HttpGet("lojas/{id:guid}")]
+    public async Task<IActionResult> Buscar(Guid id)
+    {
+        var loja = await db.Lojas
+            .Include(l => l.Pagamentos)
+            .Include(l => l.Usuarios).ThenInclude(u => u.Usuario)
+            .FirstOrDefaultAsync(l => l.Id == id);
+
+        return loja is null ? NotFound() : Ok(ToLojaDto(loja, DateTime.UtcNow));
+    }
+
+    // ── Criar loja ────────────────────────────────────────────────
+    [HttpPost("lojas")]
+    public async Task<IActionResult> Criar([FromBody] CriarLojaRequest req)
+    {
+        if (await db.Lojas.AnyAsync(l => l.Email.ToLower() == req.Email.ToLower()))
+            return Conflict(new { erro = "E-mail já cadastrado." });
+
+        if (!string.IsNullOrEmpty(req.Cnpj) && await db.Lojas.AnyAsync(l => l.Cnpj == req.Cnpj))
+            return Conflict(new { erro = "CNPJ já cadastrado." });
+
+        var loja = new Loja
+        {
+            Nome             = req.Nome,
+            Email            = req.Email,
+            Cnpj             = req.Cnpj,
+            Cpf              = req.Cpf,
+            Telefone         = req.Telefone,
+            Endereco         = req.Endereco,
+            CorPrimaria      = req.CorPrimaria,
+            MensalidadeDia   = req.MensalidadeDia,
+            MensalidadeValor = req.MensalidadeValor,
+            Status           = StatusLoja.Trial,
+            TrialAte         = DateTime.UtcNow.AddDays(7),
+            SchemaNome       = TenantService.GerarSchemaNome(req.Nome),
+        };
+        db.Lojas.Add(loja);
+
+        // Usuário admin da loja
+        var usuario = new Usuario
+        {
+            Nome      = req.AdminNome,
+            Email     = req.AdminEmail,
+            SenhaHash = BCrypt.Net.BCrypt.HashPassword(req.AdminSenha),
+            Role      = "admin",
+        };
+        db.Usuarios.Add(usuario);
+
+        db.UsuariosLoja.Add(new UsuarioLoja
+        {
+            LojaId    = loja.Id,
+            UsuarioId = usuario.Id,
+            Role      = "admin",
+        });
+
+        // Primeira fatura (vence ao fim do trial)
+        db.Pagamentos.Add(new Pagamento
+        {
+            LojaId     = loja.Id,
+            Valor      = req.MensalidadeValor,
+            Status     = "pendente",
+            Vencimento = loja.TrialAte,
+        });
+
+        await db.SaveChangesAsync();
+        return CreatedAtAction(nameof(Buscar), new { id = loja.Id }, ToLojaDto(loja, DateTime.UtcNow));
+    }
+
+    // ── Atualizar loja ────────────────────────────────────────────
+    [HttpPut("lojas/{id:guid}")]
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarLojaRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        loja.Nome             = req.Nome;
+        loja.Email            = req.Email;
+        loja.Cnpj             = req.Cnpj;
+        loja.Cpf              = req.Cpf;
+        loja.Telefone         = req.Telefone;
+        loja.Endereco         = req.Endereco;
+        loja.CorPrimaria      = req.CorPrimaria;
+        loja.LogoUrl          = req.LogoUrl;
+        loja.MensalidadeDia   = req.MensalidadeDia;
+        loja.MensalidadeValor = req.MensalidadeValor;
+        loja.AtualizadoEm     = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+        return Ok(ToLojaDto(loja, DateTime.UtcNow));
+    }
+
+    // ── Alterar status (bloquear/desbloquear) ─────────────────────
+    [HttpPatch("lojas/{id:guid}/status")]
+    public async Task<IActionResult> AlterarStatus(Guid id, [FromBody] AlterarStatusLojaRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        if (!Enum.TryParse<StatusLoja>(req.Status, true, out var novoStatus))
+            return BadRequest(new { erro = "Status inválido." });
+
+        loja.Status       = novoStatus;
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = $"Status alterado para {novoStatus}." });
+    }
+
+    // ── Registrar pagamento manual ────────────────────────────────
+    [HttpPost("pagamentos")]
+    public async Task<IActionResult> RegistrarPagamento([FromBody] RegistrarPagamentoManualRequest req)
+    {
+        var ok = await tenantService.RegistrarPagamentoAsync(
+            req.LojaId, req.Valor, req.Vencimento,
+            req.PagoEm, req.FormaPagamento,
+            req.Observacao, AdminId);
+
+        return ok
+            ? Ok(new { mensagem = "Pagamento registrado e loja reativada." })
+            : NotFound(new { erro = "Loja não encontrada." });
+    }
+
+    // ── Listar pagamentos de uma loja ─────────────────────────────
+    [HttpGet("lojas/{id:guid}/pagamentos")]
+    public async Task<IActionResult> Pagamentos(Guid id)
+    {
+        var lista = await db.Pagamentos
+            .Include(p => p.Loja)
+            .Where(p => p.LojaId == id)
+            .OrderByDescending(p => p.Vencimento)
+            .Select(p => ToDto(p))
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    // ── Mappers ───────────────────────────────────────────────────
+    private static LojaDto ToLojaDto(Loja l, DateTime agora)
+    {
+        var dias = l.ProximoVencimento.HasValue
+            ? Math.Max(0, (int)(agora - l.ProximoVencimento.Value).TotalDays)
+            : 0;
+        return new(
+            l.Id, l.Nome, l.Email, l.Cnpj, l.Cpf, l.Telefone, l.Endereco,
+            l.CorPrimaria, l.LogoUrl, l.Status.ToString(),
+            l.TrialAte, l.MensalidadeDia, l.MensalidadeValor,
+            l.ProximoVencimento, l.UltimaCobranca,
+            l.SchemaNome, l.CriadoEm,
+            l.Usuarios.Count,
+            l.Pagamentos.Where(p => p.Status == "pago").Sum(p => p.Valor),
+            EmAtraso: dias > 0, DiasAtraso: dias
+        );
+    }
+
+    private static LojaResumoDto ToResumoDto(Loja l, DateTime agora)
+    {
+        var dias = l.ProximoVencimento.HasValue
+            ? Math.Max(0, (int)(agora - l.ProximoVencimento.Value).TotalDays) : 0;
+        return new(l.Id, l.Nome, l.Email, l.Status.ToString(),
+            l.ProximoVencimento, l.MensalidadeValor, dias > 0, dias);
+    }
+
+    private static PagamentoDto ToDto(Pagamento p) => new(
+        p.Id, p.LojaId, p.Loja?.Nome ?? "",
+        p.Valor, p.Status, p.Vencimento, p.PagoEm,
+        p.FormaPagamento, p.Observacao,
+        p.MpQrCode, p.MpQrCodeBase64,
+        p.MpBoletoUrl, p.MpBoletoBarcode,
+        p.CriadoEm
+    );
+}

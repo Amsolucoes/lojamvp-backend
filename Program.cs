@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using LojaApi.Data;
 using LojaApi.Services;
+using LojaApi.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,6 +34,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<TokenService>();
+builder.Services.AddScoped<TenantService>();
+builder.Services.AddScoped<MercadoPagoService>();
+builder.Services.AddHostedService<StatusCheckService>();
 
 // ── Controllers + Swagger ─────────────────────────────────────────
 builder.Services.AddControllers();

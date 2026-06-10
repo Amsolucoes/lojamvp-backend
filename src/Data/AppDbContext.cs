@@ -11,6 +11,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Venda> Vendas => Set<Venda>();
     public DbSet<ItemVenda> ItensVenda => Set<ItemVenda>();
     public DbSet<MovimentoEstoque> Movimentos => Set<MovimentoEstoque>();
+    public DbSet<Loja> Lojas => Set<Loja>();
+    public DbSet<UsuarioLoja> UsuariosLoja => Set<UsuarioLoja>();
+    public DbSet<Pagamento> Pagamentos => Set<Pagamento>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -43,6 +46,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(v => v.ClienteId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        mb.Entity<Loja>().HasIndex(l => l.Email).IsUnique();
+        mb.Entity<Loja>().HasIndex(l => l.SchemaNome).IsUnique();
+
+        mb.Entity<UsuarioLoja>()
+            .HasOne(ul => ul.Loja).WithMany(l => l.Usuarios)
+            .HasForeignKey(ul => ul.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<UsuarioLoja>()
+            .HasOne(ul => ul.Usuario).WithMany()
+            .HasForeignKey(ul => ul.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<Pagamento>()
+            .HasOne(p => p.Loja).WithMany(l => l.Pagamentos)
+            .HasForeignKey(p => p.LojaId).OnDelete(DeleteBehavior.Cascade);
+
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
         {
@@ -65,6 +83,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             Email = "admin@loja.com",
             SenhaHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
             Role = "admin",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+
+        mb.Entity<Usuario>().HasData(new Usuario
+        {
+            Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
+            Nome = "Super Admin",
+            Email = "superadmin@suaempresa.com",
+            SenhaHash = BCrypt.Net.BCrypt.HashPassword("Superadmin@2025!"),
+            Role = "superadmin",
             Ativo = true,
             CriadoEm = DateTime.UtcNow,
         });
