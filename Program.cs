@@ -66,12 +66,13 @@ builder.Services.AddSwaggerGen(c =>
 
 // ── CORS — libera o frontend ──────────────────────────────────────
 builder.Services.AddCors(opt => opt.AddDefaultPolicy(p =>
-    p.WithOrigins(
-        builder.Configuration["AllowedOrigins"] ?? "http://localhost:5173"
-    )
-    .AllowAnyHeader()
-    .AllowAnyMethod()
-));
+{
+    var origins = (builder.Configuration["AllowedOrigins"] ?? "http://localhost:5173")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries);
+    p.WithOrigins(origins)
+     .AllowAnyHeader()
+     .AllowAnyMethod();
+}));
 
 var app = builder.Build();
 
