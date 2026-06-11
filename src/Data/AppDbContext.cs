@@ -92,7 +92,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             Id = Guid.Parse("00000000-0000-0000-0000-000000000002"),
             Nome = "Super Admin",
             Email = "superadmin@suaempresa.com",
-            SenhaHash = BCrypt.Net.BCrypt.HashPassword("Superadmin@2025!"),
+            SenhaHash = "$2a$11$pJv1QqzqQHz4rG17gLCUoORPXG8/9fS3mtJpTuULzEYV/qc7heetu",
             Role = "superadmin",
             Ativo = true,
             CriadoEm = DateTime.UtcNow,
