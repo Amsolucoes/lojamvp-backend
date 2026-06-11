@@ -51,6 +51,10 @@ public class Produto
     public string? CodigoBarras { get; set; }
 
     public bool Ativo { get; set; } = true;
+
+    public Guid? LojaId { get; set; }
+    public Loja? Loja { get; set; }
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
 
@@ -84,6 +88,10 @@ public class Cliente
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 
+    public Guid? LojaId { get; set; }
+
+    public Loja? Loja { get; set; }
+
     // Navegação
     public ICollection<Venda> Vendas { get; set; } = [];
 }
@@ -110,6 +118,9 @@ public class Venda
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal? Troco { get; set; }
+
+    public Guid? LojaId { get; set; }
+    public Loja? Loja { get; set; }
 
     public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
 
@@ -152,6 +163,9 @@ public class MovimentoEstoque
 
     [MaxLength(300)]
     public string? Observacao { get; set; }
+
+    public Guid? LojaId { get; set; }
+    public Loja? Loja { get; set; }
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
