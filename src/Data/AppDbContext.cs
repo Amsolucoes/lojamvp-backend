@@ -14,6 +14,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Loja> Lojas => Set<Loja>();
     public DbSet<UsuarioLoja> UsuariosLoja => Set<UsuarioLoja>();
     public DbSet<Pagamento> Pagamentos => Set<Pagamento>();
+    public DbSet<PerfilLoja> PerfisLoja => Set<PerfilLoja>();
+    public DbSet<CategoriaPerfilLoja> CategoriasPerfilLoja => Set<CategoriaPerfilLoja>();
+    public DbSet<CampoExtraPerfil> CamposExtrasPerfil => Set<CampoExtraPerfil>();
+    public DbSet<CategoriaLoja> CategoriasLoja => Set<CategoriaLoja>();
+    public DbSet<CampoExtraLoja> CamposExtrasLoja => Set<CampoExtraLoja>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -61,6 +66,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(p => p.Loja).WithMany(l => l.Pagamentos)
             .HasForeignKey(p => p.LojaId).OnDelete(DeleteBehavior.Cascade);
 
+        mb.Entity<CategoriaPerfilLoja>()
+            .HasOne(c => c.PerfilLoja).WithMany(p => p.Categorias)
+            .HasForeignKey(c => c.PerfilLojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<CampoExtraPerfil>()
+            .HasOne(c => c.PerfilLoja).WithMany(p => p.CamposExtras)
+            .HasForeignKey(c => c.PerfilLojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<CategoriaLoja>()
+            .HasOne(c => c.Loja).WithMany()
+            .HasForeignKey(c => c.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<CampoExtraLoja>()
+            .HasOne(c => c.Loja).WithMany()
+            .HasForeignKey(c => c.LojaId).OnDelete(DeleteBehavior.Cascade);
+
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
         {
@@ -97,6 +118,110 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             Ativo = true,
             CriadoEm = DateTime.UtcNow,
         });
+
+        // ── Perfil: Semi Joias e Maquiagem ────────────────────────────────
+        var perfilJoias = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilJoias,
+            Nome = "Semi Joias e Maquiagem",
+            Descricao = "Para lojas de semi joias, bijuterias e maquiagem",
+            Icone = "💍",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+        mb.Entity<CategoriaPerfilLoja>().HasData(
+            new CategoriaPerfilLoja { Id = Guid.Parse("11000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilJoias, Nome = "Semi Joias", Ordem = 0 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("11000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilJoias, Nome = "Maquiagem", Ordem = 1 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("11000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilJoias, Nome = "Acessórios", Ordem = 2 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("11000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilJoias, Nome = "Outro", Ordem = 3 }
+        );
+
+        // ── Perfil: Vestuário ─────────────────────────────────────────────
+        var perfilVest = Guid.Parse("10000000-0000-0000-0000-000000000002");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilVest,
+            Nome = "Vestuário",
+            Descricao = "Para lojas de roupas e moda",
+            Icone = "👕",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+        mb.Entity<CategoriaPerfilLoja>().HasData(
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilVest, Nome = "Camiseta", Ordem = 0 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilVest, Nome = "Calça Jeans", Ordem = 1 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilVest, Nome = "Vestido", Ordem = 2 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilVest, Nome = "Bermuda", Ordem = 3 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilVest, Nome = "Blusa", Ordem = 4 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilVest, Nome = "Casaco", Ordem = 5 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000007"), PerfilLojaId = perfilVest, Nome = "Outro", Ordem = 6 }
+        );
+        mb.Entity<CampoExtraPerfil>().HasData(
+            new CampoExtraPerfil
+            {
+                Id = Guid.Parse("13000000-0000-0000-0000-000000000001"),
+                PerfilLojaId = perfilVest,
+                Chave = "tamanho",
+                Label = "Tamanho",
+                Tipo = "lista",
+                Opcoes = "PP,P,M,G,GG,XG",
+                Obrigatorio = true,
+                Ordem = 0,
+            },
+            new CampoExtraPerfil
+            {
+                Id = Guid.Parse("13000000-0000-0000-0000-000000000002"),
+                PerfilLojaId = perfilVest,
+                Chave = "cor",
+                Label = "Cor",
+                Tipo = "texto",
+                Obrigatorio = false,
+                Ordem = 1,
+            }
+        );
+
+        // ── Perfil: Calçados ──────────────────────────────────────────────
+        var perfilCalc = Guid.Parse("10000000-0000-0000-0000-000000000003");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilCalc,
+            Nome = "Calçados",
+            Descricao = "Para lojas de sapatos, tênis e sandálias",
+            Icone = "👟",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+        mb.Entity<CategoriaPerfilLoja>().HasData(
+            new CategoriaPerfilLoja { Id = Guid.Parse("14000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilCalc, Nome = "Tênis", Ordem = 0 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("14000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilCalc, Nome = "Sandália", Ordem = 1 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("14000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilCalc, Nome = "Bota", Ordem = 2 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("14000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilCalc, Nome = "Sapato", Ordem = 3 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("14000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilCalc, Nome = "Chinelo", Ordem = 4 }
+        );
+        mb.Entity<CampoExtraPerfil>().HasData(
+            new CampoExtraPerfil
+            {
+                Id = Guid.Parse("15000000-0000-0000-0000-000000000001"),
+                PerfilLojaId = perfilCalc,
+                Chave = "numero",
+                Label = "Número",
+                Tipo = "lista",
+                Opcoes = "33,34,35,36,37,38,39,40,41,42,43,44,45",
+                Obrigatorio = true,
+                Ordem = 0,
+            },
+            new CampoExtraPerfil
+            {
+                Id = Guid.Parse("15000000-0000-0000-0000-000000000002"),
+                PerfilLojaId = perfilCalc,
+                Chave = "cor",
+                Label = "Cor",
+                Tipo = "texto",
+                Obrigatorio = false,
+                Ordem = 1,
+            }
+        );
     }
 
     private static string ToSnakeCase(string name)

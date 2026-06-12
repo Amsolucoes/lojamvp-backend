@@ -169,3 +169,93 @@ public class MovimentoEstoque
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
+
+// ── Perfil de loja (template) ─────────────────────────────────────
+public class PerfilLoja
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Required, MaxLength(100)]
+    public string Nome { get; set; } = "";
+
+    [MaxLength(300)]
+    public string? Descricao { get; set; }
+
+    [MaxLength(50)]
+    public string Icone { get; set; } = "🏪";
+
+    public bool Ativo { get; set; } = true;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+
+    public ICollection<CategoriaPerfilLoja> Categorias { get; set; } = [];
+    public ICollection<CampoExtraPerfil> CamposExtras { get; set; } = [];
+}
+
+public class CategoriaPerfilLoja
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PerfilLojaId { get; set; }
+    public PerfilLoja PerfilLoja { get; set; } = null!;
+
+    [Required, MaxLength(100)]
+    public string Nome { get; set; } = "";
+    public int Ordem { get; set; } = 0;
+}
+
+public class CampoExtraPerfil
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PerfilLojaId { get; set; }
+    public PerfilLoja PerfilLoja { get; set; } = null!;
+
+    [Required, MaxLength(50)]
+    public string Chave { get; set; } = "";
+
+    [Required, MaxLength(100)]
+    public string Label { get; set; } = "";
+
+    [MaxLength(20)]
+    public string Tipo { get; set; } = "texto";
+
+    [MaxLength(500)]
+    public string? Opcoes { get; set; }
+
+    public bool Obrigatorio { get; set; } = false;
+    public int Ordem { get; set; } = 0;
+}
+
+public class CategoriaLoja
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+    public Loja Loja { get; set; } = null!;
+
+    [Required, MaxLength(100)]
+    public string Nome { get; set; } = "";
+    public bool Ativo { get; set; } = true;
+    public int Ordem { get; set; } = 0;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+public class CampoExtraLoja
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+    public Loja Loja { get; set; } = null!;
+
+    [Required, MaxLength(50)]
+    public string Chave { get; set; } = "";
+
+    [Required, MaxLength(100)]
+    public string Label { get; set; } = "";
+
+    [MaxLength(20)]
+    public string Tipo { get; set; } = "texto";
+
+    [MaxLength(500)]
+    public string? Opcoes { get; set; }
+
+    public bool Obrigatorio { get; set; } = false;
+    public bool Ativo { get; set; } = true;
+    public int Ordem { get; set; } = 0;
+}
