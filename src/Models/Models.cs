@@ -61,6 +61,7 @@ public class Produto
     // Navegação
     public ICollection<MovimentoEstoque> Movimentos { get; set; } = [];
     public ICollection<ItemVenda> ItensVenda { get; set; } = [];
+    public ICollection<ProdutoVariacao> Variacoes { get; set; } = [];
 }
 
 // ── Cliente ───────────────────────────────────────────────────────
@@ -258,4 +259,28 @@ public class CampoExtraLoja
     public bool Obrigatorio { get; set; } = false;
     public bool Ativo { get; set; } = true;
     public int Ordem { get; set; } = 0;
+}
+
+// ── Variação de produto ───────────────────────────────────────────
+public class ProdutoVariacao
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid ProdutoId { get; set; }
+    public Produto Produto { get; set; } = null!;
+
+    [MaxLength(100)]
+    public string? Tamanho { get; set; }
+
+    [MaxLength(100)]
+    public string? Cor { get; set; }
+
+    [MaxLength(100)]
+    public string? OutroCampo { get; set; } // para campos extras futuros
+
+    public int Estoque { get; set; } = 0;
+    public int EstoqueMinimo { get; set; } = 1;
+    public bool Ativo { get; set; } = true;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
 }

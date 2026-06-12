@@ -15,7 +15,8 @@ public record ProdutoDto(
     decimal PrecoCusto, decimal PrecoVenda,
     int Estoque, int EstoqueMinimo,
     string? CodigoBarras, bool Ativo,
-    DateTime CriadoEm, DateTime AtualizadoEm
+    DateTime CriadoEm, DateTime AtualizadoEm,
+    List<ProdutoVariacaoDto>? Variacoes = null
 );
 
 public record SalvarProdutoRequest(
@@ -41,7 +42,10 @@ public record SalvarClienteRequest(
 
 // ── Venda ─────────────────────────────────────────────────────────
 public record ItemVendaRequest(
-    Guid ProdutoId, int Quantidade, decimal PrecoUnitario
+    Guid ProdutoId, 
+    int Quantidade, 
+    decimal PrecoUnitario, 
+    Guid? VariacaoId = null 
 );
 
 public record CriarVendaRequest(
@@ -111,4 +115,17 @@ public record CampoExtraLojaDto(
     Guid Id, string Chave, string Label,
     string Tipo, string? Opcoes,
     bool Obrigatorio, bool Ativo, int Ordem
+);
+
+// ── Variações ─────────────────────────────────────────────────────
+public record ProdutoVariacaoDto(
+    Guid Id, string? Tamanho, string? Cor,
+    string? OutroCampo, int Estoque,
+    int EstoqueMinimo, bool Ativo
+);
+
+public record SalvarVariacaoRequest(
+    string? Tamanho, string? Cor,
+    string? OutroCampo, int Estoque,
+    int EstoqueMinimo
 );

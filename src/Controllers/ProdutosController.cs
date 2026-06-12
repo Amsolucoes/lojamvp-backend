@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -29,7 +29,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         [FromQuery] bool? ativo)
     {
         var lojaId = await GetLojaId();
-        var q = db.Produtos.AsQueryable();
+        var q = db.Produtos.Include(p => p.Variacoes).AsQueryable();
 
         if (lojaId.HasValue)
             q = q.Where(p => p.LojaId == lojaId);
@@ -122,9 +122,98 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         return NoContent();
     }
 
+    // ── Variações ─────────────────────────────────────────────────────
+    [HttpGet("{id:guid}/variacoes")]
+    public async Task<IActionResult> ListarVariacoes(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var produto = await db.Produtos.FindAsync(id);
+        if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
+
+        var variacoes = await db.ProdutoVariacoes
+            .Where(v => v.ProdutoId == id)
+            .OrderBy(v => v.Tamanho).ThenBy(v => v.Cor)
+            .Select(v => new ProdutoVariacaoDto(
+                v.Id, v.Tamanho, v.Cor, v.OutroCampo,
+                v.Estoque, v.EstoqueMinimo, v.Ativo))
+            .ToListAsync();
+
+        return Ok(variacoes);
+    }
+
+    [HttpPost("{id:guid}/variacoes")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AdicionarVariacao(Guid id, [FromBody] SalvarVariacaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var produto = await db.Produtos.FindAsync(id);
+        if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
+
+        var variacao = new ProdutoVariacao
+        {
+            ProdutoId = id,
+            Tamanho = req.Tamanho,
+            Cor = req.Cor,
+            OutroCampo = req.OutroCampo,
+            Estoque = req.Estoque,
+            EstoqueMinimo = req.EstoqueMinimo,
+        };
+        db.ProdutoVariacoes.Add(variacao);
+        await db.SaveChangesAsync();
+
+        return Ok(new ProdutoVariacaoDto(
+            variacao.Id, variacao.Tamanho, variacao.Cor,
+            variacao.OutroCampo, variacao.Estoque,
+            variacao.EstoqueMinimo, variacao.Ativo));
+    }
+
+    [HttpPut("{id:guid}/variacoes/{varId:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarVariacao(Guid id, Guid varId, [FromBody] SalvarVariacaoRequest req)
+    {
+        var variacao = await db.ProdutoVariacoes
+            .FirstOrDefaultAsync(v => v.Id == varId && v.ProdutoId == id);
+        if (variacao is null) return NotFound();
+
+        variacao.Tamanho = req.Tamanho;
+        variacao.Cor = req.Cor;
+        variacao.OutroCampo = req.OutroCampo;
+        variacao.Estoque = req.Estoque;
+        variacao.EstoqueMinimo = req.EstoqueMinimo;
+        variacao.AtualizadoEm = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+        return Ok(new ProdutoVariacaoDto(
+            variacao.Id, variacao.Tamanho, variacao.Cor,
+            variacao.OutroCampo, variacao.Estoque,
+            variacao.EstoqueMinimo, variacao.Ativo));
+    }
+
+    [HttpDelete("{id:guid}/variacoes/{varId:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> RemoverVariacao(Guid id, Guid varId)
+    {
+        var variacao = await db.ProdutoVariacoes
+            .FirstOrDefaultAsync(v => v.Id == varId && v.ProdutoId == id);
+        if (variacao is null) return NotFound();
+
+        variacao.Ativo = false;
+        variacao.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
     private static ProdutoDto ToDto(Produto p) => new(
         p.Id, p.Nome, p.Descricao, p.Categoria,
-        p.PrecoCusto, p.PrecoVenda, p.Estoque, p.EstoqueMinimo,
-        p.CodigoBarras, p.Ativo, p.CriadoEm, p.AtualizadoEm
-    );
+        p.PrecoCusto, p.PrecoVenda,
+        p.Variacoes.Where(v => v.Ativo).Sum(v => v.Estoque) > 0
+            ? p.Variacoes.Where(v => v.Ativo).Sum(v => v.Estoque)
+            : p.Estoque,
+        p.EstoqueMinimo,
+        p.CodigoBarras, p.Ativo,
+        p.CriadoEm, p.AtualizadoEm,
+        p.Variacoes.Where(v => v.Ativo).Select(v => new ProdutoVariacaoDto(
+            v.Id, v.Tamanho, v.Cor, v.OutroCampo,
+            v.Estoque, v.EstoqueMinimo, v.Ativo)).ToList()
+        );
 }

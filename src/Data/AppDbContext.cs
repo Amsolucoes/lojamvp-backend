@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CampoExtraPerfil> CamposExtrasPerfil => Set<CampoExtraPerfil>();
     public DbSet<CategoriaLoja> CategoriasLoja => Set<CategoriaLoja>();
     public DbSet<CampoExtraLoja> CamposExtrasLoja => Set<CampoExtraLoja>();
+    public DbSet<ProdutoVariacao> ProdutoVariacoes => Set<ProdutoVariacao>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -81,6 +82,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<CampoExtraLoja>()
             .HasOne(c => c.Loja).WithMany()
             .HasForeignKey(c => c.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ProdutoVariacao>()
+            .HasOne(v => v.Produto).WithMany(p => p.Variacoes)
+            .HasForeignKey(v => v.ProdutoId).OnDelete(DeleteBehavior.Cascade);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())

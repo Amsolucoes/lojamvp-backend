@@ -70,8 +70,20 @@ public class VendasController(AppDbContext db) : ControllerBase
             var produto = await db.Produtos.FindAsync(item.ProdutoId);
             if (produto is null) return BadRequest(new { erro = $"Produto {item.ProdutoId} não encontrado." });
             if (!produto.Ativo) return BadRequest(new { erro = $"Produto '{produto.Nome}' está inativo." });
-            if (produto.Estoque < item.Quantidade)
-                return BadRequest(new { erro = $"Estoque insuficiente para '{produto.Nome}'." });
+
+            // Valida estoque da variação ou do produto
+            if (item.VariacaoId.HasValue)
+            {
+                var variacao = await db.ProdutoVariacoes.FindAsync(item.VariacaoId.Value);
+                if (variacao is null) return BadRequest(new { erro = "Variação não encontrada." });
+                if (variacao.Estoque < item.Quantidade)
+                    return BadRequest(new { erro = $"Estoque insuficiente para '{produto.Nome}' ({variacao.Tamanho}/{variacao.Cor})." });
+            }
+            else
+            {
+                if (produto.Estoque < item.Quantidade)
+                    return BadRequest(new { erro = $"Estoque insuficiente para '{produto.Nome}'." });
+            }
         }
 
         decimal total = req.Itens.Sum(i => i.Quantidade * i.PrecoUnitario);
@@ -91,6 +103,7 @@ public class VendasController(AppDbContext db) : ControllerBase
         foreach (var item in req.Itens)
         {
             var produto = await db.Produtos.FindAsync(item.ProdutoId);
+
             db.ItensVenda.Add(new ItemVenda
             {
                 VendaId = venda.Id,
@@ -99,8 +112,23 @@ public class VendasController(AppDbContext db) : ControllerBase
                 PrecoUnitario = item.PrecoUnitario,
                 Subtotal = item.Quantidade * item.PrecoUnitario,
             });
-            produto!.Estoque -= item.Quantidade;
-            produto.AtualizadoEm = DateTime.UtcNow;
+
+            // Baixa estoque da variação se informada, senão baixa do produto
+            if (item.VariacaoId.HasValue)
+            {
+                var variacao = await db.ProdutoVariacoes.FindAsync(item.VariacaoId.Value);
+                if (variacao != null)
+                {
+                    variacao.Estoque -= item.Quantidade;
+                    variacao.AtualizadoEm = DateTime.UtcNow;
+                }
+            }
+            else
+            {
+                produto!.Estoque -= item.Quantidade;
+                produto.AtualizadoEm = DateTime.UtcNow;
+            }
+
             db.Movimentos.Add(new MovimentoEstoque
             {
                 ProdutoId = item.ProdutoId,
