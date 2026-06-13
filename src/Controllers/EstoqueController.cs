@@ -101,4 +101,34 @@ public class EstoqueController(AppDbContext db) : ControllerBase
 
         return Ok(alertas);
     }
+
+    [HttpPost("ajuste-variacao")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AjusteVariacao([FromBody] AjusteVariacaoRequest req)
+    {
+        var variacao = await db.ProdutoVariacoes
+            .Include(v => v.Produto)
+            .FirstOrDefaultAsync(v => v.Id == req.VariacaoId && v.ProdutoId == req.ProdutoId);
+
+        if (variacao is null) return NotFound(new { erro = "Variação não encontrada." });
+
+        variacao.Estoque = req.Tipo == "entrada"
+            ? variacao.Estoque + req.Quantidade
+            : req.Quantidade;
+        variacao.AtualizadoEm = DateTime.UtcNow;
+
+        var label = string.Join(" / ", new[] { variacao.Tamanho, variacao.Cor }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        db.Movimentos.Add(new MovimentoEstoque
+        {
+            ProdutoId = req.ProdutoId,
+            Tipo = req.Tipo,
+            Quantidade = req.Quantidade,
+            Observacao = $"{req.Observacao ?? (req.Tipo == "entrada" ? "Entrada" : "Ajuste")} - {label}",
+            LojaId = await GetLojaId(),
+        });
+
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Estoque atualizado.", estoqueAgora = variacao.Estoque });
+    }
 }

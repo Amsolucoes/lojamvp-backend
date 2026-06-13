@@ -129,3 +129,9 @@ public record SalvarVariacaoRequest(
     string? OutroCampo, int Estoque,
     int EstoqueMinimo
 );
+
+public record AjusteVariacaoRequest(
+    Guid ProdutoId, Guid VariacaoId,
+    int Quantidade, string Tipo,
+    string? Observacao
+);
