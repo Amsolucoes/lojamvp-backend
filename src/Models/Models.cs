@@ -140,6 +140,8 @@ public class ItemVenda
     public Guid ProdutoId { get; set; }
     public Produto Produto { get; set; } = null!;
 
+    [Required, MaxLength(200)]
+    public string NomeProduto { get; set; } = "";
     public int Quantidade { get; set; }
 
     [Column(TypeName = "decimal(10,2)")]

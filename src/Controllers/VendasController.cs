@@ -65,13 +65,13 @@ public class VendasController(AppDbContext db) : ControllerBase
         if (!req.Itens.Any())
             return BadRequest(new { erro = "A venda deve ter ao menos um item." });
 
+        // ── Validação ─────────────────────────────────────────────────
         foreach (var item in req.Itens)
         {
             var produto = await db.Produtos.FindAsync(item.ProdutoId);
             if (produto is null) return BadRequest(new { erro = $"Produto {item.ProdutoId} não encontrado." });
             if (!produto.Ativo) return BadRequest(new { erro = $"Produto '{produto.Nome}' está inativo." });
 
-            // Valida estoque da variação ou do produto
             if (item.VariacaoId.HasValue)
             {
                 var variacao = await db.ProdutoVariacoes.FindAsync(item.VariacaoId.Value);
@@ -86,8 +86,8 @@ public class VendasController(AppDbContext db) : ControllerBase
             }
         }
 
+        // ── Cria venda ────────────────────────────────────────────────
         decimal total = req.Itens.Sum(i => i.Quantidade * i.PrecoUnitario);
-
         var venda = new Venda
         {
             ClienteId = req.ClienteId,
@@ -100,41 +100,54 @@ public class VendasController(AppDbContext db) : ControllerBase
         };
         db.Vendas.Add(venda);
 
+        // ── Itens ─────────────────────────────────────────────────────
         foreach (var item in req.Itens)
         {
             var produto = await db.Produtos.FindAsync(item.ProdutoId);
 
-            db.ItensVenda.Add(new ItemVenda
-            {
-                VendaId = venda.Id,
-                ProdutoId = item.ProdutoId,
-                Quantidade = item.Quantidade,
-                PrecoUnitario = item.PrecoUnitario,
-                Subtotal = item.Quantidade * item.PrecoUnitario,
-            });
-
-            // Baixa estoque da variação se informada, senão baixa do produto
+            // Monta nome com variação
+            string nomeProduto = produto!.Nome;
             if (item.VariacaoId.HasValue)
             {
                 var variacao = await db.ProdutoVariacoes.FindAsync(item.VariacaoId.Value);
                 if (variacao != null)
                 {
+                    var partes = new[] { variacao.Tamanho, variacao.Cor }
+                        .Where(s => !string.IsNullOrWhiteSpace(s));
+                    var label = string.Join(" / ", partes);
+                    if (!string.IsNullOrEmpty(label))
+                        nomeProduto = $"{produto.Nome} ({label})";
+
+                    // Baixa estoque da variação
                     variacao.Estoque -= item.Quantidade;
                     variacao.AtualizadoEm = DateTime.UtcNow;
                 }
             }
             else
             {
-                produto!.Estoque -= item.Quantidade;
+                // Baixa estoque do produto
+                produto.Estoque -= item.Quantidade;
                 produto.AtualizadoEm = DateTime.UtcNow;
             }
 
+            // Adiciona item da venda
+            db.ItensVenda.Add(new ItemVenda
+            {
+                VendaId = venda.Id,
+                ProdutoId = item.ProdutoId,
+                NomeProduto = nomeProduto,
+                Quantidade = item.Quantidade,
+                PrecoUnitario = item.PrecoUnitario,
+                Subtotal = item.Quantidade * item.PrecoUnitario,
+            });
+
+            // Registra movimento
             db.Movimentos.Add(new MovimentoEstoque
             {
                 ProdutoId = item.ProdutoId,
                 Tipo = "saida",
                 Quantidade = item.Quantidade,
-                Observacao = $"Venda #{venda.Id.ToString()[..8]}",
+                Observacao = $"Venda #{venda.Id.ToString()[..8]} - {nomeProduto}",
                 LojaId = lojaId,
             });
         }
