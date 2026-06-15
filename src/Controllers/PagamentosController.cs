@@ -36,7 +36,7 @@ public class PagamentosController(
         var loja      = pagamento.Loja;
         var cpf       = req.CpfPagador ?? loja.Cpf ?? loja.Cnpj ?? "00000000000";
         var nome      = req.NomePagador ?? loja.Nome;
-        var email     = req.EmailPagador ?? loja.Email;
+        var email     = req.EmailPagador ?? "pagador@email.com";
         var descricao = $"Mensalidade {loja.Nome} - {pagamento.Vencimento:MM/yyyy}";
 
         MpPaymentResult result;
