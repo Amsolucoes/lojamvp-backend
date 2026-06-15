@@ -25,8 +25,8 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             payer = new
             {
                 email           = emailPagador,
-                first_name      = nomePagador.Split(' ').First(),
-                last_name       = nomePagador.Split(' ').Skip(1).LastOrDefault() ?? "",
+                //first_name      = nomePagador.Split(' ').First(),
+                //last_name       = nomePagador.Split(' ').Skip(1).LastOrDefault() ?? "",
                 identification  = new { type = "CPF", number = cpfPagador.Replace(".", "").Replace("-", "") },
             },
         };
