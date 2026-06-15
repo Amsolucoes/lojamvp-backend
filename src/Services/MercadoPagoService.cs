@@ -21,7 +21,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             transaction_amount = valor,
             description        = descricao,
             payment_method_id  = "pix",
-            external_reference = pagamentoId.ToString(),
+            //external_reference = pagamentoId.ToString(),
             payer = new
             {
                 email           = emailPagador,
