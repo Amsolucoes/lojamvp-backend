@@ -167,7 +167,7 @@ public class VendasController(AppDbContext db) : ControllerBase
         v.Total, v.Desconto, v.TotalFinal,
         v.FormaPagamento, v.Troco, v.CriadaEm,
         v.Itens.Select(i => new ItemVendaDto(
-            i.Id, i.ProdutoId, i.Produto?.Nome ?? "",
+            i.Id, i.ProdutoId, i.NomeProduto,
             i.Quantidade, i.PrecoUnitario, i.Subtotal
         )).ToList()
     );
