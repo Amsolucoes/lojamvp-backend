@@ -123,6 +123,9 @@ public class Venda
     public Guid? LojaId { get; set; }
     public Loja? Loja { get; set; }
 
+    [MaxLength(500)]
+    public string? FormasPagamento { get; set; }
+
     public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
 
     // Navegação

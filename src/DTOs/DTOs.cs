@@ -53,6 +53,7 @@ public record CriarVendaRequest(
     Guid? ClienteId,
     decimal Desconto,
     string FormaPagamento,
+    string? FormasPagamento,
     decimal? Troco
 );
 
@@ -65,7 +66,8 @@ public record VendaDto(
     Guid Id,
     Guid? ClienteId, string? NomeCliente,
     decimal Total, decimal Desconto, decimal TotalFinal,
-    string FormaPagamento, decimal? Troco,
+    string FormaPagamento, string? FormasPagamento,
+    decimal? Troco,
     DateTime CriadaEm,
     List<ItemVendaDto> Itens
 );

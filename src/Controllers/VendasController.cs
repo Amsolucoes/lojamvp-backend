@@ -95,6 +95,7 @@ public class VendasController(AppDbContext db) : ControllerBase
             Desconto = req.Desconto,
             TotalFinal = total - req.Desconto,
             FormaPagamento = req.FormaPagamento,
+            FormasPagamento = req.FormasPagamento,
             Troco = req.Troco,
             LojaId = lojaId,
         };
@@ -165,7 +166,8 @@ public class VendasController(AppDbContext db) : ControllerBase
     private static VendaDto ToDto(Venda v) => new(
         v.Id, v.ClienteId, v.Cliente?.Nome,
         v.Total, v.Desconto, v.TotalFinal,
-        v.FormaPagamento, v.Troco, v.CriadaEm,
+        v.FormaPagamento, v.FormasPagamento,
+        v.Troco, v.CriadaEm,
         v.Itens.Select(i => new ItemVendaDto(
             i.Id, i.ProdutoId, i.NomeProduto,
             i.Quantidade, i.PrecoUnitario, i.Subtotal
