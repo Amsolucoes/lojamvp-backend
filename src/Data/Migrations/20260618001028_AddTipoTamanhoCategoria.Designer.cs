@@ -3,6 +3,7 @@ using System;
 using LojaApi.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LojaApi.src.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260618001028_AddTipoTamanhoCategoria")]
+    partial class AddTipoTamanhoCategoria
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -298,7 +301,7 @@ namespace LojaApi.src.Data.Migrations
                             Nome = "Calça Jeans",
                             Ordem = 1,
                             PerfilLojaId = new Guid("10000000-0000-0000-0000-000000000002"),
-                            TipoTamanho = "numero"
+                            TipoTamanho = "letra"
                         },
                         new
                         {
@@ -314,7 +317,7 @@ namespace LojaApi.src.Data.Migrations
                             Nome = "Bermuda",
                             Ordem = 3,
                             PerfilLojaId = new Guid("10000000-0000-0000-0000-000000000002"),
-                            TipoTamanho = "nummero"
+                            TipoTamanho = "letra"
                         },
                         new
                         {
@@ -754,7 +757,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 6, 18, 0, 17, 30, 750, DateTimeKind.Utc).AddTicks(7174),
+                            CriadoEm = new DateTime(2026, 6, 18, 0, 10, 27, 959, DateTimeKind.Utc).AddTicks(7131),
                             Descricao = "Para lojas de semi joias, bijuterias e maquiagem",
                             Icone = "💍",
                             Nome = "Semi Joias e Maquiagem"
@@ -763,7 +766,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 6, 18, 0, 17, 30, 750, DateTimeKind.Utc).AddTicks(7267),
+                            CriadoEm = new DateTime(2026, 6, 18, 0, 10, 27, 959, DateTimeKind.Utc).AddTicks(7215),
                             Descricao = "Para lojas de roupas e moda",
                             Icone = "👕",
                             Nome = "Vestuário"
@@ -772,7 +775,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 6, 18, 0, 17, 30, 750, DateTimeKind.Utc).AddTicks(7461),
+                            CriadoEm = new DateTime(2026, 6, 18, 0, 10, 27, 959, DateTimeKind.Utc).AddTicks(7347),
                             Descricao = "Para lojas de sapatos, tênis e sandálias",
                             Icone = "👟",
                             Nome = "Calçados"
@@ -961,17 +964,17 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 6, 18, 0, 17, 30, 750, DateTimeKind.Utc).AddTicks(5630),
+                            CriadoEm = new DateTime(2026, 6, 18, 0, 10, 27, 959, DateTimeKind.Utc).AddTicks(6194),
                             Email = "admin@loja.com",
                             Nome = "Administrador",
                             Role = "admin",
-                            SenhaHash = "$2a$11$SwECatjYeW5PDI0M7VnQduVw1r.MjzgX.Hw6Tj/Mj3Q9nj/KP.yW6"
+                            SenhaHash = "$2a$11$PouaGa5EIruqsu0tjqAf0e2fTsMjUQLNOIXM0TSpY/42WOoipUyLS"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 6, 18, 0, 17, 30, 750, DateTimeKind.Utc).AddTicks(7096),
+                            CriadoEm = new DateTime(2026, 6, 18, 0, 10, 27, 959, DateTimeKind.Utc).AddTicks(6984),
                             Email = "superadmin@suaempresa.com",
                             Nome = "Super Admin",
                             Role = "superadmin",

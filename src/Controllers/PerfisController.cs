@@ -34,7 +34,7 @@ public class PerfisController(AppDbContext db) : ControllerBase
             p.Nome,
             p.Descricao,
             p.Icone,
-            categorias = p.Categorias.Select(c => new { c.Id, c.Nome, c.Ordem }),
+            categorias = p.Categorias.Select(c => new { c.Id, c.Nome, c.Ordem, c.TipoTamanho }),
             camposExtras = p.CamposExtras.Select(c => new { c.Id, c.Chave, c.Label, c.Tipo, c.Opcoes, c.Obrigatorio, c.Ordem }),
         }));
     }
@@ -85,7 +85,7 @@ public class PerfisController(AppDbContext db) : ControllerBase
         var cats = await db.CategoriasLoja
             .Where(c => c.LojaId == lojaId && c.Ativo)
             .OrderBy(c => c.Ordem)
-            .Select(c => new { c.Id, c.Nome, c.Ativo, c.Ordem })
+            .Select(c => new { c.Id, c.Nome, c.Ativo, c.Ordem, c.TipoTamanho })
             .ToListAsync();
 
         return Ok(cats);

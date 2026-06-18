@@ -206,6 +206,9 @@ public class CategoriaPerfilLoja
     [Required, MaxLength(100)]
     public string Nome { get; set; } = "";
     public int Ordem { get; set; } = 0;
+
+    [MaxLength(20)]
+    public string TipoTamanho { get; set; } = "letra"; 
 }
 
 public class CampoExtraPerfil
@@ -240,6 +243,9 @@ public class CategoriaLoja
     public string Nome { get; set; } = "";
     public bool Ativo { get; set; } = true;
     public int Ordem { get; set; } = 0;
+
+    [MaxLength(20)]
+    public string TipoTamanho { get; set; } = "letra";
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
