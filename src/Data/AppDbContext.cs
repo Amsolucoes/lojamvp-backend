@@ -87,6 +87,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(v => v.Produto).WithMany(p => p.Variacoes)
             .HasForeignKey(v => v.ProdutoId).OnDelete(DeleteBehavior.Cascade);
 
+        mb.Entity<Cliente>()
+            .Property(c => c.DataNascimento)
+            .HasColumnType("date");
+
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
         {
