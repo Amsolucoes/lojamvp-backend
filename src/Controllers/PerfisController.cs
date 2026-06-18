@@ -58,7 +58,11 @@ public class PerfisController(AppDbContext db) : ControllerBase
 
         // Adiciona do perfil
         foreach (var cat in perfil.Categorias)
-            db.CategoriasLoja.Add(new CategoriaLoja { LojaId = lojaId.Value, Nome = cat.Nome, Ordem = cat.Ordem });
+            db.CategoriasLoja.Add(new CategoriaLoja { LojaId = lojaId.Value, 
+                Nome = cat.Nome, 
+                Ordem = cat.Ordem,
+                TipoTamanho = cat.TipoTamanho 
+            });
 
         foreach (var campo in perfil.CamposExtras)
             db.CamposExtrasLoja.Add(new CampoExtraLoja
