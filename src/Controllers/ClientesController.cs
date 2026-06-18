@@ -41,7 +41,8 @@ public class ClientesController(AppDbContext db) : ControllerBase
             .Select(c => new ClienteDto(
                 c.Id, c.Nome, c.Telefone, c.Cpf, c.Email,
                 c.Endereco, c.Observacoes, c.CriadoEm,
-                c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal)
+                c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal),
+                c.DataNascimento
             )).ToListAsync();
 
         return Ok(lista);
@@ -60,7 +61,8 @@ public class ClientesController(AppDbContext db) : ControllerBase
         return Ok(new ClienteDto(
             c.Id, c.Nome, c.Telefone, c.Cpf, c.Email,
             c.Endereco, c.Observacoes, c.CriadoEm,
-            c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal)
+            c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal),
+            c.DataNascimento
         ));
     }
 
@@ -84,6 +86,7 @@ public class ClientesController(AppDbContext db) : ControllerBase
             Email = req.Email,
             Endereco = req.Endereco,
             Observacoes = req.Observacoes,
+            DataNascimento = req.DataNascimento,
             LojaId = lojaId,
         };
 
@@ -92,7 +95,7 @@ public class ClientesController(AppDbContext db) : ControllerBase
 
         return CreatedAtAction(nameof(Buscar), new { id = cliente.Id },
             new ClienteDto(cliente.Id, cliente.Nome, cliente.Telefone, cliente.Cpf,
-                cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm, 0, 0));
+                cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm, 0, 0, cliente.DataNascimento));
     }
 
     [HttpPut("{id:guid}")]
@@ -113,13 +116,14 @@ public class ClientesController(AppDbContext db) : ControllerBase
         cliente.Nome = req.Nome; cliente.Telefone = req.Telefone;
         cliente.Cpf = req.Cpf; cliente.Email = req.Email;
         cliente.Endereco = req.Endereco; cliente.Observacoes = req.Observacoes;
+        cliente.DataNascimento = req.DataNascimento;
 
         await db.SaveChangesAsync();
 
         var compras = await db.Vendas.Where(v => v.ClienteId == id).ToListAsync();
         return Ok(new ClienteDto(cliente.Id, cliente.Nome, cliente.Telefone, cliente.Cpf,
             cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm,
-            compras.Count, compras.Sum(v => v.TotalFinal)));
+            compras.Count, compras.Sum(v => v.TotalFinal), cliente.DataNascimento));
     }
 
     [HttpDelete("{id:guid}")]

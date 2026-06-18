@@ -81,6 +81,8 @@ public class Cliente
     [MaxLength(150)]
     public string? Email { get; set; }
 
+    public DateTime? DataNascimento { get; set; }
+
     [MaxLength(300)]
     public string? Endereco { get; set; }
 
