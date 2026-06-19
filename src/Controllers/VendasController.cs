@@ -153,6 +153,16 @@ public class VendasController(AppDbContext db) : ControllerBase
             });
         }
 
+        // Desconta crédito usado do cliente
+        if (req.CreditoUsado.HasValue && req.CreditoUsado > 0 && req.ClienteId.HasValue)
+        {
+            var clienteVenda = await db.Clientes.FindAsync(req.ClienteId.Value);
+            if (clienteVenda != null)
+            {
+                clienteVenda.CreditoLoja = Math.Max(0, clienteVenda.CreditoLoja - req.CreditoUsado.Value);
+            }
+        }
+
         await db.SaveChangesAsync();
 
         var vendaSalva = await db.Vendas

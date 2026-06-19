@@ -57,7 +57,8 @@ public record CriarVendaRequest(
     decimal Desconto,
     string FormaPagamento,
     string? FormasPagamento,
-    decimal? Troco
+    decimal? Troco,
+    decimal? CreditoUsado
 );
 
 public record ItemVendaDto(
