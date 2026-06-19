@@ -42,7 +42,7 @@ public class ClientesController(AppDbContext db) : ControllerBase
                 c.Id, c.Nome, c.Telefone, c.Cpf, c.Email,
                 c.Endereco, c.Observacoes, c.CriadoEm,
                 c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal),
-                c.DataNascimento
+                c.DataNascimento, c.CreditoLoja
             )).ToListAsync();
 
         return Ok(lista);
@@ -62,7 +62,7 @@ public class ClientesController(AppDbContext db) : ControllerBase
             c.Id, c.Nome, c.Telefone, c.Cpf, c.Email,
             c.Endereco, c.Observacoes, c.CriadoEm,
             c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal),
-            c.DataNascimento
+            c.DataNascimento, c.CreditoLoja
         ));
     }
 
@@ -95,7 +95,8 @@ public class ClientesController(AppDbContext db) : ControllerBase
 
         return CreatedAtAction(nameof(Buscar), new { id = cliente.Id },
             new ClienteDto(cliente.Id, cliente.Nome, cliente.Telefone, cliente.Cpf,
-                cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm, 0, 0, cliente.DataNascimento));
+                cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm, 0, 0, cliente.DataNascimento,
+                cliente.CreditoLoja));
     }
 
     [HttpPut("{id:guid}")]
@@ -123,7 +124,8 @@ public class ClientesController(AppDbContext db) : ControllerBase
         var compras = await db.Vendas.Where(v => v.ClienteId == id).ToListAsync();
         return Ok(new ClienteDto(cliente.Id, cliente.Nome, cliente.Telefone, cliente.Cpf,
             cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm,
-            compras.Count, compras.Sum(v => v.TotalFinal), cliente.DataNascimento));
+            compras.Count, compras.Sum(v => v.TotalFinal), cliente.DataNascimento,
+            cliente.CreditoLoja));
     }
 
     [HttpDelete("{id:guid}")]

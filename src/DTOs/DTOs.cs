@@ -32,7 +32,8 @@ public record ClienteDto(
     string? Cpf, string? Email, string? Endereco,
     string? Observacoes, DateTime CriadoEm,
     int TotalCompras, decimal TotalGasto,
-    DateTime? DataNascimento
+    DateTime? DataNascimento,
+    decimal creditoLoja
 );
 
 public record SalvarClienteRequest(
