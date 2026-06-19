@@ -95,6 +95,8 @@ public class Cliente
 
     public Loja? Loja { get; set; }
 
+    public decimal CreditoLoja { get; set; } = 0;
+
     // Navegação
     public ICollection<Venda> Vendas { get; set; } = [];
 }
@@ -296,4 +298,45 @@ public class ProdutoVariacao
     public bool Ativo { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Troca ─────────────────────────────────────────────────────────
+public class Troca
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid ClienteId { get; set; }
+    public Cliente Cliente { get; set; } = null!;
+
+    public decimal TotalDevolvido { get; set; }  // soma dos produtos devolvidos
+    public decimal TotalNovo { get; set; }  // soma dos produtos novos
+    public decimal Diferenca { get; set; }  // novo - devolvido (positivo = cliente paga, negativo = crédito)
+    public decimal CreditoGerado { get; set; }  // crédito gerado se sobrou
+    public string? FormaPagamento { get; set; }  // se pagou diferença
+    public Guid? LojaId { get; set; }
+    public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
+
+    public ICollection<ItemTroca> Itens { get; set; } = [];
+}
+
+public class ItemTroca
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid TrocaId { get; set; }
+    public Troca Troca { get; set; } = null!;
+
+    public Guid ProdutoId { get; set; }
+
+    [MaxLength(200)]
+    public string NomeProduto { get; set; } = "";
+
+    public Guid? VariacaoId { get; set; }
+    public int Quantidade { get; set; }
+    public decimal PrecoUnitario { get; set; }
+
+    [MaxLength(20)]
+    public string Tipo { get; set; } = "devolvido"; // devolvido | novo
+
+    public bool VoltaEstoque { get; set; } = true; // só para devolvidos
 }

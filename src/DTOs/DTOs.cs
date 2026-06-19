@@ -139,3 +139,17 @@ public record AjusteVariacaoRequest(
     int Quantidade, string Tipo,
     string? Observacao
 );
+
+// ── Trocas ────────────────────────────────────────────────────────
+public record ItemTrocaRequest(
+    Guid ProdutoId, string NomeProduto,
+    Guid? VariacaoId, int Quantidade,
+    decimal PrecoUnitario, bool VoltaEstoque
+);
+
+public record CriarTrocaRequest(
+    Guid ClienteId,
+    List<ItemTrocaRequest> Devolvidos,
+    List<ItemTrocaRequest> Novos,
+    string? FormaPagamento
+);
