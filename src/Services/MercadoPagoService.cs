@@ -109,15 +109,10 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     // ── POST genérico ─────────────────────────────────────────────
     private async Task<MpPaymentResult> PostPayment(object body)
     {
-        logger.LogWarning(">>> ENTROU NO PostPayment");
-        var tk = AccessToken;
-        logger.LogWarning(">>> TOKEN em uso (final): ...{Fim} | tamanho: {Len}",
-            tk.Length > 8 ? tk[^8..] : tk, tk.Length);
-
         try
         {
             var json = JsonSerializer.Serialize(body, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
-            logger.LogWarning("MP Request Body: {Json}", json);
+            logger.LogInformation("MP Request Body: {Json}", json);
 
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -129,7 +124,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             var res = await _http.SendAsync(req);
             var body2 = await res.Content.ReadAsStringAsync();
 
-            logger.LogWarning("MP Response: {Status} {Body}", res.StatusCode, body2);
+            logger.LogInformation("MP Response: {Status} {Body}", res.StatusCode, body2);
 
             if (!res.IsSuccessStatusCode)
                 return new MpPaymentResult { Erro = $"Erro MP: {res.StatusCode} - {body2}" };
