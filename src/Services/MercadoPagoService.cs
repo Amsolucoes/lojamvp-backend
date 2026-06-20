@@ -110,6 +110,9 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     private async Task<MpPaymentResult> PostPayment(object body)
     {
         logger.LogWarning(">>> ENTROU NO PostPayment");
+        var tk = AccessToken;
+        logger.LogWarning(">>> TOKEN em uso (final): ...{Fim} | tamanho: {Len}",
+            tk.Length > 8 ? tk[^8..] : tk, tk.Length);
 
         try
         {
