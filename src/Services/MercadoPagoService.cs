@@ -19,15 +19,15 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
         var body = new
         {
             transaction_amount = valor,
-            description        = descricao,
-            payment_method_id  = "pix",
+            description = descricao,
+            payment_method_id = "pix",
             //external_reference = pagamentoId.ToString(),
             payer = new
             {
-                email           = emailPagador,
+                email = emailPagador,
                 //first_name      = nomePagador.Split(' ').First(),
                 //last_name       = nomePagador.Split(' ').Skip(1).LastOrDefault() ?? "",
-                identification  = new { type = "CPF", number = cpfPagador.Replace(".", "").Replace("-", "") },
+                identification = new { type = "CPF", number = cpfPagador.Replace(".", "").Replace("-", "") },
             },
         };
 
@@ -43,16 +43,16 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
         var body = new
         {
             transaction_amount = valor,
-            description        = descricao,
-            payment_method_id  = "bolbradesco",
+            description = descricao,
+            payment_method_id = "bolbradesco",
             external_reference = pagamentoId.ToString(),
             payer = new
             {
-                email          = emailPagador,
-                first_name     = nomePagador.Split(' ').First(),
-                last_name      = nomePagador.Split(' ').Skip(1).LastOrDefault() ?? "",
+                email = emailPagador,
+                first_name = nomePagador.Split(' ').First(),
+                last_name = nomePagador.Split(' ').Skip(1).LastOrDefault() ?? "",
                 identification = new { type = "CPF", number = cpfPagador.Replace(".", "").Replace("-", "") },
-                address        = new { zip_code = "01310100", street_name = "Av. Paulista", street_number = "1000" },
+                address = new { zip_code = "01310100", street_name = "Av. Paulista", street_number = "1000" },
             },
         };
 
@@ -69,14 +69,14 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
         var body = new
         {
             transaction_amount = valor,
-            description        = descricao,
-            token              = cardToken,
-            installments       = parcelas,
-            payment_method_id  = (string?)null, // MP detecta pelo token
+            description = descricao,
+            token = cardToken,
+            installments = parcelas,
+            payment_method_id = (string?)null, // MP detecta pelo token
             external_reference = pagamentoId.ToString(),
             payer = new
             {
-                email          = emailPagador,
+                email = emailPagador,
                 identification = new { type = "CPF", number = cpfPagador.Replace(".", "").Replace("-", "") },
             },
         };
@@ -96,7 +96,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             if (!res.IsSuccessStatusCode) return null;
 
             var json = await res.Content.ReadAsStringAsync();
-            var doc  = JsonDocument.Parse(json);
+            var doc = JsonDocument.Parse(json);
             return doc.RootElement.GetProperty("status").GetString();
         }
         catch (Exception ex)
@@ -109,10 +109,12 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     // ── POST genérico ─────────────────────────────────────────────
     private async Task<MpPaymentResult> PostPayment(object body)
     {
+        logger.LogWarning(">>> ENTROU NO PostPayment");
+
         try
         {
-            var json    = JsonSerializer.Serialize(body, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
-            logger.LogInformation("MP Request Body: {Json}", json);
+            var json = JsonSerializer.Serialize(body, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+            logger.LogWarning("MP Request Body: {Json}", json);
 
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
@@ -121,7 +123,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             req.Headers.Add("X-Idempotency-Key", Guid.NewGuid().ToString());
             req.Content = content;
 
-            var res  = await _http.SendAsync(req);
+            var res = await _http.SendAsync(req);
             var body2 = await res.Content.ReadAsStringAsync();
 
             logger.LogInformation("MP Response: {Status} {Body}", res.StatusCode, body2);
@@ -135,21 +137,21 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             var result = new MpPaymentResult
             {
                 MpPaymentId = root.GetProperty("id").GetInt64().ToString(),
-                Status      = root.GetProperty("status").GetString() ?? "",
+                Status = root.GetProperty("status").GetString() ?? "",
             };
 
             // Pix
             if (root.TryGetProperty("point_of_interaction", out var poi) &&
                 poi.TryGetProperty("transaction_data", out var td))
             {
-                result.QrCode       = td.TryGetProperty("qr_code", out var qr) ? qr.GetString() : null;
+                result.QrCode = td.TryGetProperty("qr_code", out var qr) ? qr.GetString() : null;
                 result.QrCodeBase64 = td.TryGetProperty("qr_code_base64", out var qrb) ? qrb.GetString() : null;
             }
 
             // Boleto
             if (root.TryGetProperty("transaction_details", out var td2))
             {
-                result.BoletoUrl     = td2.TryGetProperty("external_resource_url", out var url) ? url.GetString() : null;
+                result.BoletoUrl = td2.TryGetProperty("external_resource_url", out var url) ? url.GetString() : null;
                 result.BoletoBarcode = td2.TryGetProperty("barcode_content", out var bc) ? bc.GetString() : null;
             }
 
@@ -165,12 +167,12 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
 
 public class MpPaymentResult
 {
-    public string? MpPaymentId  { get; set; }
-    public string? Status       { get; set; }
-    public string? QrCode       { get; set; }
+    public string? MpPaymentId { get; set; }
+    public string? Status { get; set; }
+    public string? QrCode { get; set; }
     public string? QrCodeBase64 { get; set; }
-    public string? BoletoUrl    { get; set; }
+    public string? BoletoUrl { get; set; }
     public string? BoletoBarcode { get; set; }
-    public string? Erro         { get; set; }
+    public string? Erro { get; set; }
     public bool Sucesso => Erro == null;
 }
