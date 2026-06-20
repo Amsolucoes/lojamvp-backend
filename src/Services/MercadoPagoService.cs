@@ -112,6 +112,8 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
         try
         {
             var json    = JsonSerializer.Serialize(body, new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull });
+            logger.LogInformation("MP Request Body: {Json}", json);
+
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var req = new HttpRequestMessage(HttpMethod.Post, $"{BASE}/v1/payments");
