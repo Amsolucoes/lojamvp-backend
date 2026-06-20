@@ -126,7 +126,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             var res = await _http.SendAsync(req);
             var body2 = await res.Content.ReadAsStringAsync();
 
-            logger.LogInformation("MP Response: {Status} {Body}", res.StatusCode, body2);
+            logger.LogWarning("MP Response: {Status} {Body}", res.StatusCode, body2);
 
             if (!res.IsSuccessStatusCode)
                 return new MpPaymentResult { Erro = $"Erro MP: {res.StatusCode} - {body2}" };
