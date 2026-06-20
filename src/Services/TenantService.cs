@@ -103,9 +103,9 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
 
     public static DateTime ProximoVencimentoDate(int dia)
     {
-        var agora   = DateTime.UtcNow;
-        var maxDia  = DateTime.DaysInMonth(agora.Year, agora.Month);
-        var proximo = new DateTime(agora.Year, agora.Month, Math.Min(dia, maxDia));
+        var agora = DateTime.UtcNow;
+        var maxDia = DateTime.DaysInMonth(agora.Year, agora.Month);
+        var proximo = new DateTime(agora.Year, agora.Month, Math.Min(dia, maxDia), 0, 0, 0, DateTimeKind.Utc);
         if (proximo <= agora) proximo = proximo.AddMonths(1);
         return proximo;
     }
