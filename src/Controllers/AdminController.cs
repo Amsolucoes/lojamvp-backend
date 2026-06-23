@@ -188,6 +188,48 @@ public class AdminController(AppDbContext db, TenantService tenantService) : Con
         return File(bytes, "application/json", nomeArquivo);
     }
 
+    // ── Deletar loja (e todos os dados) ───────────────────────────
+    [HttpDelete("lojas/{id:guid}")]
+    public async Task<IActionResult> Deletar(Guid id)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        // Deleta dados vinculados que não são cascade automático
+        var produtos = await db.Produtos.Where(p => p.LojaId == id).Select(p => p.Id).ToListAsync();
+
+        // Variações e movimentos dos produtos
+        await db.ProdutoVariacoes.Where(v => produtos.Contains(v.ProdutoId)).ExecuteDeleteAsync();
+        await db.Movimentos.Where(m => m.LojaId == id).ExecuteDeleteAsync();
+
+        // Itens de venda e vendas
+        var vendas = await db.Vendas.Where(v => v.LojaId == id).Select(v => v.Id).ToListAsync();
+        await db.ItensVenda.Where(i => vendas.Contains(i.VendaId)).ExecuteDeleteAsync();
+        await db.Vendas.Where(v => v.LojaId == id).ExecuteDeleteAsync();
+
+        // Itens de troca e trocas
+        var trocas = await db.Trocas.Where(t => t.LojaId == id).Select(t => t.Id).ToListAsync();
+        await db.ItensTroca.Where(i => trocas.Contains(i.TrocaId)).ExecuteDeleteAsync();
+        await db.Trocas.Where(t => t.LojaId == id).ExecuteDeleteAsync();
+
+        // Produtos, clientes, categorias
+        await db.Produtos.Where(p => p.LojaId == id).ExecuteDeleteAsync();
+        await db.Clientes.Where(c => c.LojaId == id).ExecuteDeleteAsync();
+        await db.CategoriasLoja.Where(c => c.LojaId == id).ExecuteDeleteAsync();
+        await db.CamposExtrasLoja.Where(c => c.LojaId == id).ExecuteDeleteAsync();
+
+        // Usuários vinculados (pega os ids antes)
+        var usuarioIds = await db.UsuariosLoja.Where(ul => ul.LojaId == id).Select(ul => ul.UsuarioId).ToListAsync();
+        await db.UsuariosLoja.Where(ul => ul.LojaId == id).ExecuteDeleteAsync();
+        await db.Usuarios.Where(u => usuarioIds.Contains(u.Id)).ExecuteDeleteAsync();
+
+        // Pagamentos e a loja (pagamentos é cascade, mas deletamos explícito por segurança)
+        await db.Pagamentos.Where(p => p.LojaId == id).ExecuteDeleteAsync();
+        await db.Lojas.Where(l => l.Id == id).ExecuteDeleteAsync();
+
+        return Ok(new { mensagem = "Loja e todos os dados foram removidos." });
+    }
+
     // ── Atualizar loja ────────────────────────────────────────────
     [HttpPut("lojas/{id:guid}")]
     public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarLojaRequest req)
@@ -270,7 +312,8 @@ public class AdminController(AppDbContext db, TenantService tenantService) : Con
             l.SchemaNome, l.CriadoEm,
             l.Usuarios.Count,
             l.Pagamentos.Where(p => p.Status == "pago").Sum(p => p.Valor),
-            EmAtraso: dias > 0, DiasAtraso: dias
+            EmAtraso: dias > 0, DiasAtraso: dias,
+            Promocional: l.Promocional
         );
     }
 

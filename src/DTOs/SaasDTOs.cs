@@ -33,7 +33,8 @@ public record LojaDto(
     DateTime? UltimaCobranca,
     string SchemaNome, DateTime CriadoEm,
     int TotalUsuarios, decimal TotalPago,
-    bool EmAtraso, int DiasAtraso
+    bool EmAtraso, int DiasAtraso,
+    bool Promocional
 );
 
 public record LojaResumoDto(
