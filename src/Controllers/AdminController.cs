@@ -12,7 +12,7 @@ namespace LojaApi.Controllers;
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = "superadmin")]
-public class AdminController(AppDbContext db, TenantService tenantService) : ControllerBase
+public class AdminController(AppDbContext db, TenantService tenantService, TokenService tokenService) : ControllerBase
 {
     private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -228,6 +228,33 @@ public class AdminController(AppDbContext db, TenantService tenantService) : Con
         await db.Lojas.Where(l => l.Id == id).ExecuteDeleteAsync();
 
         return Ok(new { mensagem = "Loja e todos os dados foram removidos." });
+    }
+
+    // ── Acessar loja como suporte (gera token do admin da loja) ───
+    [HttpPost("lojas/{id:guid}/acessar")]
+    public async Task<IActionResult> AcessarComoSuporte(Guid id)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        // Pega o usuário admin da loja
+        var vinculo = await db.UsuariosLoja
+            .Include(ul => ul.Usuario)
+            .FirstOrDefaultAsync(ul => ul.LojaId == id && ul.Role == "admin" && ul.Ativo);
+
+        if (vinculo is null || vinculo.Usuario is null)
+            return NotFound(new { erro = "Esta loja não tem um administrador ativo." });
+
+        var token = tokenService.GerarToken(vinculo.Usuario);
+
+        return Ok(new
+        {
+            token,
+            nome = vinculo.Usuario.Nome,
+            email = vinculo.Usuario.Email,
+            role = vinculo.Usuario.Role,
+            nomeLoja = loja.Nome,
+        });
     }
 
     // ── Atualizar loja ────────────────────────────────────────────
