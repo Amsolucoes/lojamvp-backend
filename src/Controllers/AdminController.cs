@@ -139,6 +139,55 @@ public class AdminController(AppDbContext db, TenantService tenantService) : Con
         return CreatedAtAction(nameof(Buscar), new { id = loja.Id }, ToLojaDto(loja, DateTime.UtcNow));
     }
 
+    // ── Backup completo da loja (JSON) ────────────────────────────
+    [HttpGet("lojas/{id:guid}/backup")]
+    public async Task<IActionResult> Backup(Guid id)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        var produtos = await db.Produtos.Where(p => p.LojaId == id)
+            .Include(p => p.Variacoes).ToListAsync();
+        var clientes = await db.Clientes.Where(c => c.LojaId == id).ToListAsync();
+        var vendas = await db.Vendas.Where(v => v.LojaId == id)
+            .Include(v => v.Itens).ToListAsync();
+        var trocas = await db.Trocas.Where(t => t.LojaId == id)
+            .Include(t => t.Itens).ToListAsync();
+        var movimentos = await db.Movimentos.Where(m => m.LojaId == id).ToListAsync();
+        var categorias = await db.CategoriasLoja.Where(c => c.LojaId == id).ToListAsync();
+        var pagamentos = await db.Pagamentos.Where(p => p.LojaId == id).ToListAsync();
+
+        var backup = new
+        {
+            geradoEm = DateTime.UtcNow,
+            loja = new { loja.Id, loja.Nome, loja.Email, loja.Cnpj, loja.Cpf, loja.Telefone, loja.Endereco, loja.Status, loja.CriadoEm },
+            categorias,
+            produtos,
+            clientes,
+            vendas,
+            trocas,
+            movimentos,
+            pagamentos,
+            totais = new
+            {
+                produtos = produtos.Count,
+                clientes = clientes.Count,
+                vendas = vendas.Count,
+                trocas = trocas.Count,
+            }
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(backup, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true,
+            ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+        });
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var nomeArquivo = $"backup-{loja.Nome.Replace(" ", "-").ToLower()}-{DateTime.UtcNow:yyyy-MM-dd}.json";
+        return File(bytes, "application/json", nomeArquivo);
+    }
+
     // ── Atualizar loja ────────────────────────────────────────────
     [HttpPut("lojas/{id:guid}")]
     public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarLojaRequest req)
