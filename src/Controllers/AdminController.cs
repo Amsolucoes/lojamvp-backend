@@ -329,8 +329,9 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     private static LojaDto ToLojaDto(Loja l, DateTime agora)
     {
         var dias = l.ProximoVencimento.HasValue
-            ? Math.Max(0, (int)(agora - l.ProximoVencimento.Value).TotalDays)
-            : 0;
+       ? Math.Max(0, (int)(agora - l.ProximoVencimento.Value).TotalDays)
+       : 0;
+        var (fase, diasRest) = TenantService.CalcularSituacao(l);
         return new(
             l.Id, l.Nome, l.Email, l.Cnpj, l.Cpf, l.Telefone, l.Endereco,
             l.CorPrimaria, l.LogoUrl, l.Status.ToString(),
@@ -340,7 +341,8 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
             l.Usuarios.Count,
             l.Pagamentos.Where(p => p.Status == "pago").Sum(p => p.Valor),
             EmAtraso: dias > 0, DiasAtraso: dias,
-            Promocional: l.Promocional
+            Promocional: l.Promocional,
+            Fase: fase, DiasRestantes: diasRest
         );
     }
 

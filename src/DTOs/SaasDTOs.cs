@@ -34,7 +34,8 @@ public record LojaDto(
     string SchemaNome, DateTime CriadoEm,
     int TotalUsuarios, decimal TotalPago,
     bool EmAtraso, int DiasAtraso,
-    bool Promocional
+    bool Promocional,
+    string Fase, int DiasRestantes
 );
 
 public record LojaResumoDto(
