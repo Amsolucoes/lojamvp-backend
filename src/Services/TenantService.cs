@@ -25,20 +25,25 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
     {
         var agora = DateTime.UtcNow;
 
-        if (loja.Status == StatusLoja.Trial && agora > loja.TrialAte)
+        // Trial: só bloqueia após a carência de 3 dias do fim do trial
+        if (loja.Status == StatusLoja.Trial)
         {
-            loja.Status       = StatusLoja.Bloqueado;
-            loja.AtualizadoEm = agora;
+            var diasAposTrial = (int)(agora - loja.TrialAte).TotalDays;
+            if (diasAposTrial > DIAS_ATRASO_BLOQUEIO)
+            {
+                loja.Status = StatusLoja.Bloqueado;
+                loja.AtualizadoEm = agora;
+            }
             return;
         }
 
-        if ((loja.Status == StatusLoja.Ativo || loja.Status == StatusLoja.Trial) &&
-            loja.ProximoVencimento.HasValue)
+        // Ativo: bloqueia após 3 dias do vencimento
+        if (loja.Status == StatusLoja.Ativo && loja.ProximoVencimento.HasValue)
         {
             var diasAtraso = (int)(agora - loja.ProximoVencimento.Value).TotalDays;
             if (diasAtraso > DIAS_ATRASO_BLOQUEIO)
             {
-                loja.Status       = StatusLoja.Bloqueado;
+                loja.Status = StatusLoja.Bloqueado;
                 loja.AtualizadoEm = agora;
             }
         }
@@ -148,5 +153,35 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
             StatusLoja.Cancelado => (false, "Esta loja foi cancelada."),
             _                    => (false, "Acesso não permitido.")
         };
+    }
+
+    // Retorna info do trial/carência para exibir contador
+    public static (string Fase, int DiasRestantes) CalcularSituacao(Loja loja)
+    {
+        var agora = DateTime.UtcNow;
+
+        if (loja.Status == StatusLoja.Trial)
+        {
+            var diasTrial = (int)Math.Ceiling((loja.TrialAte - agora).TotalDays);
+            if (diasTrial >= 0)
+                return ("trial", diasTrial);
+
+            // Trial vencido, em carência
+            var diasCarencia = DIAS_ATRASO_BLOQUEIO - (int)(agora - loja.TrialAte).TotalDays;
+            return ("carencia", Math.Max(0, diasCarencia));
+        }
+
+        if (loja.Status == StatusLoja.Ativo && loja.ProximoVencimento.HasValue)
+        {
+            var diasAteVenc = (int)Math.Ceiling((loja.ProximoVencimento.Value - agora).TotalDays);
+            if (diasAteVenc < 0)
+            {
+                var diasCarencia = DIAS_ATRASO_BLOQUEIO - (int)(agora - loja.ProximoVencimento.Value).TotalDays;
+                return ("carencia", Math.Max(0, diasCarencia));
+            }
+            return ("ativo", diasAteVenc);
+        }
+
+        return (loja.Status.ToString().ToLower(), 0);
     }
 }
