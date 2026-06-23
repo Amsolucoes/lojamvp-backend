@@ -76,7 +76,10 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         if (await db.Lojas.AnyAsync(l => l.Email.ToLower() == req.Email.ToLower()))
             return Conflict(new { erro = "Este e-mail já está cadastrado." });
 
-        // Cria a loja com trial de 7 dias
+        // Conta lojas existentes para a promoção das 10 primeiras
+        var totalLojas = await db.Lojas.CountAsync();
+        bool ehPromocional = totalLojas < 10;
+
         var loja = new Loja
         {
             Nome = req.NomeLoja,
@@ -84,7 +87,11 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             Telefone = req.Telefone,
             CorPrimaria = "#c38228",
             MensalidadeDia = DateTime.UtcNow.Day,
-            MensalidadeValor = 89.90m,
+            MensalidadeValor = ehPromocional ? 89.90m : 119.90m,
+            Promocional = ehPromocional,
+            ValorPromocional = ehPromocional ? 89.90m : null,
+            ValorPosPromocional = ehPromocional ? 119.90m : null,
+            MesesPromocional = ehPromocional ? 3 : 0,
             Status = StatusLoja.Trial,
             TrialAte = DateTime.UtcNow.AddDays(7),
             SchemaNome = TenantService.GerarSchemaNome(req.NomeLoja),

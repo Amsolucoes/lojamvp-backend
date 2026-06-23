@@ -60,40 +60,54 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
 
         if (pagamento != null)
         {
-            pagamento.Status         = "pago";
-            pagamento.PagoEm         = pagoEm;
+            pagamento.Status = "pago";
+            pagamento.PagoEm = pagoEm;
             pagamento.FormaPagamento = formaPagamento;
-            pagamento.Observacao     = obs;
-            pagamento.MpPaymentId    = mpPaymentId;
+            pagamento.Observacao = obs;
+            pagamento.MpPaymentId = mpPaymentId;
         }
         else
         {
             db.Pagamentos.Add(new Pagamento
             {
-                LojaId          = lojaId,
-                Valor           = valor,
-                Status          = "pago",
-                Vencimento      = vencimento,
-                PagoEm          = pagoEm,
-                FormaPagamento  = formaPagamento,
-                Observacao      = obs,
-                MpPaymentId     = mpPaymentId,
+                LojaId = lojaId,
+                Valor = valor,
+                Status = "pago",
+                Vencimento = vencimento,
+                PagoEm = pagoEm,
+                FormaPagamento = formaPagamento,
+                Observacao = obs,
+                MpPaymentId = mpPaymentId,
                 RegistradoPorId = adminId,
             });
         }
 
-        // Reativa loja e cria próxima fatura
-        loja.Status             = StatusLoja.Ativo;
-        loja.UltimaCobranca     = pagoEm;
-        loja.ProximoVencimento  = ProximoVencimentoDate(loja.MensalidadeDia);
-        loja.AtualizadoEm       = DateTime.UtcNow;
+        // Reativa loja
+        loja.Status = StatusLoja.Ativo;
+        loja.UltimaCobranca = pagoEm;
+
+        // Verifica fim da promoção
+        if (loja.Promocional && loja.ValorPosPromocional.HasValue)
+        {
+            var faturasPagas = await db.Pagamentos
+                .CountAsync(p => p.LojaId == lojaId && p.Status == "pago");
+
+            if (faturasPagas >= loja.MesesPromocional)
+            {
+                loja.MensalidadeValor = loja.ValorPosPromocional.Value;
+                loja.Promocional = false;
+            }
+        }
+
+        loja.ProximoVencimento = ProximoVencimentoDate(loja.MensalidadeDia);
+        loja.AtualizadoEm = DateTime.UtcNow;
 
         // Cria próxima fatura pendente
         db.Pagamentos.Add(new Pagamento
         {
-            LojaId     = lojaId,
-            Valor      = loja.MensalidadeValor,
-            Status     = "pendente",
+            LojaId = lojaId,
+            Valor = loja.MensalidadeValor,
+            Status = "pendente",
             Vencimento = loja.ProximoVencimento.Value,
         });
 
