@@ -13,6 +13,8 @@ public record SignupRequest(
     string? Telefone
 );
 
+public record TrocarSenhaRequest(string SenhaAtual, string NovaSenha);
+
 // ── Usuario ───────────────────────────────────────────────────────
 public record UsuarioDto(Guid Id, string Nome, string Email, string Role, bool Ativo);
 public record CriarUsuarioRequest(string Nome, string Email, string Senha, string Role);

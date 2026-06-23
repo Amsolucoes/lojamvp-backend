@@ -152,4 +152,24 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         var token = tokenService.GerarToken(usuario);
         return Ok(new LoginResponse(token, usuario.Nome, usuario.Email, usuario.Role));
     }
+
+    // ── Trocar senha (usuário logado) ─────────────────────────────
+    [HttpPost("trocar-senha")]
+    [Authorize]
+    public async Task<IActionResult> TrocarSenha([FromBody] TrocarSenhaRequest req)
+    {
+        var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var usuario = await db.Usuarios.FindAsync(userId);
+        if (usuario is null) return Unauthorized();
+
+        if (!BCrypt.Net.BCrypt.Verify(req.SenhaAtual, usuario.SenhaHash))
+            return BadRequest(new { erro = "Senha atual incorreta." });
+
+        if (req.NovaSenha.Length < 8)
+            return BadRequest(new { erro = "A nova senha deve ter pelo menos 8 caracteres." });
+
+        usuario.SenhaHash = BCrypt.Net.BCrypt.HashPassword(req.NovaSenha);
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Senha alterada com sucesso." });
+    }
 }
