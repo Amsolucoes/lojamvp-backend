@@ -1,10 +1,11 @@
-using Microsoft.AspNetCore.Mvc;
+﻿using LojaApi.Data;
+using LojaApi.DTOs;
+using LojaApi.Models;
+using LojaApi.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using LojaApi.Data;
-using LojaApi.DTOs;
-using LojaApi.Services;
 
 namespace LojaApi.Controllers;
 
@@ -55,5 +56,93 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
     public IActionResult GerarHash(string senha)
     {
         return Ok(new { hash = BCrypt.Net.BCrypt.HashPassword(senha) });
+    }
+
+    // ── Auto-cadastro (signup público) ────────────────────────────
+    [HttpPost("signup")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Signup([FromBody] SignupRequest req)
+    {
+        // Validações
+        if (string.IsNullOrWhiteSpace(req.NomeLoja) || string.IsNullOrWhiteSpace(req.Email) || string.IsNullOrWhiteSpace(req.Senha))
+            return BadRequest(new { erro = "Preencha todos os campos obrigatórios." });
+
+        if (req.Senha.Length < 6)
+            return BadRequest(new { erro = "A senha deve ter pelo menos 6 caracteres." });
+
+        if (await db.Usuarios.AnyAsync(u => u.Email.ToLower() == req.Email.ToLower()))
+            return Conflict(new { erro = "Este e-mail já está cadastrado." });
+
+        if (await db.Lojas.AnyAsync(l => l.Email.ToLower() == req.Email.ToLower()))
+            return Conflict(new { erro = "Este e-mail já está cadastrado." });
+
+        // Cria a loja com trial de 7 dias
+        var loja = new Loja
+        {
+            Nome = req.NomeLoja,
+            Email = req.Email,
+            Telefone = req.Telefone,
+            CorPrimaria = "#c38228",
+            MensalidadeDia = DateTime.UtcNow.Day,
+            MensalidadeValor = 89.90m,
+            Status = StatusLoja.Trial,
+            TrialAte = DateTime.UtcNow.AddDays(7),
+            SchemaNome = TenantService.GerarSchemaNome(req.NomeLoja),
+        };
+        db.Lojas.Add(loja);
+
+        // Usuário admin da loja
+        var usuario = new Usuario
+        {
+            Nome = req.NomeResponsavel,
+            Email = req.Email,
+            SenhaHash = BCrypt.Net.BCrypt.HashPassword(req.Senha),
+            Role = "admin",
+        };
+        db.Usuarios.Add(usuario);
+
+        db.UsuariosLoja.Add(new UsuarioLoja
+        {
+            LojaId = loja.Id,
+            UsuarioId = usuario.Id,
+            Role = "admin",
+        });
+
+        // Primeira fatura (vence ao fim do trial)
+        db.Pagamentos.Add(new Pagamento
+        {
+            LojaId = loja.Id,
+            Valor = loja.MensalidadeValor,
+            Status = "pendente",
+            Vencimento = loja.TrialAte,
+        });
+
+        await db.SaveChangesAsync();
+
+        // Aplica o perfil escolhido (categorias + tipo de tamanho)
+        if (!string.IsNullOrEmpty(req.PerfilId) && Guid.TryParse(req.PerfilId, out var perfilGuid))
+        {
+            var perfil = await db.PerfisLoja
+                .Include(p => p.Categorias)
+                .FirstOrDefaultAsync(p => p.Id == perfilGuid);
+
+            if (perfil != null)
+            {
+                foreach (var cat in perfil.Categorias.OrderBy(c => c.Ordem))
+                    db.CategoriasLoja.Add(new CategoriaLoja
+                    {
+                        LojaId = loja.Id,
+                        Nome = cat.Nome,
+                        Ordem = cat.Ordem,
+                        TipoTamanho = cat.TipoTamanho,
+                    });
+
+                await db.SaveChangesAsync();
+            }
+        }
+
+        // Gera token e já loga
+        var token = tokenService.GerarToken(usuario);
+        return Ok(new LoginResponse(token, usuario.Nome, usuario.Email, usuario.Role));
     }
 }

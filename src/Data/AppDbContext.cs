@@ -171,7 +171,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilVest, Nome = "Camiseta", Ordem = 0, TipoTamanho = "letra" },
             new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilVest, Nome = "Calça Jeans", Ordem = 1, TipoTamanho = "numero" },
             new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilVest, Nome = "Vestido", Ordem = 2, TipoTamanho = "letra" },
-            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilVest, Nome = "Bermuda", Ordem = 3, TipoTamanho = "nummero" },
+            new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilVest, Nome = "Bermuda", Ordem = 3, TipoTamanho = "numero" },
             new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilVest, Nome = "Blusa", Ordem = 4, TipoTamanho = "letra" },
             new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilVest, Nome = "Casaco", Ordem = 5, TipoTamanho = "letra" },
             new CategoriaPerfilLoja { Id = Guid.Parse("12000000-0000-0000-0000-000000000007"), PerfilLojaId = perfilVest, Nome = "Outro", Ordem = 6, TipoTamanho = "letra" }
