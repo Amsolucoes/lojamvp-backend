@@ -53,6 +53,17 @@ public class Loja
     [Column(TypeName = "decimal(10,2)")]
     public decimal MensalidadeValor { get; set; } = 120.00m;
 
+    // ── Promoção / desconto ───────────────────────────────────────
+    public bool Promocional { get; set; } = false;
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? ValorPromocional { get; set; }
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? ValorPosPromocional { get; set; }
+
+    public int MesesPromocional { get; set; } = 0;
+
     public DateTime? UltimaCobranca { get; set; }
     public DateTime? ProximoVencimento { get; set; }
 
