@@ -249,7 +249,15 @@ public class CategoriaLoja
     public int Ordem { get; set; } = 0;
 
     [MaxLength(20)]
-    public string TipoTamanho { get; set; } = "letra";
+    public string TipoTamanho { get; set; } = "letra"; // letra | numero | personalizado
+
+    // Configuração da grade
+    public bool UsaTamanho { get; set; } = true;
+    public bool UsaCor { get; set; } = true;
+
+    [MaxLength(300)]
+    public string? TamanhosPersonalizados { get; set; } // ex: "Único,Bebê,Infantil"
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 

@@ -166,3 +166,12 @@ public record CriarTrocaRequest(
     List<ItemTrocaRequest> Novos,
     string? FormaPagamento
 );
+
+// ── Categoriias ────────────────────────────────────────────────────────
+public record CriarCategoriaRequest(
+    string Nome,
+    string TipoTamanho,        // letra | numero | personalizado
+    bool UsaTamanho,
+    bool UsaCor,
+    string? TamanhosPersonalizados
+);
