@@ -90,4 +90,72 @@ public class CategoriasController(AppDbContext db) : ControllerBase
             cat.TamanhosPersonalizados,
         });
     }
+
+    // ── Editar categoria ──────────────────────────────────────────
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] CriarCategoriaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var cat = await db.CategoriasLoja.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cat is null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(req.Nome))
+            return BadRequest(new { erro = "Nome da categoria é obrigatório." });
+
+        // Se mudou o nome, atualiza os produtos que usam o nome antigo
+        var nomeAntigo = cat.Nome;
+        var nomeNovo = req.Nome.Trim();
+        if (!nomeAntigo.Equals(nomeNovo, StringComparison.OrdinalIgnoreCase))
+        {
+            var duplicada = await db.CategoriasLoja
+                .AnyAsync(c => c.LojaId == lojaId && c.Id != id && c.Nome.ToLower() == nomeNovo.ToLower() && c.Ativo);
+            if (duplicada)
+                return Conflict(new { erro = "Já existe uma categoria com esse nome." });
+
+            await db.Produtos
+                .Where(p => p.LojaId == lojaId && p.Categoria == nomeAntigo)
+                .ExecuteUpdateAsync(s => s.SetProperty(p => p.Categoria, nomeNovo));
+        }
+
+        cat.Nome = nomeNovo;
+        cat.TipoTamanho = req.TipoTamanho;
+        cat.UsaTamanho = req.UsaTamanho;
+        cat.UsaCor = req.UsaCor;
+        cat.TamanhosPersonalizados = req.TamanhosPersonalizados;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            cat.Id,
+            cat.Nome,
+            cat.TipoTamanho,
+            cat.UsaTamanho,
+            cat.UsaCor,
+            cat.TamanhosPersonalizados,
+        });
+    }
+
+    // ── Excluir categoria ─────────────────────────────────────────
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Excluir(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var cat = await db.CategoriasLoja.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cat is null) return NotFound();
+
+        // Bloqueia se houver produtos usando a categoria
+        var qtdProdutos = await db.Produtos.CountAsync(p => p.LojaId == lojaId && p.Categoria == cat.Nome && p.Ativo);
+        if (qtdProdutos > 0)
+            return BadRequest(new { erro = $"Não é possível excluir: {qtdProdutos} produto(s) usam esta categoria." });
+
+        cat.Ativo = false;
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Categoria excluída." });
+    }
 }
