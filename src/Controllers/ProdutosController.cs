@@ -116,10 +116,17 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         var produto = await db.Produtos.FindAsync(id);
         if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
 
-        produto.Ativo = false;
-        produto.AtualizadoEm = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-        return NoContent();
+        // Bloqueia se o produto já foi vendido
+        var temVendas = await db.ItensVenda.AnyAsync(i => i.ProdutoId == id);
+        if (temVendas)
+            return BadRequest(new { erro = "Não é possível excluir: este produto já tem vendas registradas. Você pode apenas inativá-lo." });
+
+        // Remove variações e movimentos vinculados, depois o produto
+        await db.ProdutoVariacoes.Where(v => v.ProdutoId == id).ExecuteDeleteAsync();
+        await db.Movimentos.Where(m => m.ProdutoId == id).ExecuteDeleteAsync();
+        await db.Produtos.Where(p => p.Id == id).ExecuteDeleteAsync();
+
+        return Ok(new { mensagem = "Produto excluído com sucesso." });
     }
 
     // ── Variações ─────────────────────────────────────────────────────
