@@ -24,16 +24,17 @@ public record AlterarSenhaRequest(string SenhaAtual, string NovaSenha);
 public record ProdutoDto(
     Guid Id, string Nome, string? Descricao, string Categoria,
     decimal PrecoCusto, decimal PrecoVenda,
-    int Estoque, int EstoqueMinimo,
+    decimal Estoque, decimal EstoqueMinimo,
     string? CodigoBarras, bool Ativo,
     DateTime CriadoEm, DateTime AtualizadoEm,
+    string TipoVenda, string UnidadeMedida,
     List<ProdutoVariacaoDto>? Variacoes = null
 );
 
 public record SalvarProdutoRequest(
     string Nome, string? Descricao, string Categoria,
     decimal PrecoCusto, decimal PrecoVenda,
-    int Estoque, int EstoqueMinimo,
+    decimal Estoque, decimal EstoqueMinimo,
     string? CodigoBarras, bool Ativo
 );
 
@@ -57,7 +58,7 @@ public record SalvarClienteRequest(
 // ── Venda ─────────────────────────────────────────────────────────
 public record ItemVendaRequest(
     Guid ProdutoId, 
-    int Quantidade, 
+    decimal Quantidade, 
     decimal PrecoUnitario, 
     Guid? VariacaoId = null 
 );
@@ -74,7 +75,7 @@ public record CriarVendaRequest(
 
 public record ItemVendaDto(
     Guid Id, Guid ProdutoId, string NomeProduto,
-    int Quantidade, decimal PrecoUnitario, decimal Subtotal
+    decimal Quantidade, decimal PrecoUnitario, decimal Subtotal
 );
 
 public record VendaDto(
@@ -89,21 +90,21 @@ public record VendaDto(
 
 // ── Estoque ───────────────────────────────────────────────────────
 public record AjusteEstoqueRequest(
-    Guid ProdutoId, int Quantidade,
+    Guid ProdutoId, decimal Quantidade,
     string Tipo, // entrada | ajuste
     string? Observacao
 );
 
 public record MovimentoDto(
     Guid Id, Guid ProdutoId, string NomeProduto,
-    string Tipo, int Quantidade,
+    string Tipo, decimal Quantidade,
     string? Observacao, DateTime CriadoEm
 );
 
 // ── Relatórios ────────────────────────────────────────────────────
 public record ProdutoRankingDto(
     Guid Id, string Nome, string Categoria,
-    int QtdVendida, decimal Receita, decimal LucroEstimado
+    decimal QtdVendida, decimal Receita, decimal LucroEstimado
 );
 
 public record FluxoDiaDto(string Data, int QtdVendas, decimal Entradas, decimal Descontos);
@@ -111,7 +112,7 @@ public record FluxoMesDto(int Mes, string NomeMes, int QtdVendas, decimal Entrad
 
 public record ResumoVendasDto(
     decimal TotalVendido, decimal TotalDescontos,
-    decimal TicketMedio, int TotalItensVendidos,
+    decimal TicketMedio, decimal TotalItensVendidos,
     int TotalVendas
 );
 

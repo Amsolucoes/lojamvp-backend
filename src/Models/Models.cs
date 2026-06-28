@@ -44,8 +44,17 @@ public class Produto
     [Column(TypeName = "decimal(10,2)")]
     public decimal PrecoVenda { get; set; }
 
-    public int Estoque { get; set; }
-    public int EstoqueMinimo { get; set; } = 3;
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal Estoque { get; set; }
+
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal EstoqueMinimo { get; set; } = 3;
+
+    [MaxLength(15)]
+    public string TipoVenda { get; set; } = "unidade"; // unidade | fracionado
+
+    [MaxLength(5)]
+    public string UnidadeMedida { get; set; } = "un";  // un | kg | g | L | ml
 
     [MaxLength(50)]
     public string? CodigoBarras { get; set; }
@@ -149,7 +158,9 @@ public class ItemVenda
 
     [Required, MaxLength(200)]
     public string NomeProduto { get; set; } = "";
-    public int Quantidade { get; set; }
+
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal Quantidade { get; set; }
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal PrecoUnitario { get; set; }
@@ -169,7 +180,8 @@ public class MovimentoEstoque
     [Required, MaxLength(20)]
     public string Tipo { get; set; } = "entrada"; // entrada | saida | ajuste
 
-    public int Quantidade { get; set; }
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal Quantidade { get; set; }
 
     [MaxLength(300)]
     public string? Observacao { get; set; }

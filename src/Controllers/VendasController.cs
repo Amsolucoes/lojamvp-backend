@@ -120,7 +120,7 @@ public class VendasController(AppDbContext db) : ControllerBase
                         nomeProduto = $"{produto.Nome} ({label})";
 
                     // Baixa estoque da variação
-                    variacao.Estoque -= item.Quantidade;
+                    variacao.Estoque -= (int)item.Quantidade;
                     variacao.AtualizadoEm = DateTime.UtcNow;
                 }
             }

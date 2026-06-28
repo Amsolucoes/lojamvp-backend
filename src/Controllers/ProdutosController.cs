@@ -219,6 +219,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         p.EstoqueMinimo,
         p.CodigoBarras, p.Ativo,
         p.CriadoEm, p.AtualizadoEm,
+        p.TipoVenda, p.UnidadeMedida,
         p.Variacoes.Where(v => v.Ativo).Select(v => new ProdutoVariacaoDto(
             v.Id, v.Tamanho, v.Cor, v.OutroCampo,
             v.Estoque, v.EstoqueMinimo, v.Ativo)).ToList()
