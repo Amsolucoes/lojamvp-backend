@@ -241,6 +241,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 Ordem = 1,
             }
         );
+
+        // ── Perfil: Pet Shop ──────────────────────────────────────────────
+        var perfilPet = Guid.Parse("10000000-0000-0000-0000-000000000004");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilPet,
+            Nome = "Pet Shop",
+            Descricao = "Para pet shops: ração a granel, petiscos, acessórios e mais",
+            Icone = "🐾",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+        mb.Entity<CategoriaPerfilLoja>().HasData(
+            new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilPet, Nome = "Ração", Ordem = 0 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilPet, Nome = "Petiscos", Ordem = 1 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilPet, Nome = "Brinquedos", Ordem = 2 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilPet, Nome = "Higiene", Ordem = 3 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilPet, Nome = "Acessórios", Ordem = 4 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilPet, Nome = "Medicamentos", Ordem = 5 }
+        );
     }
 
     private static string ToSnakeCase(string name)
