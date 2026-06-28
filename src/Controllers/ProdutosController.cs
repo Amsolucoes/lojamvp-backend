@@ -72,6 +72,8 @@ public class ProdutosController(AppDbContext db) : ControllerBase
             EstoqueMinimo = req.EstoqueMinimo,
             CodigoBarras = req.CodigoBarras,
             Ativo = req.Ativo,
+            TipoVenda = req.TipoVenda,
+            UnidadeMedida = req.UnidadeMedida,
             LojaId = lojaId,
         };
         db.Produtos.Add(produto);
@@ -102,6 +104,8 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         produto.Categoria = req.Categoria; produto.PrecoCusto = req.PrecoCusto;
         produto.PrecoVenda = req.PrecoVenda; produto.EstoqueMinimo = req.EstoqueMinimo;
         produto.CodigoBarras = req.CodigoBarras; produto.Ativo = req.Ativo;
+        produto.TipoVenda = req.TipoVenda;
+        produto.UnidadeMedida = req.UnidadeMedida;
         produto.AtualizadoEm = DateTime.UtcNow;
 
         await db.SaveChangesAsync();

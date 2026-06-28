@@ -35,7 +35,8 @@ public record SalvarProdutoRequest(
     string Nome, string? Descricao, string Categoria,
     decimal PrecoCusto, decimal PrecoVenda,
     decimal Estoque, decimal EstoqueMinimo,
-    string? CodigoBarras, bool Ativo
+    string? CodigoBarras, bool Ativo,
+    string TipoVenda, string UnidadeMedida
 );
 
 // ── Cliente ───────────────────────────────────────────────────────
