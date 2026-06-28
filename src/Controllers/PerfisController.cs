@@ -21,6 +21,7 @@ public class PerfisController(AppDbContext db) : ControllerBase
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> Listar()
     {
         var perfis = await db.PerfisLoja
