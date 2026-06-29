@@ -261,6 +261,48 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilPet, Nome = "Acessórios", Ordem = 4 },
             new CategoriaPerfilLoja { Id = Guid.Parse("16000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilPet, Nome = "Medicamentos", Ordem = 5 }
         );
+
+        // ── Perfil: Conveniência ──────────────────────────────────────────
+        var perfilConv = Guid.Parse("10000000-0000-0000-0000-000000000005");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilConv,
+            Nome = "Conveniência",
+            Descricao = "Para lojas de conveniência, mercadinhos e similares",
+            Icone = "🏪",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+        mb.Entity<CategoriaPerfilLoja>().HasData(
+            new CategoriaPerfilLoja { Id = Guid.Parse("17000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilConv, Nome = "Bebidas", Ordem = 0 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("17000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilConv, Nome = "Salgados", Ordem = 1 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("17000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilConv, Nome = "Doces", Ordem = 2 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("17000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilConv, Nome = "Cigarros", Ordem = 3 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("17000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilConv, Nome = "Higiene", Ordem = 4 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("17000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilConv, Nome = "Limpeza", Ordem = 5 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("17000000-0000-0000-0000-000000000007"), PerfilLojaId = perfilConv, Nome = "Mercearia", Ordem = 6 }
+        );
+
+        // ── Perfil: Material de Construção ─────────────────────────────────
+        var perfilMat = Guid.Parse("10000000-0000-0000-0000-000000000006");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilMat,
+            Nome = "Material de Construção",
+            Descricao = "Para lojas de materiais de construção e ferragens",
+            Icone = "🧱",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+        mb.Entity<CategoriaPerfilLoja>().HasData(
+            new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilMat, Nome = "Cimento e Argamassa", Ordem = 0 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilMat, Nome = "Tijolos e Blocos", Ordem = 1 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilMat, Nome = "Tintas", Ordem = 2 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilMat, Nome = "Hidráulica", Ordem = 3 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilMat, Nome = "Elétrica", Ordem = 4 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilMat, Nome = "Ferramentas", Ordem = 5 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000007"), PerfilLojaId = perfilMat, Nome = "Madeiras", Ordem = 6 }
+        );
     }
 
     private static string ToSnakeCase(string name)
