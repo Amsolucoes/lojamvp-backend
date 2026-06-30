@@ -64,6 +64,13 @@ public class Loja
 
     public int MesesPromocional { get; set; } = 0;
 
+    // ── Módulos / Plano ───────────────────────────────────────────
+    [MaxLength(20)]
+    public string TipoPlano { get; set; } = "loja";
+
+    [MaxLength(200)]
+    public string ModulosAtivos { get; set; } = "";
+
     public DateTime? UltimaCobranca { get; set; }
     public DateTime? ProximoVencimento { get; set; }
 

@@ -41,6 +41,9 @@ public class LojaController(AppDbContext db) : ControllerBase
             trialAte = loja.TrialAte,
             proximoVencimento = loja.ProximoVencimento,
             nomeLoja = loja.Nome,
+            tipoPlano = loja.TipoPlano,
+            modulosAtivos = loja.ModulosAtivos
+             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
         });
     }
 }

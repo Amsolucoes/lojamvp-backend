@@ -325,6 +325,21 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         return Ok(lista);
     }
 
+    [HttpPatch("lojas/{id}/plano")]
+    [Authorize(Roles = "superadmin")]
+    public async Task<IActionResult> AtualizarPlano(Guid id, [FromBody] AtualizarPlanoRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        loja.TipoPlano = req.TipoPlano;
+        loja.ModulosAtivos = req.ModulosAtivos ?? "";
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.Id, loja.TipoPlano, loja.ModulosAtivos });
+    }
+
     // ── Mappers ───────────────────────────────────────────────────
     private static LojaDto ToLojaDto(Loja l, DateTime agora)
     {
@@ -342,7 +357,8 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
             l.Pagamentos.Where(p => p.Status == "pago").Sum(p => p.Valor),
             EmAtraso: dias > 0, DiasAtraso: dias,
             Promocional: l.Promocional,
-            Fase: fase, DiasRestantes: diasRest
+            Fase: fase, DiasRestantes: diasRest,
+            TipoPlano: l.TipoPlano, ModulosAtivos: l.ModulosAtivos
         );
     }
 

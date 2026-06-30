@@ -35,7 +35,8 @@ public record LojaDto(
     int TotalUsuarios, decimal TotalPago,
     bool EmAtraso, int DiasAtraso,
     bool Promocional,
-    string Fase, int DiasRestantes
+    string Fase, int DiasRestantes,
+    string TipoPlano, string ModulosAtivos
 );
 
 public record LojaResumoDto(
@@ -118,3 +119,5 @@ public record DashboardClienteDto(
     PagamentoDto? FaturaPendente,
     List<PagamentoDto> HistoricoFaturas
 );
+
+public record AtualizarPlanoRequest(string TipoPlano, string? ModulosAtivos);
