@@ -166,3 +166,35 @@ public class Servico
     public bool Ativo { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
+
+public class Agendamento
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid? LojaId { get; set; }
+    public Loja? Loja { get; set; }
+
+    public Guid ServicoId { get; set; }
+    public Servico? Servico { get; set; }
+
+    public Guid? ClienteId { get; set; }
+    public Cliente? Cliente { get; set; }
+
+    [MaxLength(150)]
+    public string NomeServico { get; set; } = "";   // snapshot
+    [MaxLength(150)]
+    public string? NomeCliente { get; set; }         // cadastrado ou avulso
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal Preco { get; set; }
+
+    public DateTime DataHora { get; set; }
+    public int DuracaoMin { get; set; } = 30;
+
+    [MaxLength(20)]
+    public string Status { get; set; } = "agendado"; // agendado | concluido | cancelado
+
+    [MaxLength(300)]
+    public string? Observacao { get; set; }
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
