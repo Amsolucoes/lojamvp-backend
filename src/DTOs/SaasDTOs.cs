@@ -18,7 +18,8 @@ public record AtualizarLojaRequest(
     string? Cnpj, string? Cpf,
     string? Telefone, string? Endereco,
     string CorPrimaria, string? LogoUrl,
-    int MensalidadeDia, decimal MensalidadeValor
+    int MensalidadeDia, decimal MensalidadeValor,
+    string? TipoPlano, string? ModulosAtivos
 );
 
 public record LojaDto(
