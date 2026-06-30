@@ -22,6 +22,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ProdutoVariacao> ProdutoVariacoes => Set<ProdutoVariacao>();
     public DbSet<Troca> Trocas => Set<Troca>();
     public DbSet<ItemTroca> ItensTroca => Set<ItemTroca>();
+    public DbSet<Servico> Servicos => Set<Servico>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -100,6 +101,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<ItemTroca>()
             .HasOne(i => i.Troca).WithMany(t => t.Itens)
             .HasForeignKey(i => i.TrocaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<Servico>()
+            .HasOne(s => s.Loja).WithMany()
+            .HasForeignKey(s => s.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())

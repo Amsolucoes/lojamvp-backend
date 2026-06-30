@@ -145,3 +145,24 @@ public class Pagamento
     public Guid? RegistradoPorId { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
+
+public class Servico
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid? LojaId { get; set; }
+    public Loja? Loja { get; set; }
+
+    [Required, MaxLength(150)]
+    public string Nome { get; set; } = "";
+
+    [MaxLength(50)]
+    public string Categoria { get; set; } = "Geral";
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal Preco { get; set; }
+
+    public int DuracaoMin { get; set; } = 30;
+
+    public bool Ativo { get; set; } = true;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
