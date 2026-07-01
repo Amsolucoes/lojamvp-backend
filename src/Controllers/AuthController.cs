@@ -29,7 +29,11 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
                 .FirstOrDefaultAsync(ul => ul.UsuarioId == usuario.Id && ul.Ativo);
 
             if (vinculo != null)
-                await tenantService.VerificarAcessoAsync(vinculo.LojaId);
+            {
+                var (ativa, motivo) = await tenantService.VerificarAcessoAsync(vinculo.LojaId);
+                if (!ativa)
+                    return StatusCode(403, new { erro = motivo, bloqueado = true });
+            }
         }
 
         var token = tokenService.GerarToken(usuario);
