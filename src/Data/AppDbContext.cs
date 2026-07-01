@@ -112,12 +112,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasForeignKey(a => a.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<Agendamento>()
+            .HasOne(a => a.Loja).WithMany()
+            .HasForeignKey(a => a.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<Agendamento>()
             .HasOne(a => a.Servico).WithMany()
             .HasForeignKey(a => a.ServicoId).OnDelete(DeleteBehavior.Restrict);
 
         mb.Entity<Agendamento>()
             .HasOne(a => a.Cliente).WithMany()
             .HasForeignKey(a => a.ClienteId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<Agendamento>()
+            .Property(a => a.DataHora)
+            .HasColumnType("timestamp without time zone");
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
