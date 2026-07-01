@@ -122,11 +122,12 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
 
     public static DateTime ProximoVencimentoDate(int dia)
     {
+        // Sempre o mês seguinte ao atual (pagou em julho → vence em agosto)
         var agora = DateTime.UtcNow;
-        var maxDia = DateTime.DaysInMonth(agora.Year, agora.Month);
-        var proximo = new DateTime(agora.Year, agora.Month, Math.Min(dia, maxDia), 0, 0, 0, DateTimeKind.Utc);
-        if (proximo <= agora) proximo = proximo.AddMonths(1);
-        return proximo;
+        var mesAlvo = new DateTime(agora.Year, agora.Month, 1, 12, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        var maxDia = DateTime.DaysInMonth(mesAlvo.Year, mesAlvo.Month);
+        // Hora 12:00 UTC evita "voltar um dia" no fuso local (-3/-4h)
+        return new DateTime(mesAlvo.Year, mesAlvo.Month, Math.Min(dia, maxDia), 12, 0, 0, DateTimeKind.Utc);
     }
 
     public static string GerarSchemaNome(string nomeLoja)
