@@ -47,7 +47,8 @@ public class RelatoriosController(AppDbContext db) : ControllerBase
             .ToListAsync();
 
         var ranking = itens
-            .GroupBy(i => i.ProdutoId)
+            .Where(i => i.ProdutoId.HasValue)
+            .GroupBy(i => i.ProdutoId!.Value)
             .Select(g => new ProdutoRankingDto(
                 Id:             g.Key,
                 Nome:           g.First().Produto?.Nome ?? "",

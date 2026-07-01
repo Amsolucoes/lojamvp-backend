@@ -39,10 +39,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<ItemVenda>()
-            .HasOne(i => i.Produto)
-            .WithMany(p => p.ItensVenda)
-            .HasForeignKey(i => i.ProdutoId)
-            .OnDelete(DeleteBehavior.Restrict);
+            .HasOne(i => i.Produto).WithMany(p => p.ItensVenda)
+            .HasForeignKey(i => i.ProdutoId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<ItemVenda>()
+            .HasOne(i => i.Servico).WithMany()
+            .HasForeignKey(i => i.ServicoId).OnDelete(DeleteBehavior.SetNull);
 
         mb.Entity<MovimentoEstoque>()
             .HasOne(m => m.Produto)
@@ -106,10 +108,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<Servico>()
             .HasOne(s => s.Loja).WithMany()
             .HasForeignKey(s => s.LojaId).OnDelete(DeleteBehavior.Cascade);
-
-        mb.Entity<Agendamento>()
-            .HasOne(a => a.Loja).WithMany()
-            .HasForeignKey(a => a.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<Agendamento>()
             .HasOne(a => a.Loja).WithMany()

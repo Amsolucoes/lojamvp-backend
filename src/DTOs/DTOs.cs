@@ -58,10 +58,11 @@ public record SalvarClienteRequest(
 
 // ── Venda ─────────────────────────────────────────────────────────
 public record ItemVendaRequest(
-    Guid ProdutoId, 
+    Guid? ProdutoId, 
     decimal Quantidade, 
     decimal PrecoUnitario, 
-    Guid? VariacaoId = null 
+    Guid? VariacaoId = null,
+    Guid? ServicoId = null
 );
 
 public record CriarVendaRequest(
@@ -75,8 +76,9 @@ public record CriarVendaRequest(
 );
 
 public record ItemVendaDto(
-    Guid Id, Guid ProdutoId, string NomeProduto,
-    decimal Quantidade, decimal PrecoUnitario, decimal Subtotal
+    Guid Id, Guid? ProdutoId, string NomeProduto,
+    decimal Quantidade, decimal PrecoUnitario, decimal Subtotal,
+    Guid? ServicoId = null
 );
 
 public record VendaDto(

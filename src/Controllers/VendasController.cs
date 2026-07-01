@@ -65,10 +65,20 @@ public class VendasController(AppDbContext db) : ControllerBase
         if (!req.Itens.Any())
             return BadRequest(new { erro = "A venda deve ter ao menos um item." });
 
-        // ── Validação ─────────────────────────────────────────────────
+        // ── Validação (só itens de produto validam estoque) ────────────
         foreach (var item in req.Itens)
         {
-            var produto = await db.Produtos.FindAsync(item.ProdutoId);
+            if (item.ServicoId.HasValue)
+            {
+                var servico = await db.Servicos.FindAsync(item.ServicoId.Value);
+                if (servico is null) return BadRequest(new { erro = "Serviço não encontrado." });
+                continue; // serviço não tem estoque
+            }
+
+            if (!item.ProdutoId.HasValue)
+                return BadRequest(new { erro = "Item sem produto nem serviço." });
+
+            var produto = await db.Produtos.FindAsync(item.ProdutoId.Value);
             if (produto is null) return BadRequest(new { erro = $"Produto {item.ProdutoId} não encontrado." });
             if (!produto.Ativo) return BadRequest(new { erro = $"Produto '{produto.Nome}' está inativo." });
 
@@ -104,9 +114,26 @@ public class VendasController(AppDbContext db) : ControllerBase
         // ── Itens ─────────────────────────────────────────────────────
         foreach (var item in req.Itens)
         {
-            var produto = await db.Produtos.FindAsync(item.ProdutoId);
+            // Item de SERVIÇO — não baixa estoque, não gera movimento
+            if (item.ServicoId.HasValue)
+            {
+                var servico = await db.Servicos.FindAsync(item.ServicoId.Value);
+                db.ItensVenda.Add(new ItemVenda
+                {
+                    VendaId = venda.Id,
+                    ProdutoId = null,
+                    ServicoId = servico!.Id,
+                    NomeProduto = servico.Nome,
+                    Quantidade = item.Quantidade,
+                    PrecoUnitario = item.PrecoUnitario,
+                    Subtotal = item.Quantidade * item.PrecoUnitario,
+                });
+                continue;
+            }
 
-            // Monta nome com variação
+            // Item de PRODUTO
+            var produto = await db.Produtos.FindAsync(item.ProdutoId!.Value);
+
             string nomeProduto = produto!.Nome;
             if (item.VariacaoId.HasValue)
             {
@@ -119,19 +146,16 @@ public class VendasController(AppDbContext db) : ControllerBase
                     if (!string.IsNullOrEmpty(label))
                         nomeProduto = $"{produto.Nome} ({label})";
 
-                    // Baixa estoque da variação
                     variacao.Estoque -= (int)item.Quantidade;
                     variacao.AtualizadoEm = DateTime.UtcNow;
                 }
             }
             else
             {
-                // Baixa estoque do produto
                 produto.Estoque -= item.Quantidade;
                 produto.AtualizadoEm = DateTime.UtcNow;
             }
 
-            // Adiciona item da venda
             db.ItensVenda.Add(new ItemVenda
             {
                 VendaId = venda.Id,
@@ -142,10 +166,9 @@ public class VendasController(AppDbContext db) : ControllerBase
                 Subtotal = item.Quantidade * item.PrecoUnitario,
             });
 
-            // Registra movimento
             db.Movimentos.Add(new MovimentoEstoque
             {
-                ProdutoId = item.ProdutoId,
+                ProdutoId = item.ProdutoId!.Value,
                 Tipo = "saida",
                 Quantidade = item.Quantidade,
                 Observacao = $"Venda #{venda.Id.ToString()[..8]} - {nomeProduto}",
@@ -180,7 +203,8 @@ public class VendasController(AppDbContext db) : ControllerBase
         v.Troco, v.CriadaEm,
         v.Itens.Select(i => new ItemVendaDto(
             i.Id, i.ProdutoId, i.NomeProduto,
-            i.Quantidade, i.PrecoUnitario, i.Subtotal
+            i.Quantidade, i.PrecoUnitario, i.Subtotal,
+            i.ServicoId
         )).ToList()
     );
 }

@@ -153,8 +153,11 @@ public class ItemVenda
     public Guid VendaId { get; set; }
     public Venda Venda { get; set; } = null!;
 
-    public Guid ProdutoId { get; set; }
-    public Produto Produto { get; set; } = null!;
+    public Guid? ProdutoId { get; set; }
+    public Produto? Produto { get; set; }
+
+    public Guid? ServicoId { get; set; }
+    public Servico? Servico { get; set; }
 
     [Required, MaxLength(200)]
     public string NomeProduto { get; set; } = "";
