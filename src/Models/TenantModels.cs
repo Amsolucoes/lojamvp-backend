@@ -191,7 +191,11 @@ public class Agendamento
     public int DuracaoMin { get; set; } = 30;
 
     [MaxLength(20)]
-    public string Status { get; set; } = "agendado"; // agendado | concluido | cancelado
+    public string Status { get; set; } = "agendado";
+
+    public bool Pago { get; set; } = false;
+    public Guid? VendaId { get; set; }
+    public Venda? Venda { get; set; }
 
     [MaxLength(300)]
     public string? Observacao { get; set; }

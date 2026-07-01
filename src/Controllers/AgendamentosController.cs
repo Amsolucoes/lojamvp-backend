@@ -50,7 +50,32 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
                 a.DataHora,
                 a.DuracaoMin,
                 a.Status,
+                a.Pago,
                 a.Observacao,
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    // GET /api/agendamentos/pendentes-pagamento
+    [HttpGet("pendentes-pagamento")]
+    public async Task<IActionResult> PendentesPagamento()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.Agendamentos
+            .Where(a => a.LojaId == lojaId && a.Status == "concluido" && !a.Pago)
+            .OrderByDescending(a => a.DataHora)
+            .Select(a => new {
+                a.Id,
+                a.ServicoId,
+                a.NomeServico,
+                a.ClienteId,
+                a.NomeCliente,
+                a.Preco,
+                a.DataHora,
             })
             .ToListAsync();
 
@@ -102,6 +127,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
             ag.DataHora,
             ag.DuracaoMin,
             ag.Status,
+            ag.Pago,
             ag.Observacao,
         });
     }

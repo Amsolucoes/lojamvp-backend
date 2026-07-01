@@ -125,6 +125,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .Property(a => a.DataHora)
             .HasColumnType("timestamp without time zone");
 
+        mb.Entity<Agendamento>()
+            .HasOne(a => a.Venda).WithMany()
+            .HasForeignKey(a => a.VendaId).OnDelete(DeleteBehavior.SetNull);
+
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
         {

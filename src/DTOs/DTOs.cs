@@ -62,7 +62,8 @@ public record ItemVendaRequest(
     decimal Quantidade, 
     decimal PrecoUnitario, 
     Guid? VariacaoId = null,
-    Guid? ServicoId = null
+    Guid? ServicoId = null,
+    Guid? AgendamentoId = null
 );
 
 public record CriarVendaRequest(

@@ -128,6 +128,16 @@ public class VendasController(AppDbContext db) : ControllerBase
                     PrecoUnitario = item.PrecoUnitario,
                     Subtotal = item.Quantidade * item.PrecoUnitario,
                 });
+
+                if (item.AgendamentoId.HasValue)
+                {
+                    var ag = await db.Agendamentos.FindAsync(item.AgendamentoId.Value);
+                    if (ag != null && ag.LojaId == lojaId)
+                    {
+                        ag.Pago = true;
+                        ag.VendaId = venda.Id;
+                    }
+                }
                 continue;
             }
 
