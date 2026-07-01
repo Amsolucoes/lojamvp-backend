@@ -33,7 +33,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
 
         if (data.HasValue)
         {
-            var dia = data.Value.Date;
+            var dia = DateTime.SpecifyKind(data.Value.Date, DateTimeKind.Utc);
             var fim = dia.AddDays(1);
             q = q.Where(a => a.DataHora >= dia && a.DataHora < fim);
         }
