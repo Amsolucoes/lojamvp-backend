@@ -56,6 +56,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
                 a.DataHora,
                 a.DuracaoMin,
                 a.Status,
+                a.Pago,
                 a.Observacao,
             })
             .ToListAsync();
