@@ -24,7 +24,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
     // ── Listar por dia ────────────────────────────────────────────
     // GET /api/agendamentos?data=2026-06-30
     [HttpGet]
-    public async Task<IActionResult> Listar([FromQuery] DateTime? data)
+    public async Task<IActionResult> Listar([FromQuery] DateTime? data, [FromQuery] DateTime? de, [FromQuery] DateTime? ate)
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
@@ -36,6 +36,12 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
             var dia = DateTime.SpecifyKind(data.Value.Date, DateTimeKind.Unspecified);
             var fim = dia.AddDays(1);
             q = q.Where(a => a.DataHora >= dia && a.DataHora < fim);
+        }
+        else if (de.HasValue && ate.HasValue)
+        {
+            var ini = DateTime.SpecifyKind(de.Value.Date, DateTimeKind.Unspecified);
+            var fim = DateTime.SpecifyKind(ate.Value.Date, DateTimeKind.Unspecified).AddDays(1);
+            q = q.Where(a => a.DataHora >= ini && a.DataHora < fim);
         }
 
         var lista = await q
@@ -50,7 +56,6 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
                 a.DataHora,
                 a.DuracaoMin,
                 a.Status,
-                a.Pago,
                 a.Observacao,
             })
             .ToListAsync();
