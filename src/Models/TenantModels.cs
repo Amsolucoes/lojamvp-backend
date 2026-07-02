@@ -68,6 +68,8 @@ public class Loja
     [MaxLength(20)]
     public string TipoPlano { get; set; } = "loja";
 
+    public bool EhTeste { get; set; } = false;
+
     [MaxLength(200)]
     public string ModulosAtivos { get; set; } = "";
 

@@ -73,7 +73,7 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             return Conflict(new { erro = "Este e-mail já está cadastrado." });
 
         // Conta lojas existentes para a promoção das 10 primeiras
-        var totalLojas = await db.Lojas.CountAsync();
+        var totalLojas = await db.Lojas.CountAsync(l => !l.EhTeste);
         bool ehPromocional = totalLojas < 10;
 
         var loja = new Loja

@@ -20,7 +20,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     [HttpGet("dashboard")]
     public async Task<IActionResult> Dashboard()
     {
-        var lojas = await db.Lojas.Include(l => l.Pagamentos).ToListAsync();
+        var lojas = await db.Lojas.Include(l => l.Pagamentos).Where(l => !l.EhTeste).ToListAsync();
         var agora = DateTime.UtcNow;
 
         var atrasadas = lojas
@@ -32,7 +32,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
 
         var ultimosPagamentos = await db.Pagamentos
             .Include(p => p.Loja)
-            .Where(p => p.Status == "pago")
+            .Where(p => p.Status == "pago" && !p.Loja!.EhTeste)
             .OrderByDescending(p => p.PagoEm)
             .Take(10)
             .Select(p => ToDto(p))
@@ -360,7 +360,8 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
             EmAtraso: dias > 0, DiasAtraso: dias,
             Promocional: l.Promocional,
             Fase: fase, DiasRestantes: diasRest,
-            TipoPlano: l.TipoPlano, ModulosAtivos: l.ModulosAtivos
+            TipoPlano: l.TipoPlano, ModulosAtivos: l.ModulosAtivos,
+            EhTeste: l.EhTeste
         );
     }
 
