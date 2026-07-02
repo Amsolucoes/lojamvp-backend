@@ -210,6 +210,11 @@ public class PerfilLoja
     public string Icone { get; set; } = "🏪";
 
     public bool Ativo { get; set; } = true;
+
+    [MaxLength(20)]
+    public string TipoPlanoAplica { get; set; } = "loja";
+    public ICollection<ServicoPerfilLoja> Servicos { get; set; } = [];
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 
     public ICollection<CategoriaPerfilLoja> Categorias { get; set; } = [];
@@ -228,6 +233,25 @@ public class CategoriaPerfilLoja
 
     [MaxLength(20)]
     public string TipoTamanho { get; set; } = "letra"; 
+}
+
+public class ServicoPerfilLoja
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PerfilLojaId { get; set; }
+    public PerfilLoja? PerfilLoja { get; set; }
+
+    [Required, MaxLength(150)]
+    public string Nome { get; set; } = "";
+
+    [MaxLength(50)]
+    public string Categoria { get; set; } = "Geral";
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal Preco { get; set; }
+
+    public int DuracaoMin { get; set; } = 30;
+    public int Ordem { get; set; }
 }
 
 public class CampoExtraPerfil

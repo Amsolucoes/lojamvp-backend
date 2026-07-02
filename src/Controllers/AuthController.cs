@@ -122,15 +122,16 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
 
         await db.SaveChangesAsync();
 
-        // Aplica o perfil escolhido (categorias + tipo de tamanho)
+        // Aplica o perfil escolhido (categorias, serviços, tipo de plano)
         if (!string.IsNullOrEmpty(req.PerfilId) && Guid.TryParse(req.PerfilId, out var perfilGuid))
         {
             var perfil = await db.PerfisLoja
                 .Include(p => p.Categorias)
+                .Include(p => p.Servicos)
                 .FirstOrDefaultAsync(p => p.Id == perfilGuid);
-
             if (perfil != null)
             {
+                // Categorias de produto
                 foreach (var cat in perfil.Categorias.OrderBy(c => c.Ordem))
                     db.CategoriasLoja.Add(new CategoriaLoja
                     {
@@ -139,6 +140,23 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
                         Ordem = cat.Ordem,
                         TipoTamanho = cat.TipoTamanho,
                     });
+
+                // Serviços pré-definidos
+                foreach (var s in perfil.Servicos.OrderBy(s => s.Ordem))
+                    db.Servicos.Add(new Servico
+                    {
+                        LojaId = loja.Id,
+                        Nome = s.Nome,
+                        Categoria = s.Categoria,
+                        Preco = s.Preco,
+                        DuracaoMin = s.DuracaoMin,
+                        Ativo = true,
+                    });
+
+                // Tipo de plano e módulos conforme o perfil
+                loja.TipoPlano = perfil.TipoPlanoAplica;
+                if (perfil.TipoPlanoAplica == "servicos" || perfil.TipoPlanoAplica == "loja_modulos")
+                    loja.ModulosAtivos = "servicos";
 
                 await db.SaveChangesAsync();
             }

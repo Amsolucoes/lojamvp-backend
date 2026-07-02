@@ -24,6 +24,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ItemTroca> ItensTroca => Set<ItemTroca>();
     public DbSet<Servico> Servicos => Set<Servico>();
     public DbSet<Agendamento> Agendamentos => Set<Agendamento>();
+    public DbSet<ServicoPerfilLoja> ServicosPerfilLoja => Set<ServicoPerfilLoja>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -76,6 +77,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<CategoriaPerfilLoja>()
             .HasOne(c => c.PerfilLoja).WithMany(p => p.Categorias)
             .HasForeignKey(c => c.PerfilLojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ServicoPerfilLoja>()
+            .HasOne(s => s.PerfilLoja).WithMany(p => p.Servicos)
+            .HasForeignKey(s => s.PerfilLojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<CampoExtraPerfil>()
             .HasOne(c => c.PerfilLoja).WithMany(p => p.CamposExtras)
@@ -163,6 +168,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             SenhaHash = "$2a$11$pJv1QqzqQHz4rG17gLCUoORPXG8/9fS3mtJpTuULzEYV/qc7heetu",
             Role = "superadmin",
             Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+
+        // ── Perfil: Loja personalizada (em branco) ────────────────────────
+        var perfilBranco = Guid.Parse("10000000-0000-0000-0000-000000000009");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilBranco,
+            Nome = "Começar do zero",
+            Descricao = "Loja em branco — você cria suas próprias categorias",
+            Icone = "🏬",
+            Ativo = true,
+            TipoPlanoAplica = "loja",
             CriadoEm = DateTime.UtcNow,
         });
 
@@ -330,6 +348,128 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilMat, Nome = "Elétrica", Ordem = 4 },
             new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilMat, Nome = "Ferramentas", Ordem = 5 },
             new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000007"), PerfilLojaId = perfilMat, Nome = "Madeiras", Ordem = 6 }
+        );
+
+        // ══════════════ PERFIS DE SERVIÇO ══════════════
+
+        // ── Banho e Tosa (puro) ───────────────────────────────────────────
+        var perfilBanho = Guid.Parse("20000000-0000-0000-0000-000000000001");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilBanho,
+            Nome = "Banho e Tosa",
+            Descricao = "Para banho e tosa: agenda, serviços e caixa",
+            Icone = "🐾",
+            Ativo = true,
+            TipoPlanoAplica = "servicos",
+            CriadoEm = DateTime.UtcNow,
+        });
+        // ── Banho e Tosa + Loja ───────────────────────────────────────────
+        var perfilBanhoLoja = Guid.Parse("20000000-0000-0000-0000-000000000002");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilBanhoLoja,
+            Nome = "Banho e Tosa + Loja",
+            Descricao = "Banho e tosa com venda de produtos",
+            Icone = "🐾",
+            Ativo = true,
+            TipoPlanoAplica = "loja_modulos",
+            CriadoEm = DateTime.UtcNow,
+        });
+
+        // ── Barbearia (puro) ──────────────────────────────────────────────
+        var perfilBarber = Guid.Parse("20000000-0000-0000-0000-000000000003");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilBarber,
+            Nome = "Barbearia",
+            Descricao = "Para barbearias: agenda, serviços e caixa",
+            Icone = "💈",
+            Ativo = true,
+            TipoPlanoAplica = "servicos",
+            CriadoEm = DateTime.UtcNow,
+        });
+        // ── Barbearia + Loja ──────────────────────────────────────────────
+        var perfilBarberLoja = Guid.Parse("20000000-0000-0000-0000-000000000004");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilBarberLoja,
+            Nome = "Barbearia + Loja",
+            Descricao = "Barbearia com venda de produtos",
+            Icone = "💈",
+            Ativo = true,
+            TipoPlanoAplica = "loja_modulos",
+            CriadoEm = DateTime.UtcNow,
+        });
+
+        // ── Salão de Beleza (puro) ────────────────────────────────────────
+        var perfilSalao = Guid.Parse("20000000-0000-0000-0000-000000000005");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilSalao,
+            Nome = "Salão de Beleza",
+            Descricao = "Para salões: agenda, serviços e caixa",
+            Icone = "💇",
+            Ativo = true,
+            TipoPlanoAplica = "servicos",
+            CriadoEm = DateTime.UtcNow,
+        });
+        // ── Salão de Beleza + Loja ────────────────────────────────────────
+        var perfilSalaoLoja = Guid.Parse("20000000-0000-0000-0000-000000000006");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilSalaoLoja,
+            Nome = "Salão de Beleza + Loja",
+            Descricao = "Salão com venda de produtos",
+            Icone = "💇",
+            Ativo = true,
+            TipoPlanoAplica = "loja_modulos",
+            CriadoEm = DateTime.UtcNow,
+        });
+
+        // ══════════════ SERVIÇOS PRÉ-DEFINIDOS DOS PERFIS ══════════════
+        mb.Entity<ServicoPerfilLoja>().HasData(
+            // ── Banho e Tosa (puro) — 21A ──
+            new ServicoPerfilLoja { Id = Guid.Parse("21a00000-0000-0000-0000-000000000001"), PerfilLojaId = perfilBanho, Nome = "Banho (porte pequeno)", Categoria = "Banho", Preco = 40m, DuracaoMin = 60, Ordem = 0 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21a00000-0000-0000-0000-000000000002"), PerfilLojaId = perfilBanho, Nome = "Banho (porte médio)", Categoria = "Banho", Preco = 55m, DuracaoMin = 75, Ordem = 1 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21a00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilBanho, Nome = "Banho (porte grande)", Categoria = "Banho", Preco = 75m, DuracaoMin = 90, Ordem = 2 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21a00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilBanho, Nome = "Tosa higiênica", Categoria = "Tosa", Preco = 35m, DuracaoMin = 45, Ordem = 3 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21a00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilBanho, Nome = "Tosa completa", Categoria = "Tosa", Preco = 70m, DuracaoMin = 90, Ordem = 4 },
+
+            // ── Banho e Tosa + Loja — 21B ──
+            new ServicoPerfilLoja { Id = Guid.Parse("21b00000-0000-0000-0000-000000000001"), PerfilLojaId = perfilBanhoLoja, Nome = "Banho (porte pequeno)", Categoria = "Banho", Preco = 40m, DuracaoMin = 60, Ordem = 0 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21b00000-0000-0000-0000-000000000002"), PerfilLojaId = perfilBanhoLoja, Nome = "Banho (porte médio)", Categoria = "Banho", Preco = 55m, DuracaoMin = 75, Ordem = 1 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21b00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilBanhoLoja, Nome = "Banho (porte grande)", Categoria = "Banho", Preco = 75m, DuracaoMin = 90, Ordem = 2 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21b00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilBanhoLoja, Nome = "Tosa higiênica", Categoria = "Tosa", Preco = 35m, DuracaoMin = 45, Ordem = 3 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21b00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilBanhoLoja, Nome = "Tosa completa", Categoria = "Tosa", Preco = 70m, DuracaoMin = 90, Ordem = 4 },
+
+            // ── Barbearia (puro) — 21C ──
+            new ServicoPerfilLoja { Id = Guid.Parse("21c00000-0000-0000-0000-000000000001"), PerfilLojaId = perfilBarber, Nome = "Corte de cabelo", Categoria = "Cabelo", Preco = 35m, DuracaoMin = 30, Ordem = 0 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21c00000-0000-0000-0000-000000000002"), PerfilLojaId = perfilBarber, Nome = "Barba", Categoria = "Barba", Preco = 25m, DuracaoMin = 30, Ordem = 1 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21c00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilBarber, Nome = "Corte + Barba", Categoria = "Combo", Preco = 55m, DuracaoMin = 60, Ordem = 2 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21c00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilBarber, Nome = "Pezinho / acabamento", Categoria = "Acabamento", Preco = 15m, DuracaoMin = 15, Ordem = 3 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21c00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilBarber, Nome = "Sobrancelha masculina", Categoria = "Sobrancelha", Preco = 15m, DuracaoMin = 15, Ordem = 4 },
+
+            // ── Barbearia + Loja — 21D ──
+            new ServicoPerfilLoja { Id = Guid.Parse("21d00000-0000-0000-0000-000000000001"), PerfilLojaId = perfilBarberLoja, Nome = "Corte de cabelo", Categoria = "Cabelo", Preco = 35m, DuracaoMin = 30, Ordem = 0 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21d00000-0000-0000-0000-000000000002"), PerfilLojaId = perfilBarberLoja, Nome = "Barba", Categoria = "Barba", Preco = 25m, DuracaoMin = 30, Ordem = 1 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21d00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilBarberLoja, Nome = "Corte + Barba", Categoria = "Combo", Preco = 55m, DuracaoMin = 60, Ordem = 2 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21d00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilBarberLoja, Nome = "Pezinho / acabamento", Categoria = "Acabamento", Preco = 15m, DuracaoMin = 15, Ordem = 3 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21d00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilBarberLoja, Nome = "Sobrancelha masculina", Categoria = "Sobrancelha", Preco = 15m, DuracaoMin = 15, Ordem = 4 },
+
+            // ── Salão de Beleza (puro) — 21E ──
+            new ServicoPerfilLoja { Id = Guid.Parse("21e00000-0000-0000-0000-000000000001"), PerfilLojaId = perfilSalao, Nome = "Corte feminino", Categoria = "Cabelo", Preco = 60m, DuracaoMin = 60, Ordem = 0 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21e00000-0000-0000-0000-000000000002"), PerfilLojaId = perfilSalao, Nome = "Escova", Categoria = "Cabelo", Preco = 45m, DuracaoMin = 45, Ordem = 1 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21e00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilSalao, Nome = "Coloração / tintura", Categoria = "Química", Preco = 120m, DuracaoMin = 120, Ordem = 2 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21e00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilSalao, Nome = "Manicure", Categoria = "Unhas", Preco = 35m, DuracaoMin = 45, Ordem = 3 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21e00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilSalao, Nome = "Pedicure", Categoria = "Unhas", Preco = 40m, DuracaoMin = 45, Ordem = 4 },
+
+            // ── Salão de Beleza + Loja — 21F ──
+            new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000001"), PerfilLojaId = perfilSalaoLoja, Nome = "Corte feminino", Categoria = "Cabelo", Preco = 60m, DuracaoMin = 60, Ordem = 0 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000002"), PerfilLojaId = perfilSalaoLoja, Nome = "Escova", Categoria = "Cabelo", Preco = 45m, DuracaoMin = 45, Ordem = 1 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilSalaoLoja, Nome = "Coloração / tintura", Categoria = "Química", Preco = 120m, DuracaoMin = 120, Ordem = 2 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilSalaoLoja, Nome = "Manicure", Categoria = "Unhas", Preco = 35m, DuracaoMin = 45, Ordem = 3 },
+            new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilSalaoLoja, Nome = "Pedicure", Categoria = "Unhas", Preco = 40m, DuracaoMin = 45, Ordem = 4 }
         );
     }
 
