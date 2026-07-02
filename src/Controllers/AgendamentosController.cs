@@ -199,12 +199,17 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
     }
 
     // ── Excluir ───────────────────────────────────────────────────
+    // ── Excluir ───────────────────────────────────────────────────
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Excluir(Guid id)
     {
         var lojaId = await GetLojaId();
         var ag = await db.Agendamentos.FirstOrDefaultAsync(a => a.Id == id && a.LojaId == lojaId);
         if (ag is null) return NotFound();
+
+        // Impede exclusão se já foi pago (virou venda no caixa)
+        if (ag.Pago)
+            return BadRequest(new { erro = "Não é possível excluir: este agendamento já foi pago e gerou uma venda. Você pode cancelá-lo em vez de excluir." });
 
         db.Agendamentos.Remove(ag);
         await db.SaveChangesAsync();
