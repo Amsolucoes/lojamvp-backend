@@ -91,6 +91,7 @@ public class ServicosController(AppDbContext db) : ControllerBase
     }
 
     // ── Excluir ───────────────────────────────────────────────────
+    // ── Excluir ───────────────────────────────────────────────────
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "admin,superadmin")]
     public async Task<IActionResult> Excluir(Guid id)
@@ -98,6 +99,11 @@ public class ServicosController(AppDbContext db) : ControllerBase
         var lojaId = await GetLojaId();
         var servico = await db.Servicos.FirstOrDefaultAsync(s => s.Id == id && s.LojaId == lojaId);
         if (servico is null) return NotFound();
+
+        // Impede exclusão se houver agendamentos vinculados
+        var qtdAgendamentos = await db.Agendamentos.CountAsync(a => a.ServicoId == id);
+        if (qtdAgendamentos > 0)
+            return BadRequest(new { erro = $"Não é possível excluir: este serviço tem {qtdAgendamentos} agendamento(s) vinculado(s). Você pode desativá-lo em vez de excluir." });
 
         db.Servicos.Remove(servico);
         await db.SaveChangesAsync();
