@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using LojaApi.Data;
 using LojaApi.Services;
+using LojaApi.DTOs;
 
 namespace LojaApi.Controllers;
 
@@ -44,6 +45,25 @@ public class LojaController(AppDbContext db) : ControllerBase
             tipoPlano = loja.TipoPlano,
             modulosAtivos = loja.ModulosAtivos
              .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            agendaHoraInicio = loja.AgendaHoraInicio,
+            agendaHoraFim = loja.AgendaHoraFim, 
         });
+    }
+
+    [HttpPatch("agenda-horario")]
+    public async Task<IActionResult> AtualizarAgendaHorario([FromBody] AgendaHorarioRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return NotFound();
+
+        var loja = await db.Lojas.FindAsync(lojaId.Value);
+        if (loja is null) return NotFound();
+
+        loja.AgendaHoraInicio = Math.Clamp(req.HoraInicio, 0, 23);
+        loja.AgendaHoraFim = Math.Clamp(req.HoraFim, 1, 24);
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.AgendaHoraInicio, loja.AgendaHoraFim });
     }
 }

@@ -70,6 +70,9 @@ public class Loja
 
     public bool EhTeste { get; set; } = false;
 
+    public int AgendaHoraInicio { get; set; } = 8;
+    public int AgendaHoraFim { get; set; } = 18;
+
     [MaxLength(200)]
     public string ModulosAtivos { get; set; } = "";
 

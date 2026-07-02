@@ -57,6 +57,8 @@ public record LojaConfigDto(
 
 public record AlterarStatusLojaRequest(string Status, string? Motivo);
 
+public record AgendaHorarioRequest(int HoraInicio, int HoraFim);
+
 // ── Pagamento ─────────────────────────────────────────────────────
 public record PagamentoDto(
     Guid Id, Guid LojaId, string NomeLoja,
