@@ -193,12 +193,15 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         if (!validos.Contains(req.Status))
             return BadRequest(new { erro = "Status inválido." });
 
+        // Não deixa cancelar agendamento já pago (a venda já existe)
+        if (req.Status == "cancelado" && ag.Pago)
+            return BadRequest(new { erro = "Não é possível cancelar: este agendamento já foi pago. Para estornar, faça o processo pelo caixa/vendas." });
+
         ag.Status = req.Status;
         await db.SaveChangesAsync();
         return Ok(new { ag.Id, ag.Status });
     }
 
-    // ── Excluir ───────────────────────────────────────────────────
     // ── Excluir ───────────────────────────────────────────────────
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Excluir(Guid id)
