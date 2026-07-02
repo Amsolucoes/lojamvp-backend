@@ -19,7 +19,8 @@ public record AtualizarLojaRequest(
     string? Telefone, string? Endereco,
     string CorPrimaria, string? LogoUrl,
     int MensalidadeDia, decimal MensalidadeValor,
-    string? TipoPlano, string? ModulosAtivos
+    string? TipoPlano, string? ModulosAtivos,
+    bool? EhTeste
 );
 
 public record LojaDto(

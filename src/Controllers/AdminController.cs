@@ -276,6 +276,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         loja.MensalidadeValor = req.MensalidadeValor;
         if (req.TipoPlano is not null) loja.TipoPlano = req.TipoPlano;
         if (req.ModulosAtivos is not null) loja.ModulosAtivos = req.ModulosAtivos;
+        if (req.EhTeste is not null) loja.EhTeste = req.EhTeste.Value;
         loja.AtualizadoEm     = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
