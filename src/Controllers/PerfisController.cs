@@ -35,6 +35,7 @@ public class PerfisController(AppDbContext db) : ControllerBase
             p.Nome,
             p.Descricao,
             p.Icone,
+            p.TipoPlanoAplica,
             categorias = p.Categorias.Select(c => new { c.Id, c.Nome, c.Ordem, c.TipoTamanho }),
             camposExtras = p.CamposExtras.Select(c => new { c.Id, c.Chave, c.Label, c.Tipo, c.Opcoes, c.Obrigatorio, c.Ordem }),
         }));
