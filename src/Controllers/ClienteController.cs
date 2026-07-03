@@ -97,6 +97,33 @@ public class ClienteController(AppDbContext db, TenantService tenantService) : C
         return Ok(new { mensagem = "Configurações atualizadas." });
     }
 
+    // ── Cliente troca o próprio e-mail de login ───────────────────
+    [HttpPatch("email")]
+    public async Task<IActionResult> TrocarMeuEmail([FromBody] TrocarMeuEmailRequest req)
+    {
+        var usuario = await db.Usuarios.FindAsync(UsuarioId);
+        if (usuario is null) return NotFound(new { erro = "Usuário não encontrado." });
+
+        // Confirma a senha atual
+        if (!BCrypt.Net.BCrypt.Verify(req.SenhaAtual, usuario.SenhaHash))
+            return BadRequest(new { erro = "Senha atual incorreta." });
+
+        var novoEmail = req.NovoEmail?.Trim().ToLower();
+        if (string.IsNullOrWhiteSpace(novoEmail) || !novoEmail.Contains('@'))
+            return BadRequest(new { erro = "E-mail inválido." });
+
+        // Verifica duplicidade
+        var emailEmUso = await db.Usuarios
+            .AnyAsync(u => u.Email.ToLower() == novoEmail && u.Id != usuario.Id);
+        if (emailEmUso)
+            return Conflict(new { erro = "Este e-mail já está em uso." });
+
+        usuario.Email = novoEmail;
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "E-mail atualizado. Use o novo e-mail no próximo login." });
+    }
+
     // ── Listar faturas ────────────────────────────────────────────
     [HttpGet("faturas")]
     public async Task<IActionResult> Faturas()

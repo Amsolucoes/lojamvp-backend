@@ -15,6 +15,8 @@ public record SignupRequest(
 
 public record TrocarSenhaRequest(string SenhaAtual, string NovaSenha);
 
+public record TrocarMeuEmailRequest(string NovoEmail, string SenhaAtual);
+
 // ── Usuario ───────────────────────────────────────────────────────
 public record UsuarioDto(Guid Id, string Nome, string Email, string Role, bool Ativo);
 public record CriarUsuarioRequest(string Nome, string Email, string Senha, string Role);
