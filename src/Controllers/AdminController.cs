@@ -12,7 +12,8 @@ namespace LojaApi.Controllers;
 [ApiController]
 [Route("api/admin")]
 [Authorize(Roles = "superadmin")]
-public class AdminController(AppDbContext db, TenantService tenantService, TokenService tokenService) : ControllerBase
+public class AdminController(AppDbContext db, TenantService tenantService, TokenService tokenService,
+    MercadoPagoService mpService) : ControllerBase
 {
     private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -394,6 +395,50 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         await db.SaveChangesAsync();
 
         return Ok(new { mensagem = "E-mail atualizado com sucesso." });
+    }
+
+    // ── Atualizar valor da mensalidade (e opcionalmente a assinatura) ─────
+    [HttpPatch("lojas/{id:guid}/valor")]
+    public async Task<IActionResult> AtualizarValor(Guid id, [FromBody] AtualizarValorRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        if (req.NovoValor <= 0)
+            return BadRequest(new { erro = "Valor inválido." });
+
+        // Atualiza o valor da loja (vale para próximas faturas)
+        loja.MensalidadeValor = req.NovoValor;
+
+        // Se pediu para sincronizar E a loja tem assinatura ativa no MP
+        bool sincronizou = false;
+        string? avisoMp = null;
+
+        if (req.SincronizarAssinatura)
+        {
+            if (string.IsNullOrEmpty(loja.MpPreapprovalId) || loja.AssinaturaStatus != "authorized")
+            {
+                avisoMp = "A loja não tem assinatura ativa para sincronizar. Só o valor das próximas faturas foi alterado.";
+            }
+            else
+            {
+                sincronizou = await mpService.AtualizarValorAssinatura(loja.MpPreapprovalId, req.NovoValor);
+                if (!sincronizou)
+                    avisoMp = "O valor da loja foi alterado, mas não foi possível atualizar a assinatura no Mercado Pago. Tente novamente ou verifique manualmente.";
+            }
+        }
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            mensagem = sincronizou
+                ? "Valor atualizado na loja e na assinatura recorrente."
+                : "Valor atualizado.",
+            aviso = avisoMp,
+            sincronizou,
+        });
     }
 
     // ── Mappers ───────────────────────────────────────────────────

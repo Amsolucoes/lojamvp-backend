@@ -60,6 +60,11 @@ public record AlterarStatusLojaRequest(string Status, string? Motivo);
 
 public record AgendaHorarioRequest(int HoraInicio, int HoraFim);
 
+public record AtualizarValorRequest(
+    decimal NovoValor,
+    bool SincronizarAssinatura   // true = também atualiza no MP; false = só próximas faturas
+);
+
 // ── Pagamento ─────────────────────────────────────────────────────
 public record PagamentoDto(
     Guid Id, Guid LojaId, string NomeLoja,

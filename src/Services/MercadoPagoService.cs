@@ -229,6 +229,37 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
         }
     }
 
+    // ── Atualizar valor de uma assinatura ─────────────────────────
+    public async Task<bool> AtualizarValorAssinatura(string preapprovalId, decimal novoValor)
+    {
+        try
+        {
+            var body = new
+            {
+                auto_recurring = new
+                {
+                    transaction_amount = novoValor,
+                    currency_id = "BRL",
+                },
+            };
+            var json = JsonSerializer.Serialize(body);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var req = new HttpRequestMessage(HttpMethod.Put, $"{BASE}/preapproval/{preapprovalId}");
+            req.Headers.Add("Authorization", $"Bearer {AccessToken}");
+            req.Content = content;
+
+            var res = await _http.SendAsync(req);
+            var respBody = await res.Content.ReadAsStringAsync();
+            logger.LogInformation("MP Atualizar assinatura: {Status} {Body}", res.StatusCode, respBody);
+            return res.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao atualizar valor da assinatura {Id}", preapprovalId);
+            return false;
+        }
+    }
+
     // ── POST genérico ─────────────────────────────────────────────
     private async Task<MpPaymentResult> PostPayment(object body)
     {
