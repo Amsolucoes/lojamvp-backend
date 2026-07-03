@@ -46,7 +46,9 @@ public class LojaController(AppDbContext db) : ControllerBase
             modulosAtivos = loja.ModulosAtivos
              .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
             agendaHoraInicio = loja.AgendaHoraInicio,
-            agendaHoraFim = loja.AgendaHoraFim, 
+            agendaHoraFim = loja.AgendaHoraFim,
+            assinaturaStatus = loja.AssinaturaStatus,
+            assinaturaCartaoFinal = loja.AssinaturaCartaoFinal
         });
     }
 

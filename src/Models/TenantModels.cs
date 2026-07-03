@@ -79,6 +79,16 @@ public class Loja
     public DateTime? UltimaCobranca { get; set; }
     public DateTime? ProximoVencimento { get; set; }
 
+    // ── Assinatura recorrente (Mercado Pago) ──────────────────────
+    [MaxLength(100)]
+    public string? MpPreapprovalId { get; set; }
+
+    [MaxLength(20)]
+    public string? AssinaturaStatus { get; set; } // authorized | paused | cancelled
+
+    [MaxLength(4)]
+    public string? AssinaturaCartaoFinal { get; set; } // últimos 4 dígitos (exibição)
+
     [MaxLength(50)]
     public string SchemaNome { get; set; } = "";
 

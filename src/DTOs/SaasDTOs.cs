@@ -99,6 +99,20 @@ public record PagamentoMpResponse(
     string? MpPaymentId
 );
 
+public record CriarAssinaturaRequest(
+    string CardToken,
+    string? CpfPagador,
+    string? NomePagador,
+    string? EmailPagador,
+    string? CartaoFinal   // últimos 4 dígitos (exibição)
+);
+
+public record AssinaturaResponse(
+    string Status,
+    string? PreapprovalId,
+    string? CartaoFinal
+);
+
 // ── Dashboard admin ───────────────────────────────────────────────
 public record DashboardAdminDto(
     int TotalLojas,

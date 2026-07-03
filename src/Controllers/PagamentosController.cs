@@ -1,12 +1,11 @@
+using LojaApi.Data;
+using LojaApi.DTOs;
+using LojaApi.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.Json;
-using LojaApi.Data;
-using LojaApi.DTOs;
-using LojaApi.Models;
-using LojaApi.Services;
 
 namespace LojaApi.Controllers;
 
@@ -18,6 +17,16 @@ public class PagamentosController(
     MercadoPagoService mpService,
     ILogger<PagamentosController> logger) : ControllerBase
 {
+
+    private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    private async Task<Guid?> GetLojaIdDoUsuario()
+    {
+        var vinculo = await db.UsuariosLoja
+            .FirstOrDefaultAsync(ul => ul.UsuarioId == UsuarioId && ul.Ativo);
+        return vinculo?.LojaId;
+    }
+
     // ── Criar cobrança no Mercado Pago ────────────────────────────
     [HttpPost("criar")]
     [Authorize]
@@ -84,6 +93,78 @@ public class PagamentosController(
         ));
     }
 
+    // ── Criar assinatura recorrente (cartão) ──────────────────────
+    [HttpPost("assinatura")]
+    [Authorize]
+    public async Task<IActionResult> CriarAssinatura([FromBody] CriarAssinaturaRequest req)
+    {
+        var lojaId = await GetLojaIdDoUsuario();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var loja = await db.Lojas.FindAsync(lojaId.Value);
+        if (loja is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        if (loja.AssinaturaStatus == "authorized")
+            return BadRequest(new { erro = "Esta loja já tem uma assinatura ativa." });
+
+        var email = req.EmailPagador ?? loja.Email;
+        var motivo = $"Mensalidade {loja.Nome} - AL Dev Software";
+
+        // Próxima ocorrência do dia de vencimento
+        var inicio = ProximoDiaVencimento(loja.MensalidadeDia);
+        var backUrl = "https://app.aldevsoftware.com.br/pagamento";
+
+        var result = await mpService.CriarAssinatura(
+            loja.MensalidadeValor, motivo, req.CardToken, email, inicio, backUrl);
+
+        if (!result.Sucesso)
+            return BadRequest(new { erro = result.Erro });
+
+        loja.MpPreapprovalId = result.PreapprovalId;
+        loja.AssinaturaStatus = result.Status ?? "authorized";
+        loja.AssinaturaCartaoFinal = req.CartaoFinal;
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new AssinaturaResponse(
+            loja.AssinaturaStatus ?? "",
+            loja.MpPreapprovalId,
+            loja.AssinaturaCartaoFinal));
+    }
+
+    // ── Cancelar assinatura ───────────────────────────────────────
+    [HttpPost("assinatura/cancelar")]
+    [Authorize]
+    public async Task<IActionResult> CancelarAssinatura()
+    {
+        var lojaId = await GetLojaIdDoUsuario();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var loja = await db.Lojas.FindAsync(lojaId.Value);
+        if (loja is null || loja.MpPreapprovalId is null)
+            return BadRequest(new { erro = "Nenhuma assinatura ativa." });
+
+        var ok = await mpService.CancelarAssinatura(loja.MpPreapprovalId);
+        if (!ok) return BadRequest(new { erro = "Erro ao cancelar no Mercado Pago." });
+
+        loja.AssinaturaStatus = "cancelled";
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { status = "cancelled" });
+    }
+
+    // Calcula a próxima ocorrência do dia de vencimento
+    private static DateTime ProximoDiaVencimento(int dia)
+    {
+        var hoje = DateTime.UtcNow;
+        var diaValido = Math.Clamp(dia, 1, 28);
+        var candidato = new DateTime(hoje.Year, hoje.Month, diaValido, 12, 0, 0, DateTimeKind.Utc);
+        if (candidato <= hoje.AddHours(1)) // se já passou (ou é agora), joga pro mês seguinte
+            candidato = candidato.AddMonths(1);
+        return candidato;
+    }
+
     // ── Webhook do Mercado Pago ───────────────────────────────────
     [HttpPost("webhook")]
     [AllowAnonymous]
@@ -100,8 +181,24 @@ public class PagamentosController(
             var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
 
-            // Mercado Pago envia tipo "payment"
-            if (!root.TryGetProperty("type", out var tipo) || tipo.GetString() != "payment")
+            var tipoStr = root.TryGetProperty("type", out var tipo) ? tipo.GetString() : null;
+
+            // ── Cobrança recorrente de assinatura ──────────────────
+            if (tipoStr == "subscription_authorized_payment")
+            {
+                await TratarCobrancaAssinatura(root);
+                return Ok();
+            }
+
+            // ── Mudança de status da assinatura ────────────────────
+            if (tipoStr == "subscription_preapproval")
+            {
+                await TratarStatusAssinatura(root);
+                return Ok();
+            }
+
+            // ── Pagamento avulso (pix/boleto/cartão) ───────────────
+            if (tipoStr != "payment")
                 return Ok();
 
             if (!root.TryGetProperty("data", out var data) ||
@@ -148,6 +245,72 @@ public class PagamentosController(
         }
 
         return Ok();
+    }
+
+    // Trata cada cobrança mensal recorrente da assinatura
+    private async Task TratarCobrancaAssinatura(JsonElement root)
+    {
+        try
+        {
+            if (!root.TryGetProperty("data", out var data) ||
+                !data.TryGetProperty("id", out var idProp))
+                return;
+
+            var authPaymentId = idProp.GetRawText().Trim('"');
+
+            // Busca o authorized_payment no MP para saber o preapproval e o status
+            var (preapprovalId, status) = await mpService.VerificarCobrancaAssinatura(authPaymentId);
+            logger.LogInformation("Cobrança assinatura {Id}: preapproval={Pre} status={St}", authPaymentId, preapprovalId, status);
+
+            if (preapprovalId is null) return;
+
+            var loja = await db.Lojas.FirstOrDefaultAsync(l => l.MpPreapprovalId == preapprovalId);
+            if (loja is null)
+            {
+                logger.LogWarning("Loja não encontrada para preapproval {Id}", preapprovalId);
+                return;
+            }
+
+            if (status == "processed" || status == "approved")
+            {
+                await tenantService.RegistrarPagamentoAsync(
+                    loja.Id, loja.MensalidadeValor, loja.ProximoVencimento ?? DateTime.UtcNow,
+                    DateTime.UtcNow, "cartao",
+                    "Cobrança recorrente automática (assinatura)", null, authPaymentId);
+                logger.LogInformation("Loja {Id} renovada via assinatura.", loja.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao tratar cobrança de assinatura.");
+        }
+    }
+
+    // Trata mudança de status da assinatura (cancelada, pausada, etc.)
+    private async Task TratarStatusAssinatura(JsonElement root)
+    {
+        try
+        {
+            if (!root.TryGetProperty("data", out var data) ||
+                !data.TryGetProperty("id", out var idProp))
+                return;
+
+            var preapprovalId = idProp.GetRawText().Trim('"');
+            var status = await mpService.VerificarAssinatura(preapprovalId);
+            if (status is null) return;
+
+            var loja = await db.Lojas.FirstOrDefaultAsync(l => l.MpPreapprovalId == preapprovalId);
+            if (loja is null) return;
+
+            loja.AssinaturaStatus = status;
+            loja.AtualizadoEm = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+            logger.LogInformation("Assinatura da loja {Id} agora está {St}.", loja.Id, status);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao tratar status de assinatura.");
+        }
     }
 
     // ── Verificar status de um pagamento ──────────────────────────
