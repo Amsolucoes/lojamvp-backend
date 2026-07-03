@@ -108,7 +108,7 @@ public class PagamentosController(
             return BadRequest(new { erro = "Esta loja já tem uma assinatura ativa." });
 
         var email = req.EmailPagador ?? loja.Email;
-        var motivo = $"Mensalidade {loja.Nome} - AL Dev Software";
+        var motivo = "Assinatura AL Dev Software";
 
         // Próxima ocorrência do dia de vencimento
         var inicio = ProximoDiaVencimento(loja.MensalidadeDia);
