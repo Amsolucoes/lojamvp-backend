@@ -444,6 +444,14 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         });
     }
 
+    // ── Disparar verificação de bloqueio manualmente (teste/admin) ─────
+    [HttpPost("verificar-bloqueios")]
+    public async Task<IActionResult> VerificarBloqueios()
+    {
+        await tenantService.VerificarStatusAsync();
+        return Ok(new { mensagem = "Verificação de bloqueios executada." });
+    }
+
     // ── Mappers ───────────────────────────────────────────────────
     private static LojaDto ToLojaDto(Loja l, DateTime agora)
     {
