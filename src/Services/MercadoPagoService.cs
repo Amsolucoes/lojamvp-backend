@@ -151,7 +151,6 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
                 frequency_type = "months",
                 transaction_amount = valorMensal,
                 currency_id = "BRL",
-                start_date = dataInicio.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffK"),
             },
         };
 
