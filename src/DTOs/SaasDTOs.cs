@@ -39,7 +39,8 @@ public record LojaDto(
     bool Promocional,
     string Fase, int DiasRestantes,
     string TipoPlano, string ModulosAtivos,
-    bool EhTeste
+    bool EhTeste,string? AssinaturaStatus,
+    string? AssinaturaCartaoFinal
 );
 
 public record LojaResumoDto(

@@ -460,7 +460,9 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
             Promocional: l.Promocional,
             Fase: fase, DiasRestantes: diasRest,
             TipoPlano: l.TipoPlano, ModulosAtivos: l.ModulosAtivos,
-            EhTeste: l.EhTeste
+            EhTeste: l.EhTeste,
+            AssinaturaStatus: l.AssinaturaStatus,
+            AssinaturaCartaoFinal: l.AssinaturaCartaoFinal
         );
     }
 
