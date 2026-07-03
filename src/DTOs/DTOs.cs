@@ -19,6 +19,11 @@ public record TrocarSenhaRequest(string SenhaAtual, string NovaSenha);
 public record UsuarioDto(Guid Id, string Nome, string Email, string Role, bool Ativo);
 public record CriarUsuarioRequest(string Nome, string Email, string Senha, string Role);
 public record AlterarSenhaRequest(string SenhaAtual, string NovaSenha);
+public record TrocarEmailRequest(
+    string NovoEmail,
+    bool TrocarLogin,   // troca o e-mail do usuário (login)
+    bool TrocarLoja     // troca o e-mail de contato da loja
+);
 
 // ── Produto ───────────────────────────────────────────────────────
 public record ProdutoDto(

@@ -343,6 +343,59 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         return Ok(new { loja.Id, loja.TipoPlano, loja.ModulosAtivos });
     }
 
+    // ── Trocar e-mail (login do usuário e/ou contato da loja) ─────
+    [HttpPatch("lojas/{id:guid}/email")]
+    public async Task<IActionResult> TrocarEmail(Guid id, [FromBody] TrocarEmailRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        var novoEmail = req.NovoEmail?.Trim().ToLower();
+        if (string.IsNullOrWhiteSpace(novoEmail) || !novoEmail.Contains('@'))
+            return BadRequest(new { erro = "E-mail inválido." });
+
+        if (!req.TrocarLogin && !req.TrocarLoja)
+            return BadRequest(new { erro = "Escolha ao menos um e-mail para trocar." });
+
+        // Descobre o usuário admin da loja
+        var vinculo = await db.UsuariosLoja
+            .Include(ul => ul.Usuario)
+            .FirstOrDefaultAsync(ul => ul.LojaId == id && ul.Role == "admin");
+
+        // Valida duplicidade do e-mail de login
+        if (req.TrocarLogin)
+        {
+            if (vinculo?.Usuario is null)
+                return BadRequest(new { erro = "Usuário admin da loja não encontrado." });
+
+            var emailEmUso = await db.Usuarios
+                .AnyAsync(u => u.Email.ToLower() == novoEmail && u.Id != vinculo.Usuario.Id);
+            if (emailEmUso)
+                return Conflict(new { erro = "Este e-mail já está em uso por outro usuário." });
+        }
+
+        // Valida duplicidade do e-mail da loja
+        if (req.TrocarLoja)
+        {
+            var lojaEmailEmUso = await db.Lojas
+                .AnyAsync(l => l.Email.ToLower() == novoEmail && l.Id != id);
+            if (lojaEmailEmUso)
+                return Conflict(new { erro = "Este e-mail já está em uso por outra loja." });
+        }
+
+        // Aplica
+        if (req.TrocarLogin && vinculo?.Usuario is not null)
+            vinculo.Usuario.Email = novoEmail;
+
+        if (req.TrocarLoja)
+            loja.Email = novoEmail;
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "E-mail atualizado com sucesso." });
+    }
+
     // ── Mappers ───────────────────────────────────────────────────
     private static LojaDto ToLojaDto(Loja l, DateTime agora)
     {
