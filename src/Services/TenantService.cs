@@ -58,6 +58,18 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
         var loja = await db.Lojas.FindAsync(lojaId);
         if (loja == null) return false;
 
+        // ── Idempotência: se este pagamento do MP já foi processado, ignora ──
+        if (!string.IsNullOrEmpty(mpPaymentId))
+        {
+            var jaProcessado = await db.Pagamentos
+                .AnyAsync(p => p.MpPaymentId == mpPaymentId && p.Status == "pago");
+            if (jaProcessado)
+            {
+                logger.LogInformation("Pagamento MP {Id} já processado, ignorando duplicata.", mpPaymentId);
+                return true;
+            }
+        }
+
         // Marca pagamento existente como pago ou cria novo
         var pagamento = await db.Pagamentos
             .FirstOrDefaultAsync(p => p.LojaId == lojaId &&
