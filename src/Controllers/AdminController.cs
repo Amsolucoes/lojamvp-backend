@@ -305,9 +305,12 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     [HttpPost("pagamentos")]
     public async Task<IActionResult> RegistrarPagamento([FromBody] RegistrarPagamentoManualRequest req)
     {
+        var vencimentoUtc = DateTime.SpecifyKind(req.Vencimento, DateTimeKind.Utc);
+        var pagoEmUtc = DateTime.SpecifyKind(req.PagoEm, DateTimeKind.Utc);
+
         var ok = await tenantService.RegistrarPagamentoAsync(
-            req.LojaId, req.Valor, req.Vencimento,
-            req.PagoEm, req.FormaPagamento,
+            req.LojaId, req.Valor, vencimentoUtc,
+            pagoEmUtc, req.FormaPagamento,
             req.Observacao, AdminId);
 
         return ok
