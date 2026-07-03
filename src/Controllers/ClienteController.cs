@@ -59,7 +59,9 @@ public class ClienteController(AppDbContext db, TenantService tenantService) : C
             EmAtraso:         diasAtraso > 0,
             DiasAtraso:       diasAtraso,
             FaturaPendente:   faturaPendente != null ? ToDto(faturaPendente) : null,
-            HistoricoFaturas: historico
+            HistoricoFaturas: historico,
+            AssinaturaStatus: loja.AssinaturaStatus,
+            AssinaturaCartaoFinal: loja.AssinaturaCartaoFinal
         ));
     }
 

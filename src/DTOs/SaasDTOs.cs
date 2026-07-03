@@ -136,7 +136,9 @@ public record DashboardClienteDto(
     bool EmAtraso,
     int DiasAtraso,
     PagamentoDto? FaturaPendente,
-    List<PagamentoDto> HistoricoFaturas
+    List<PagamentoDto> HistoricoFaturas,
+    string? AssinaturaStatus = null,
+    string? AssinaturaCartaoFinal = null
 );
 
 public record AtualizarPlanoRequest(string TipoPlano, string? ModulosAtivos);
