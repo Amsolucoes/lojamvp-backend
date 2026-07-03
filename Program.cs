@@ -5,7 +5,6 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using LojaApi.Data;
 using LojaApi.Services;
-using LojaApi.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
