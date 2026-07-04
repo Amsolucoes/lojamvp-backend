@@ -110,14 +110,21 @@ public class PublicoController(AppDbContext db) : ControllerBase
 
         // Cria ou reusa cliente pelo telefone
         var telefone = new string(req.Telefone.Where(char.IsDigit).ToArray());
-        var cliente = await db.Clientes.FirstOrDefaultAsync(c => c.LojaId == loja.Id && c.Telefone == telefone);
+
+        var clientesLoja = await db.Clientes
+            .Where(c => c.LojaId == loja.Id)
+            .ToListAsync();
+
+        var cliente = clientesLoja.FirstOrDefault(c =>
+            new string((c.Telefone ?? "").Where(char.IsDigit).ToArray()) == telefone);
+
         if (cliente is null)
         {
             cliente = new Cliente
             {
                 LojaId = loja.Id,
                 Nome = req.NomeCliente.Trim(),
-                Telefone = telefone,
+                Telefone = telefone,  // sempre só dígitos
             };
             db.Clientes.Add(cliente);
         }
@@ -179,8 +186,13 @@ public class PublicoController(AppDbContext db) : ControllerBase
         var tel = new string((telefone ?? "").Where(char.IsDigit).ToArray());
         if (tel.Length < 8) return Ok(new { existe = false });
 
-        var cliente = await db.Clientes
-            .FirstOrDefaultAsync(c => c.LojaId == loja.Id && c.Telefone == tel);
+        var clientesDaLoja = await db.Clientes
+            .Where(c => c.LojaId == loja.Id && c.Telefone != null)
+            .Select(c => new { c.Nome, c.Telefone })
+            .ToListAsync();
+
+        var cliente = clientesDaLoja.FirstOrDefault(c =>
+            new string((c.Telefone ?? "").Where(char.IsDigit).ToArray()) == tel);
 
         if (cliente is null) return Ok(new { existe = false });
 
