@@ -219,6 +219,29 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         return Ok(new { mensagem = "Agendamento excluído." });
     }
 
+    // ── Listar agendamentos de um cliente (histórico) ─────────────
+    [HttpGet("cliente/{clienteId:guid}")]
+    public async Task<IActionResult> PorCliente(Guid clienteId)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.Agendamentos
+            .Where(a => a.LojaId == lojaId && a.ClienteId == clienteId)
+            .OrderByDescending(a => a.DataHora)
+            .Select(a => new {
+                a.Id,
+                a.NomeServico,
+                a.Preco,
+                a.DataHora,
+                a.Status,
+                a.Pago,
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
     // ── Resumo de serviços por cliente (para os cards) ────────────
     [HttpGet("resumo-clientes")]
     public async Task<IActionResult> ResumoClientes()
