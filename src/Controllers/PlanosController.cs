@@ -264,7 +264,7 @@ public record VincularPlanoRequest(
 );
 
 public record MarcarPagamentoPlanoRequest(bool Pago);
-}
+
 
 public record SalvarPlanoRequest(
     string Nome,
