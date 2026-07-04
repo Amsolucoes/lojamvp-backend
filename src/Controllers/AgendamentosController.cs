@@ -218,6 +218,26 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         return Ok(new { mensagem = "Agendamento excluído." });
     }
+
+    // ── Resumo de serviços por cliente (para os cards) ────────────
+    [HttpGet("resumo-clientes")]
+    public async Task<IActionResult> ResumoClientes()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var resumo = await db.Agendamentos
+            .Where(a => a.LojaId == lojaId && a.ClienteId != null && a.Status != "cancelado")
+            .GroupBy(a => a.ClienteId!.Value)
+            .Select(g => new {
+                clienteId = g.Key,
+                qtd = g.Count(),
+                total = g.Sum(a => a.Preco),
+            })
+            .ToListAsync();
+
+        return Ok(resumo);
+    }
 }
 
 public record SalvarAgendamentoRequest(
