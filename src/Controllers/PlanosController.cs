@@ -254,7 +254,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
         }
 
         // ── Ao marcar PAGO: cria uma venda para entrar no fluxo de caixa ──
-        if (req.Pago && string.IsNullOrEmpty(pg.VendaId?.ToString()))
+        if (req.Pago && pg.VendaId is null)
         {
             var venda = new Venda
             {
@@ -282,6 +282,19 @@ public class PlanosController(AppDbContext db) : ControllerBase
 
             pg.VendaId = venda.Id;
         }
+        // ── Ao DESFAZER (marcar pendente): remove a venda criada ──
+        else if (!req.Pago && pg.VendaId is not null)
+        {
+            var vendaAntiga = await db.Vendas
+                .Include(v => v.Itens)
+                .FirstOrDefaultAsync(v => v.Id == pg.VendaId.Value);
+            if (vendaAntiga is not null)
+            {
+                db.ItensVenda.RemoveRange(vendaAntiga.Itens);
+                db.Vendas.Remove(vendaAntiga);
+            }
+            pg.VendaId = null;
+        }
 
         await db.SaveChangesAsync();
         return Ok(new { pg.Id, pg.Status });
@@ -293,11 +306,12 @@ public class PlanosController(AppDbContext db) : ControllerBase
     int DiaVencimento
 );
 
-public record MarcarPagamentoPlanoRequest(bool Pago);
+    public record MarcarPagamentoPlanoRequest(bool Pago);
 
 
-public record SalvarPlanoRequest(
-    string Nome,
-    decimal Valor,
-    string? ServicosIds
-);
+    public record SalvarPlanoRequest(
+        string Nome,
+        decimal Valor,
+        string? ServicosIds
+    );
+}
