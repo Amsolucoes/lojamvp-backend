@@ -48,7 +48,10 @@ public class LojaController(AppDbContext db) : ControllerBase
             agendaHoraInicio = loja.AgendaHoraInicio,
             agendaHoraFim = loja.AgendaHoraFim,
             assinaturaStatus = loja.AssinaturaStatus,
-            assinaturaCartaoFinal = loja.AssinaturaCartaoFinal
+            assinaturaCartaoFinal = loja.AssinaturaCartaoFinal,
+            agendamentoOnlineAtivo = loja.AgendamentoOnlineAtivo,
+            agendamentoOnlineConfirmacao = string.IsNullOrEmpty(loja.AgendamentoOnlineConfirmacao) ? "aprovacao" : loja.AgendamentoOnlineConfirmacao,
+            slug = loja.Slug,
         });
     }
 
@@ -67,5 +70,62 @@ public class LojaController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { loja.AgendaHoraInicio, loja.AgendaHoraFim });
+    }
+
+    [HttpPatch("agendamento-online")]
+    public async Task<IActionResult> ConfigAgendamentoOnline([FromBody] AgendamentoOnlineConfigRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return NotFound();
+
+        var loja = await db.Lojas.FindAsync(lojaId.Value);
+        if (loja is null) return NotFound();
+
+        // Normaliza e valida o slug (se enviado)
+        if (!string.IsNullOrWhiteSpace(req.Slug))
+        {
+            var slug = GerarSlug(req.Slug);
+            if (slug.Length < 3)
+                return BadRequest(new { erro = "O link deve ter ao menos 3 caracteres válidos." });
+
+            // Verifica se já está em uso por outra loja
+            var emUso = await db.Lojas.AnyAsync(l => l.Slug == slug && l.Id != loja.Id);
+            if (emUso)
+                return Conflict(new { erro = "Este link já está em uso. Escolha outro." });
+
+            loja.Slug = slug;
+        }
+
+        loja.AgendamentoOnlineAtivo = req.Ativo;
+        if (!string.IsNullOrWhiteSpace(req.Confirmacao))
+            loja.AgendamentoOnlineConfirmacao = req.Confirmacao == "automatico" ? "automatico" : "aprovacao";
+
+        // Se está ativando, precisa ter slug
+        if (loja.AgendamentoOnlineAtivo && string.IsNullOrWhiteSpace(loja.Slug))
+            return BadRequest(new { erro = "Defina um link (slug) antes de ativar o agendamento online." });
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            loja.AgendamentoOnlineAtivo,
+            loja.AgendamentoOnlineConfirmacao,
+            loja.Slug,
+        });
+    }
+
+    // Normaliza texto para slug de URL (minúsculo, sem acento, hífens)
+    private static string GerarSlug(string texto)
+    {
+        var normalizado = texto.Trim().ToLowerInvariant();
+        var semAcento = new string(normalizado
+            .Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+            .ToArray());
+        var slug = new string(semAcento.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());
+        // Remove hífens duplicados e das pontas
+        while (slug.Contains("--")) slug = slug.Replace("--", "-");
+        return slug.Trim('-');
     }
 }

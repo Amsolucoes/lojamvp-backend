@@ -134,6 +134,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(a => a.Venda).WithMany()
             .HasForeignKey(a => a.VendaId).OnDelete(DeleteBehavior.SetNull);
 
+        mb.Entity<Loja>()
+            .HasIndex(l => l.Slug)
+            .IsUnique();
+
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
         {

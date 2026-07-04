@@ -59,7 +59,10 @@ public record LojaConfigDto(
 
 public record AlterarStatusLojaRequest(string Status, string? Motivo);
 
+// ── Agendamento ─────────────────────────────────────────────────────
 public record AgendaHorarioRequest(int HoraInicio, int HoraFim);
+
+public record AgendamentoOnlineConfigRequest(bool Ativo, string? Confirmacao, string? Slug);
 
 public record AtualizarValorRequest(
     decimal NovoValor,

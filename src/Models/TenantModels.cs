@@ -70,6 +70,15 @@ public class Loja
 
     public bool EhTeste { get; set; } = false;
 
+    // ── Agendamento online público ────────────────────────────────
+    public bool AgendamentoOnlineAtivo { get; set; } = false;
+
+    [MaxLength(20)]
+    public string AgendamentoOnlineConfirmacao { get; set; } = "aprovacao";
+
+    [MaxLength(60)]
+    public string? Slug { get; set; }
+
     public int AgendaHoraInicio { get; set; } = 8;
     public int AgendaHoraFim { get; set; } = 18;
 
@@ -207,6 +216,9 @@ public class Agendamento
 
     [MaxLength(20)]
     public string Status { get; set; } = "agendado";
+
+    [MaxLength(20)]
+    public string Origem { get; set; } = "interno";
 
     public bool Pago { get; set; } = false;
     public Guid? VendaId { get; set; }
