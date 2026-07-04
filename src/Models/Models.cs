@@ -387,3 +387,66 @@ public class ItemTroca
 
     public bool VoltaEstoque { get; set; } = true; // só para devolvidos
 }
+
+// ── Plano oferecido pela loja (ex: "Cabelo + Barba") ──────────────
+public class Plano
+{
+    [Key]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid LojaId { get; set; }
+
+    [MaxLength(100)]
+    public string Nome { get; set; } = "";
+
+    public decimal Valor { get; set; }
+
+    // IDs dos serviços incluídos, separados por vírgula (ex: "guid1,guid2")
+    public string? ServicosIds { get; set; }
+
+    public bool Ativo { get; set; } = true;
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Cliente vinculado a um plano ──────────────────────────────────
+public class AssinaturaCliente
+{
+    [Key]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid LojaId { get; set; }
+    public Guid ClienteId { get; set; }
+    public Guid PlanoId { get; set; }
+
+    public int DiaVencimento { get; set; } = 10;
+
+    public DateTime DataInicio { get; set; } = DateTime.UtcNow;
+
+    [MaxLength(20)]
+    public string Status { get; set; } = "ativa"; // ativa | cancelada
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Controle de pagamento mensal do plano ─────────────────────────
+public class PagamentoPlano
+{
+    [Key]
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    public Guid AssinaturaId { get; set; }
+    public Guid LojaId { get; set; }
+
+    // Mês de referência (ex: 2026-07-01 representa julho/2026)
+    public DateTime MesReferencia { get; set; }
+
+    public decimal Valor { get; set; }
+
+    [MaxLength(20)]
+    public string Status { get; set; } = "pendente"; // pago | pendente
+
+    public DateTime? PagoEm { get; set; }
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}

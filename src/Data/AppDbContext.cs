@@ -25,6 +25,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Servico> Servicos => Set<Servico>();
     public DbSet<Agendamento> Agendamentos => Set<Agendamento>();
     public DbSet<ServicoPerfilLoja> ServicosPerfilLoja => Set<ServicoPerfilLoja>();
+    public DbSet<Plano> Planos => Set<Plano>();
+    public DbSet<AssinaturaCliente> AssinaturasCliente => Set<AssinaturaCliente>();
+    public DbSet<PagamentoPlano> PagamentosPlano => Set<PagamentoPlano>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
