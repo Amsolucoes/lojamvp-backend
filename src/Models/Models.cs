@@ -443,6 +443,8 @@ public class PagamentoPlano
 
     public decimal Valor { get; set; }
 
+    public Guid? VendaId { get; set; }
+
     [MaxLength(20)]
     public string Status { get; set; } = "pendente"; // pago | pendente
 
