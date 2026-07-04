@@ -167,6 +167,28 @@ public class PublicoController(AppDbContext db) : ControllerBase
             status,
         });
     }
+
+    // ── Verificar se cliente já existe (pelo telefone) ────────────
+    [HttpGet("{slug}/cliente")]
+    public async Task<IActionResult> VerificarCliente(string slug, [FromQuery] string telefone)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null || !loja.AgendamentoOnlineAtivo)
+            return NotFound();
+
+        var tel = new string((telefone ?? "").Where(char.IsDigit).ToArray());
+        if (tel.Length < 8) return Ok(new { existe = false });
+
+        var cliente = await db.Clientes
+            .FirstOrDefaultAsync(c => c.LojaId == loja.Id && c.Telefone == tel);
+
+        if (cliente is null) return Ok(new { existe = false });
+
+        // Retorna só o primeiro nome (privacidade)
+        var primeiroNome = cliente.Nome.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+
+        return Ok(new { existe = true, primeiroNome });
+    }
 }
 
 public record AgendarPublicoRequest(
