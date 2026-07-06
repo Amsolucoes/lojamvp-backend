@@ -10,7 +10,11 @@ public record CriarLojaRequest(
     decimal MensalidadeValor,
     string AdminNome,
     string AdminEmail,
-    string AdminSenha
+    string AdminSenha,
+    string? PerfilId = null,
+    string? TipoPlano = null,
+    string? ModulosAtivos = null,
+    bool EhTeste = false
 );
 
 public record AtualizarLojaRequest(

@@ -95,18 +95,21 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
 
         var loja = new Loja
         {
-            Nome             = req.Nome,
-            Email            = req.Email,
-            Cnpj             = req.Cnpj,
-            Cpf              = req.Cpf,
-            Telefone         = req.Telefone,
-            Endereco         = req.Endereco,
-            CorPrimaria      = req.CorPrimaria,
-            MensalidadeDia   = req.MensalidadeDia,
+            Nome = req.Nome,
+            Email = req.Email,
+            Cnpj = req.Cnpj,
+            Cpf = req.Cpf,
+            Telefone = req.Telefone,
+            Endereco = req.Endereco,
+            CorPrimaria = req.CorPrimaria,
+            MensalidadeDia = req.MensalidadeDia,
             MensalidadeValor = req.MensalidadeValor,
-            Status           = StatusLoja.Trial,
-            TrialAte         = DateTime.UtcNow.AddDays(7),
-            SchemaNome       = TenantService.GerarSchemaNome(req.Nome),
+            TipoPlano = req.TipoPlano ?? "loja",
+            ModulosAtivos = req.ModulosAtivos ?? "",
+            EhTeste = req.EhTeste,
+            Status = StatusLoja.Trial,
+            TrialAte = DateTime.UtcNow.AddDays(7),
+            SchemaNome = TenantService.GerarSchemaNome(req.Nome),
         };
         db.Lojas.Add(loja);
 
@@ -137,6 +140,48 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         });
 
         await db.SaveChangesAsync();
+
+        // Aplica o perfil escolhido (categorias, serviços, tipo de plano)
+        if (!string.IsNullOrEmpty(req.PerfilId) && Guid.TryParse(req.PerfilId, out var perfilGuid))
+        {
+            var perfil = await db.PerfisLoja
+                .Include(p => p.Categorias)
+                .Include(p => p.Servicos)
+                .FirstOrDefaultAsync(p => p.Id == perfilGuid);
+            if (perfil != null)
+            {
+                foreach (var cat in perfil.Categorias.OrderBy(c => c.Ordem))
+                    db.CategoriasLoja.Add(new CategoriaLoja
+                    {
+                        LojaId = loja.Id,
+                        Nome = cat.Nome,
+                        Ordem = cat.Ordem,
+                        TipoTamanho = cat.TipoTamanho,
+                    });
+
+                foreach (var s in perfil.Servicos.OrderBy(s => s.Ordem))
+                    db.Servicos.Add(new Servico
+                    {
+                        LojaId = loja.Id,
+                        Nome = s.Nome,
+                        Categoria = s.Categoria,
+                        Preco = s.Preco,
+                        DuracaoMin = s.DuracaoMin,
+                        Ativo = true,
+                    });
+
+                // Só aplica o tipo do perfil se o admin não definiu módulos manualmente
+                if (string.IsNullOrEmpty(loja.ModulosAtivos))
+                {
+                    loja.TipoPlano = perfil.TipoPlanoAplica;
+                    if (perfil.TipoPlanoAplica == "servicos" || perfil.TipoPlanoAplica == "loja_modulos")
+                        loja.ModulosAtivos = "servicos";
+                }
+
+                await db.SaveChangesAsync();
+            }
+        }
+
         return CreatedAtAction(nameof(Buscar), new { id = loja.Id }, ToLojaDto(loja, DateTime.UtcNow));
     }
 

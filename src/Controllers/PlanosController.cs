@@ -225,6 +225,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
 
         var plano = await db.Planos.FindAsync(assinatura.PlanoId);
         var valor = plano?.Valor ?? 0;
+        var nomePlano = plano?.Nome ?? "Plano";
 
         // Mês de referência (primeiro dia do mês atual, UTC)
         var agora = DateTime.UtcNow;
@@ -252,22 +253,65 @@ public class PlanosController(AppDbContext db) : ControllerBase
             pg.PagoEm = req.Pago ? agora : null;
         }
 
+        // ── Ao marcar PAGO: cria uma venda para entrar no fluxo de caixa ──
+        if (req.Pago && pg.VendaId is null)
+        {
+            var venda = new Venda
+            {
+                LojaId = lojaId,
+                ClienteId = assinatura.ClienteId,
+                Total = valor,
+                Desconto = 0,
+                TotalFinal = valor,
+                FormaPagamento = "pix",
+                FormasPagamento = null,
+                Troco = null,
+            };
+            db.Vendas.Add(venda);
+
+            db.ItensVenda.Add(new ItemVenda
+            {
+                VendaId = venda.Id,
+                ProdutoId = null,
+                ServicoId = null,
+                NomeProduto = $"Mensalidade - {nomePlano}",
+                Quantidade = 1,
+                PrecoUnitario = valor,
+                Subtotal = valor,
+            });
+
+            pg.VendaId = venda.Id;
+        }
+        // ── Ao DESFAZER (marcar pendente): remove a venda criada ──
+        else if (!req.Pago && pg.VendaId is not null)
+        {
+            var vendaAntiga = await db.Vendas
+                .Include(v => v.Itens)
+                .FirstOrDefaultAsync(v => v.Id == pg.VendaId.Value);
+            if (vendaAntiga is not null)
+            {
+                db.ItensVenda.RemoveRange(vendaAntiga.Itens);
+                db.Vendas.Remove(vendaAntiga);
+            }
+            pg.VendaId = null;
+        }
+
         await db.SaveChangesAsync();
         return Ok(new { pg.Id, pg.Status });
     }
-}
 
-public record VincularPlanoRequest(
+    public record VincularPlanoRequest(
     Guid ClienteId,
     Guid PlanoId,
     int DiaVencimento
 );
 
-public record MarcarPagamentoPlanoRequest(bool Pago);
+    public record MarcarPagamentoPlanoRequest(bool Pago);
 
 
-public record SalvarPlanoRequest(
-    string Nome,
-    decimal Valor,
-    string? ServicosIds
-);
+    public record SalvarPlanoRequest(
+        string Nome,
+        decimal Valor,
+        string? ServicosIds
+    );
+}
