@@ -241,6 +241,29 @@ public class PlanosController(AppDbContext db) : ControllerBase
         return Ok(new { assinatura.Id });
     }
 
+    // ── Atualizar assinatura (trocar plano ou dia de vencimento) ──
+    [HttpPut("assinantes/{id:guid}")]
+    public async Task<IActionResult> AtualizarAssinatura(Guid id, [FromBody] AtualizarAssinaturaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var assinatura = await db.AssinaturasCliente
+            .FirstOrDefaultAsync(a => a.Id == id && a.LojaId == lojaId && a.Status == "ativa");
+        if (assinatura is null) return NotFound();
+
+        if (req.PlanoId.HasValue)
+        {
+            var novoPlano = await db.Planos.FirstOrDefaultAsync(p => p.Id == req.PlanoId.Value && p.LojaId == lojaId);
+            if (novoPlano is null) return BadRequest(new { erro = "Plano não encontrado." });
+            assinatura.PlanoId = req.PlanoId.Value;
+        }
+
+        if (req.DiaVencimento is >= 1 and <= 28)
+            assinatura.DiaVencimento = req.DiaVencimento.Value;
+
+        await db.SaveChangesAsync();
+        return Ok(new { assinatura.Id, assinatura.PlanoId, assinatura.DiaVencimento });
+    }
+
     // ── Cancelar assinatura ───────────────────────────────────────
     [HttpPatch("assinantes/{id:guid}/cancelar")]
     public async Task<IActionResult> CancelarAssinatura(Guid id)
@@ -347,6 +370,8 @@ public class PlanosController(AppDbContext db) : ControllerBase
         }
         pg.VendaId = null;
     }
+
+    public record AtualizarAssinaturaRequest(Guid? PlanoId, int? DiaVencimento);
 
     public record VincularPlanoRequest(
     Guid ClienteId,
