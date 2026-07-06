@@ -40,6 +40,10 @@ public class BloqueioAutomaticoService(
                 using var scope = serviceProvider.CreateScope();
                 var tenantService = scope.ServiceProvider.GetRequiredService<TenantService>();
                 await tenantService.VerificarStatusAsync();
+
+                var planosService = scope.ServiceProvider.GetRequiredService<PlanosService>();
+                await planosService.GerarPendenciasMensaisAsync();
+
                 logger.LogInformation("Verificação automática de bloqueio concluída em {Data} UTC.", DateTime.UtcNow);
             }
             catch (Exception ex)

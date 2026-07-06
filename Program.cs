@@ -35,6 +35,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<TenantService>();
 builder.Services.AddScoped<MercadoPagoService>();
+builder.Services.AddScoped<PlanosService>();
 builder.Services.AddHostedService<BloqueioAutomaticoService>();
 
 // ── Controllers + Swagger ─────────────────────────────────────────
