@@ -170,6 +170,8 @@ public class PlanosController(AppDbContext db) : ControllerBase
                 pagoNoMes = pgMes != null && pgMes.Status == "pago",
                 mesesEmAtraso = pendentes.Count,
                 valorTotalAtraso = pendentes.Sum(p => p.Valor),
+                mesInicioCobranca = a.MesInicioCobranca,
+                aindaNaoIniciou = a.MesInicioCobranca > mesAtual,
             };
         })
         .OrderByDescending(x => x.mesesEmAtraso)
@@ -229,13 +231,18 @@ public class PlanosController(AppDbContext db) : ControllerBase
         if (jaTem)
             return Conflict(new { erro = "Este cliente já tem um plano ativo." });
 
+        var agoraVinculo = DateTime.UtcNow;
+        var mesAtualVinculo = new DateTime(agoraVinculo.Year, agoraVinculo.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var mesInicio = req.IniciarProximoMes ? mesAtualVinculo.AddMonths(1) : mesAtualVinculo;
+
         var assinatura = new AssinaturaCliente
         {
             LojaId = lojaId.Value,
             ClienteId = req.ClienteId,
             PlanoId = req.PlanoId,
             DiaVencimento = req.DiaVencimento is >= 1 and <= 28 ? req.DiaVencimento : 10,
-            DataInicio = DateTime.UtcNow,
+            DataInicio = agoraVinculo,
+            MesInicioCobranca = mesInicio,
             Status = "ativa",
         };
         db.AssinaturasCliente.Add(assinatura);
@@ -377,10 +384,11 @@ public class PlanosController(AppDbContext db) : ControllerBase
     public record AtualizarAssinaturaRequest(Guid? PlanoId, int? DiaVencimento);
 
     public record VincularPlanoRequest(
-    Guid ClienteId,
-    Guid PlanoId,
-    int DiaVencimento
-);
+        Guid ClienteId,
+        Guid PlanoId,
+        int DiaVencimento,
+        bool IniciarProximoMes = false
+    );
 
     public record MarcarPagamentoPlanoRequest(bool Pago);
 

@@ -414,18 +414,15 @@ public class AssinaturaCliente
 {
     [Key]
     public Guid Id { get; set; } = Guid.NewGuid();
-
     public Guid LojaId { get; set; }
     public Guid ClienteId { get; set; }
     public Guid PlanoId { get; set; }
-
     public int DiaVencimento { get; set; } = 10;
-
     public DateTime DataInicio { get; set; } = DateTime.UtcNow;
-
+    // Primeiro dia do mês em que a cobrança deve começar (ex: 2026-08-01)
+    public DateTime MesInicioCobranca { get; set; } = DateTime.UtcNow;
     [MaxLength(20)]
     public string Status { get; set; } = "ativa"; // ativa | cancelada
-
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 

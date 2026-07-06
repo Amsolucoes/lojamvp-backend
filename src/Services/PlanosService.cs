@@ -19,6 +19,9 @@ public class PlanosService(AppDbContext db, ILogger<PlanosService> logger)
 
         foreach (var assinatura in assinaturasAtivas)
         {
+            // Ainda não chegou o mês em que essa assinatura deve começar a ser cobrada
+            if (assinatura.MesInicioCobranca > mesAtual) continue;
+
             var jaExiste = await db.PagamentosPlano
                 .AnyAsync(p => p.AssinaturaId == assinatura.Id && p.MesReferencia == mesAtual);
 
