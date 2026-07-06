@@ -152,7 +152,10 @@ public class PlanosController(AppDbContext db) : ControllerBase
             var pl = planos.FirstOrDefault(p => p.Id == a.PlanoId);
             var doAssinante = todosPagamentos.Where(pg => pg.AssinaturaId == a.Id).ToList();
             var pgMes = doAssinante.FirstOrDefault(pg => pg.MesReferencia == mesAtual);
-            var pendentes = doAssinante.Where(pg => pg.Status == "pendente").ToList();
+            var pendentes = doAssinante.Where(pg =>
+                pg.Status == "pendente" &&
+                (pg.MesReferencia < mesAtual || (pg.MesReferencia == mesAtual && agora.Day > a.DiaVencimento))
+            ).ToList();
 
             return new
             {
