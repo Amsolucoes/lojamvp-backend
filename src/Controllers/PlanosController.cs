@@ -120,13 +120,13 @@ public class PlanosController(AppDbContext db) : ControllerBase
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
-        // Junta assinatura + dados do cliente + nome do plano
         var assinaturas = await db.AssinaturasCliente
             .Where(a => a.LojaId == lojaId && a.Status == "ativa")
             .ToListAsync();
 
         var clienteIds = assinaturas.Select(a => a.ClienteId).ToList();
         var planoIds = assinaturas.Select(a => a.PlanoId).ToList();
+        var assinaturaIds = assinaturas.Select(a => a.Id).ToList();
 
         var clientes = await db.Clientes
             .Where(c => clienteIds.Contains(c.Id))
@@ -138,19 +138,22 @@ public class PlanosController(AppDbContext db) : ControllerBase
             .Select(p => new { p.Id, p.Nome, p.Valor })
             .ToListAsync();
 
-        // Mês de referência atual (primeiro dia do mês, UTC)
         var agora = DateTime.UtcNow;
         var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var pagamentosMes = await db.PagamentosPlano
-            .Where(pg => pg.LojaId == lojaId && pg.MesReferencia == mesAtual)
+        // Todos os pagamentos dessas assinaturas (não só o mês atual)
+        var todosPagamentos = await db.PagamentosPlano
+            .Where(pg => assinaturaIds.Contains(pg.AssinaturaId))
             .ToListAsync();
 
         var resultado = assinaturas.Select(a =>
         {
             var cli = clientes.FirstOrDefault(c => c.Id == a.ClienteId);
             var pl = planos.FirstOrDefault(p => p.Id == a.PlanoId);
-            var pgMes = pagamentosMes.FirstOrDefault(pg => pg.AssinaturaId == a.Id);
+            var doAssinante = todosPagamentos.Where(pg => pg.AssinaturaId == a.Id).ToList();
+            var pgMes = doAssinante.FirstOrDefault(pg => pg.MesReferencia == mesAtual);
+            var pendentes = doAssinante.Where(pg => pg.Status == "pendente").ToList();
+
             return new
             {
                 assinaturaId = a.Id,
@@ -162,10 +165,46 @@ public class PlanosController(AppDbContext db) : ControllerBase
                 valor = pl?.Valor ?? 0,
                 diaVencimento = a.DiaVencimento,
                 pagoNoMes = pgMes != null && pgMes.Status == "pago",
+                mesesEmAtraso = pendentes.Count,
+                valorTotalAtraso = pendentes.Sum(p => p.Valor),
             };
-        }).OrderBy(x => x.clienteNome).ToList();
+        })
+        .OrderByDescending(x => x.mesesEmAtraso)
+        .ThenBy(x => x.clienteNome)
+        .ToList();
 
         return Ok(resultado);
+    }
+
+    // ── Quitar todos os meses pendentes de uma assinatura ──────────
+    [HttpPost("assinantes/{id:guid}/quitar-atraso")]
+    public async Task<IActionResult> QuitarAtraso(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var assinatura = await db.AssinaturasCliente.FirstOrDefaultAsync(a => a.Id == id && a.LojaId == lojaId);
+        if (assinatura is null) return NotFound();
+
+        var plano = await db.Planos.FindAsync(assinatura.PlanoId);
+        var valor = plano?.Valor ?? 0;
+        var nomePlano = plano?.Nome ?? "Plano";
+        var agora = DateTime.UtcNow;
+
+        var pendentes = await db.PagamentosPlano
+            .Where(p => p.AssinaturaId == id && p.Status == "pendente")
+            .ToListAsync();
+
+        if (pendentes.Count == 0)
+            return BadRequest(new { erro = "Não há meses pendentes para essa assinatura." });
+
+        foreach (var pg in pendentes)
+        {
+            pg.Status = "pago";
+            pg.PagoEm = agora;
+            await CriarVendaMensalidadeAsync(pg, lojaId.Value, assinatura.ClienteId, nomePlano, valor);
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { quitados = pendentes.Count, valorTotal = pendentes.Sum(p => p.Valor) });
     }
 
     // ── Vincular cliente a um plano ───────────────────────────────
@@ -253,51 +292,60 @@ public class PlanosController(AppDbContext db) : ControllerBase
             pg.PagoEm = req.Pago ? agora : null;
         }
 
-        // ── Ao marcar PAGO: cria uma venda para entrar no fluxo de caixa ──
-        if (req.Pago && pg.VendaId is null)
-        {
-            var venda = new Venda
-            {
-                LojaId = lojaId,
-                ClienteId = assinatura.ClienteId,
-                Total = valor,
-                Desconto = 0,
-                TotalFinal = valor,
-                FormaPagamento = "pix",
-                FormasPagamento = null,
-                Troco = null,
-            };
-            db.Vendas.Add(venda);
-
-            db.ItensVenda.Add(new ItemVenda
-            {
-                VendaId = venda.Id,
-                ProdutoId = null,
-                ServicoId = null,
-                NomeProduto = $"Mensalidade - {nomePlano}",
-                Quantidade = 1,
-                PrecoUnitario = valor,
-                Subtotal = valor,
-            });
-
-            pg.VendaId = venda.Id;
-        }
-        // ── Ao DESFAZER (marcar pendente): remove a venda criada ──
-        else if (!req.Pago && pg.VendaId is not null)
-        {
-            var vendaAntiga = await db.Vendas
-                .Include(v => v.Itens)
-                .FirstOrDefaultAsync(v => v.Id == pg.VendaId.Value);
-            if (vendaAntiga is not null)
-            {
-                db.ItensVenda.RemoveRange(vendaAntiga.Itens);
-                db.Vendas.Remove(vendaAntiga);
-            }
-            pg.VendaId = null;
-        }
+        if (req.Pago)
+            await CriarVendaMensalidadeAsync(pg, lojaId.Value, assinatura.ClienteId, nomePlano, valor);
+        else
+            await RemoverVendaAsync(pg);
 
         await db.SaveChangesAsync();
         return Ok(new { pg.Id, pg.Status });
+    }
+
+    // ── Helpers de venda (fluxo de caixa) ──────────────────────────
+    private async Task CriarVendaMensalidadeAsync(PagamentoPlano pg, Guid lojaId, Guid clienteId, string nomePlano, decimal valor)
+    {
+        if (pg.VendaId is not null) return;
+
+        var venda = new Venda
+        {
+            LojaId = lojaId,
+            ClienteId = clienteId,
+            Total = valor,
+            Desconto = 0,
+            TotalFinal = valor,
+            FormaPagamento = "pix",
+            FormasPagamento = null,
+            Troco = null,
+        };
+        db.Vendas.Add(venda);
+
+        db.ItensVenda.Add(new ItemVenda
+        {
+            VendaId = venda.Id,
+            ProdutoId = null,
+            ServicoId = null,
+            NomeProduto = $"Mensalidade - {nomePlano}",
+            Quantidade = 1,
+            PrecoUnitario = valor,
+            Subtotal = valor,
+        });
+
+        pg.VendaId = venda.Id;
+    }
+
+    private async Task RemoverVendaAsync(PagamentoPlano pg)
+    {
+        if (pg.VendaId is null) return;
+
+        var vendaAntiga = await db.Vendas
+            .Include(v => v.Itens)
+            .FirstOrDefaultAsync(v => v.Id == pg.VendaId.Value);
+        if (vendaAntiga is not null)
+        {
+            db.ItensVenda.RemoveRange(vendaAntiga.Itens);
+            db.Vendas.Remove(vendaAntiga);
+        }
+        pg.VendaId = null;
     }
 
     public record VincularPlanoRequest(
