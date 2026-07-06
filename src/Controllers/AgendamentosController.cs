@@ -88,6 +88,30 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         return Ok(lista);
     }
 
+    // ── Listar agendamentos online pendentes de aprovação ─────────
+    [HttpGet("pendentes")]
+    public async Task<IActionResult> Pendentes()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.Agendamentos
+            .Where(a => a.LojaId == lojaId && a.Status == "pendente")
+            .OrderBy(a => a.DataHora)
+            .Select(a => new {
+                a.Id,
+                a.NomeServico,
+                a.NomeCliente,
+                a.Preco,
+                a.DataHora,
+                a.DuracaoMin,
+                a.Origem,
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
     // ── Criar ─────────────────────────────────────────────────────
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] SalvarAgendamentoRequest req)
