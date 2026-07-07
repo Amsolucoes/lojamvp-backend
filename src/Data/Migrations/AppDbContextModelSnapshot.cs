@@ -1257,7 +1257,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000009"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8051),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(8461),
                             Descricao = "Loja em branco — você cria suas próprias categorias",
                             Icone = "🏬",
                             Nome = "Começar do zero",
@@ -1267,7 +1267,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8097),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(8506),
                             Descricao = "Para lojas de semi joias, bijuterias e maquiagem",
                             Icone = "💍",
                             Nome = "Semi Joias e Maquiagem",
@@ -1277,7 +1277,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8193),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(8588),
                             Descricao = "Para lojas de roupas e moda",
                             Icone = "👕",
                             Nome = "Vestuário",
@@ -1287,7 +1287,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8313),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(8723),
                             Descricao = "Para lojas de sapatos, tênis e sandálias",
                             Icone = "👟",
                             Nome = "Calçados",
@@ -1297,7 +1297,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000004"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8409),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(8916),
                             Descricao = "Para pet shops: ração a granel, petiscos, acessórios e mais",
                             Icone = "🐾",
                             Nome = "Pet Shop",
@@ -1307,7 +1307,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000005"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8598),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(8992),
                             Descricao = "Para lojas de conveniência, mercadinhos e similares",
                             Icone = "🏪",
                             Nome = "Conveniência",
@@ -1317,7 +1317,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000006"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8668),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(9064),
                             Descricao = "Para lojas de materiais de construção e ferragens",
                             Icone = "🧱",
                             Nome = "Material de Construção",
@@ -1327,7 +1327,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8738),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(9138),
                             Descricao = "Para banho e tosa: agenda, serviços e caixa",
                             Icone = "🐾",
                             Nome = "Banho e Tosa",
@@ -1337,7 +1337,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8764),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(9166),
                             Descricao = "Banho e tosa com venda de produtos",
                             Icone = "🐾",
                             Nome = "Banho e Tosa + Loja",
@@ -1347,7 +1347,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000003"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8792),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(9195),
                             Descricao = "Para barbearias: agenda, serviços e caixa",
                             Icone = "💈",
                             Nome = "Barbearia",
@@ -1357,7 +1357,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000004"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8821),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(9224),
                             Descricao = "Barbearia com venda de produtos",
                             Icone = "💈",
                             Nome = "Barbearia + Loja",
@@ -1367,7 +1367,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000005"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8851),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(9253),
                             Descricao = "Para salões: agenda, serviços e caixa",
                             Icone = "💇",
                             Nome = "Salão de Beleza",
@@ -1377,7 +1377,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000006"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(8879),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(9282),
                             Descricao = "Salão com venda de produtos",
                             Icone = "💇",
                             Nome = "Salão de Beleza + Loja",
@@ -1500,10 +1500,13 @@ namespace LojaApi.src.Data.Migrations
                     b.HasKey("Id")
                         .HasName("p_k_produtos");
 
-                    b.HasIndex("LojaId", "CodigoBarras")
+                    b.HasIndex("CodigoBarras")
                         .IsUnique()
-                        .HasDatabaseName("i_x_produtos_loja_id_codigo_barras")
+                        .HasDatabaseName("i_x_produtos_codigo_barras")
                         .HasFilter("codigo_barras IS NOT NULL");
+
+                    b.HasIndex("LojaId")
+                        .HasDatabaseName("i_x_produtos_loja_id");
 
                     b.ToTable("produtos");
                 });
@@ -2057,17 +2060,17 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(7167),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(7602),
                             Email = "admin@loja.com",
                             Nome = "Administrador",
                             Role = "admin",
-                            SenhaHash = "$2a$11$cl7hZcO0SuiqlO.cRXh6g.Hs5Et5DE2HC69UrcWPAQ8D.W2OOB2IG"
+                            SenhaHash = "$2a$11$lODgAfI41TlHofeX0bTEVeb4tOszEOujf4KamXfVTCMfrI.BSTiWK"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 7, 13, 5, 21, 951, DateTimeKind.Utc).AddTicks(7971),
+                            CriadoEm = new DateTime(2026, 7, 6, 22, 57, 28, 905, DateTimeKind.Utc).AddTicks(8378),
                             Email = "superadmin@suaempresa.com",
                             Nome = "Super Admin",
                             Role = "superadmin",

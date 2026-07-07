@@ -61,13 +61,6 @@ public class ProdutosController(AppDbContext db) : ControllerBase
     {
         var lojaId = await GetLojaId();
 
-        if (!string.IsNullOrWhiteSpace(req.CodigoBarras))
-        {
-            var jaExiste = await db.Produtos.AnyAsync(p => p.CodigoBarras == req.CodigoBarras && p.LojaId == lojaId);
-            if (jaExiste)
-                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outro produto da sua loja." });
-        }
-
         var produto = new Produto
         {
             Nome = req.Nome,
@@ -106,13 +99,6 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         var lojaId = await GetLojaId();
         var produto = await db.Produtos.FindAsync(id);
         if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
-
-        if (!string.IsNullOrWhiteSpace(req.CodigoBarras) && req.CodigoBarras != produto.CodigoBarras)
-        {
-            var jaExiste = await db.Produtos.AnyAsync(p => p.CodigoBarras == req.CodigoBarras && p.LojaId == lojaId && p.Id != id);
-            if (jaExiste)
-                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outro produto da sua loja." });
-        }
 
         produto.Nome = req.Nome; produto.Descricao = req.Descricao;
         produto.Categoria = req.Categoria; produto.PrecoCusto = req.PrecoCusto;
