@@ -334,6 +334,65 @@ public class PlanosController(AppDbContext db) : ControllerBase
         return Ok(new { pg.Id, pg.Status });
     }
 
+    // ── Info do plano de um cliente (usado no Caixa) ───────────────
+    [HttpGet("cliente/{clienteId:guid}")]
+    public async Task<IActionResult> AssinaturaDoCliente(Guid clienteId)
+    {
+        var lojaId = await GetLojaId();
+        var assinatura = await db.AssinaturasCliente
+            .FirstOrDefaultAsync(a => a.ClienteId == clienteId && a.LojaId == lojaId && a.Status == "ativa");
+
+        if (assinatura is null) return Ok(new { temPlano = false });
+
+        var plano = await db.Planos.FindAsync(assinatura.PlanoId);
+        if (plano is null) return Ok(new { temPlano = false });
+
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var temAtraso = await db.PagamentosPlano.AnyAsync(p =>
+            p.AssinaturaId == assinatura.Id &&
+            p.Status == "pendente" &&
+            (p.MesReferencia < mesAtual || (p.MesReferencia == mesAtual && agora.Day > assinatura.DiaVencimento)));
+
+        var servicosIncluidos = (plano.ServicosIds ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .ToList();
+
+        return Ok(new
+        {
+            temPlano = true,
+            planoId = plano.Id,
+            planoNome = plano.Nome,
+            servicosIncluidos,
+            emDia = !temAtraso,
+        });
+    }
+
+    // ── Histórico completo de pagamentos de uma assinatura ─────────
+    [HttpGet("assinantes/{id:guid}/historico")]
+    public async Task<IActionResult> HistoricoPagamentos(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var assinatura = await db.AssinaturasCliente.FirstOrDefaultAsync(a => a.Id == id && a.LojaId == lojaId);
+        if (assinatura is null) return NotFound();
+
+        var historico = await db.PagamentosPlano
+            .Where(p => p.AssinaturaId == id)
+            .OrderByDescending(p => p.MesReferencia)
+            .Select(p => new
+            {
+                p.Id,
+                p.MesReferencia,
+                p.Valor,
+                p.Status,
+                p.PagoEm,
+            })
+            .ToListAsync();
+
+        return Ok(historico);
+    }
+
     // ── Helpers de venda (fluxo de caixa) ──────────────────────────
     private async Task CriarVendaMensalidadeAsync(PagamentoPlano pg, Guid lojaId, Guid clienteId, string nomePlano, decimal valor)
     {
