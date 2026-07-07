@@ -449,3 +449,17 @@ public class PagamentoPlano
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
+
+// ── Registro de uso de serviço incluso no plano ───────────────────
+public class ConsumoPlano
+{
+    [Key]
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid AssinaturaId { get; set; }
+    public Guid LojaId { get; set; }
+    public Guid ServicoId { get; set; }
+    [MaxLength(150)]
+    public string NomeServico { get; set; } = "";
+    public Guid? VendaId { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}

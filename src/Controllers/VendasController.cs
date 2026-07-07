@@ -138,6 +138,19 @@ public class VendasController(AppDbContext db) : ControllerBase
                         ag.VendaId = venda.Id;
                     }
                 }
+
+                if (item.AssinaturaId.HasValue)
+                {
+                    db.ConsumosPlano.Add(new ConsumoPlano
+                    {
+                        AssinaturaId = item.AssinaturaId.Value,
+                        LojaId = lojaId!.Value,
+                        ServicoId = servico!.Id,
+                        NomeServico = servico.Nome,
+                        VendaId = venda.Id,
+                    });
+                }
+
                 continue;
             }
 

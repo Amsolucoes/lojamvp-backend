@@ -65,12 +65,13 @@ public record SalvarClienteRequest(
 
 // ── Venda ─────────────────────────────────────────────────────────
 public record ItemVendaRequest(
-    Guid? ProdutoId, 
-    decimal Quantidade, 
-    decimal PrecoUnitario, 
+    Guid? ProdutoId,
+    decimal Quantidade,
+    decimal PrecoUnitario,
     Guid? VariacaoId = null,
     Guid? ServicoId = null,
-    Guid? AgendamentoId = null
+    Guid? AgendamentoId = null,
+    Guid? AssinaturaId = null
 );
 
 public record CriarVendaRequest(

@@ -146,6 +146,12 @@ public class PlanosController(AppDbContext db) : ControllerBase
             .Where(pg => assinaturaIds.Contains(pg.AssinaturaId))
             .ToListAsync();
 
+        var contagemConsumos = await db.ConsumosPlano
+            .Where(c => assinaturaIds.Contains(c.AssinaturaId))
+            .GroupBy(c => c.AssinaturaId)
+            .Select(g => new { AssinaturaId = g.Key, Total = g.Count() })
+            .ToListAsync();
+
         var resultado = assinaturas.Select(a =>
         {
             var cli = clientes.FirstOrDefault(c => c.Id == a.ClienteId);
@@ -172,6 +178,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
                 valorTotalAtraso = pendentes.Sum(p => p.Valor),
                 mesInicioCobranca = a.MesInicioCobranca,
                 aindaNaoIniciou = a.MesInicioCobranca > mesAtual,
+                totalConsumos = contagemConsumos.FirstOrDefault(x => x.AssinaturaId == a.Id)?.Total ?? 0,
             };
         })
         .OrderByDescending(x => x.mesesEmAtraso)
@@ -362,6 +369,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
         return Ok(new
         {
             temPlano = true,
+            assinaturaId = assinatura.Id,
             planoId = plano.Id,
             planoNome = plano.Nome,
             servicosIncluidos,
@@ -391,6 +399,23 @@ public class PlanosController(AppDbContext db) : ControllerBase
             .ToListAsync();
 
         return Ok(historico);
+    }
+
+    // ── Consumos de serviço incluso no plano ───────────────────────
+    [HttpGet("assinantes/{id:guid}/consumos")]
+    public async Task<IActionResult> Consumos(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var assinatura = await db.AssinaturasCliente.FirstOrDefaultAsync(a => a.Id == id && a.LojaId == lojaId);
+        if (assinatura is null) return NotFound();
+
+        var consumos = await db.ConsumosPlano
+            .Where(c => c.AssinaturaId == id)
+            .OrderByDescending(c => c.CriadoEm)
+            .Select(c => new { c.Id, c.ServicoId, c.NomeServico, c.CriadoEm })
+            .ToListAsync();
+
+        return Ok(consumos);
     }
 
     // ── Helpers de venda (fluxo de caixa) ──────────────────────────

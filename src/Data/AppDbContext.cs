@@ -28,6 +28,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Plano> Planos => Set<Plano>();
     public DbSet<AssinaturaCliente> AssinaturasCliente => Set<AssinaturaCliente>();
     public DbSet<PagamentoPlano> PagamentosPlano => Set<PagamentoPlano>();
+    public DbSet<ConsumoPlano> ConsumosPlano => Set<ConsumoPlano>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -144,6 +145,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<Loja>()
             .HasIndex(l => l.Slug)
             .IsUnique();
+
+        mb.Entity<ConsumoPlano>()
+            .HasOne<AssinaturaCliente>()
+            .WithMany()
+            .HasForeignKey(c => c.AssinaturaId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
