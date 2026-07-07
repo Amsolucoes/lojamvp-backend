@@ -17,6 +17,8 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
 {
     private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+    public record AlterarTrialRequest(DateTime TrialAte);
+
     // ── Dashboard ─────────────────────────────────────────────────
     [HttpGet("dashboard")]
     public async Task<IActionResult> Dashboard()
@@ -495,6 +497,24 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     {
         await tenantService.VerificarStatusAsync();
         return Ok(new { mensagem = "Verificação de bloqueios executada." });
+    }
+
+    [HttpPatch("lojas/{id:guid}/trial")]
+    public async Task<IActionResult> AlterarTrial(Guid id, [FromBody] AlterarTrialRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        loja.TrialAte = DateTime.SpecifyKind(req.TrialAte.Date, DateTimeKind.Utc).AddHours(23).AddMinutes(59);
+
+        // Se a loja estava bloqueada por trial vencido, reativa como trial de novo
+        if (loja.Status == StatusLoja.Bloqueado)
+            loja.Status = StatusLoja.Trial;
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.Id, loja.TrialAte, loja.Status });
     }
 
     // ── Mappers ───────────────────────────────────────────────────
