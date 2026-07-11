@@ -1,6 +1,4 @@
-﻿using LojaApi.src.Data.Services;
-
-namespace LojaApi.Services;
+﻿namespace LojaApi.Services;
 
 public class BloqueioAutomaticoService(
     IServiceProvider serviceProvider,
@@ -45,7 +43,7 @@ public class BloqueioAutomaticoService(
                 await planosService.GerarPendenciasMensaisAsync();
 
                 var financeiroService = scope.ServiceProvider.GetRequiredService<FinanceiroService>();
-                await financeiroService.GerarLancamentosFixosDoMesAsync();
+                await financeiroService.GerarPendenciasMensaisAsync();
 
                 logger.LogInformation("Verificação automática de bloqueio concluída em {Data} UTC.", DateTime.UtcNow);
             }
