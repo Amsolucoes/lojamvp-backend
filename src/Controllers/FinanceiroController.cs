@@ -458,6 +458,43 @@ public class FinanceiroController(AppDbContext db) : ControllerBase
 
         return Ok(new { pagar = Resumo("pagar"), receber = Resumo("receber") });
     }
+
+    [HttpPost("categorias/seed-padrao")]
+    public async Task<IActionResult> SeedCategoriasPadrao()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var jaTem = await db.CategoriasFinanceiras.AnyAsync(c => c.LojaId == lojaId);
+        if (jaTem)
+            return BadRequest(new { erro = "Você já tem categorias cadastradas." });
+
+        var padrao = new (string Nome, string Tipo, string Icone)[]
+        {
+            ("Aluguel", "pagar", "🏠"),
+            ("Água", "pagar", "💧"),
+            ("Luz", "pagar", "💡"),
+            ("Internet", "pagar", "📶"),
+            ("Fornecedor", "pagar", "📦"),
+            ("Salário/Folha", "pagar", "👤"),
+            ("Impostos", "pagar", "🧾"),
+            ("Mensalidade/Assinatura", "receber", "💳"),
+            ("Venda avulsa", "receber", "🛒"),
+            ("Outros", "ambos", "📁"),
+        };
+
+        foreach (var (nome, tipo, icone) in padrao)
+            db.CategoriasFinanceiras.Add(new CategoriaFinanceira
+            {
+                LojaId = lojaId.Value,
+                Nome = nome,
+                Tipo = tipo,
+                Icone = icone,
+            });
+
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Categorias padrão criadas." });
+    }
 }
 
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
