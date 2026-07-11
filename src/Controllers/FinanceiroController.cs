@@ -245,7 +245,7 @@ public class FinanceiroController(AppDbContext db) : ControllerBase
             Descricao = req.Descricao.Trim(),
             CategoriaId = req.CategoriaId,
             Valor = req.Valor,
-            Vencimento = req.Vencimento,
+            Vencimento = DateTime.SpecifyKind(req.Vencimento, DateTimeKind.Utc),
         };
         db.LancamentosFinanceiros.Add(lancamento);
         await db.SaveChangesAsync();
@@ -268,7 +268,8 @@ public class FinanceiroController(AppDbContext db) : ControllerBase
 
         for (int i = 0; i < req.TotalParcelas; i++)
         {
-            var venc = req.PrimeiroVencimento.AddMonths(i);
+            var venc = DateTime.SpecifyKind(req.PrimeiroVencimento.AddMonths(i), DateTimeKind.Utc);
+
             lista.Add(new LancamentoFinanceiro
             {
                 LojaId = lojaId.Value,
