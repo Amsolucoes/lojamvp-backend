@@ -406,6 +406,104 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(new { mensagem = "Lançamento excluído." });
     }
 
+    // ── Contas a Pagar unificado (lançamentos + cartões) ───────────
+    [HttpGet("pagar-unificado")]
+    public async Task<IActionResult> PagarUnificado([FromQuery] int ano, [FromQuery] int mes, [FromQuery] string modo = "agrupado")
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var inicioMes = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fimMes = inicioMes.AddMonths(1);
+
+        var lancamentos = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes)
+            .Include(l => l.Categoria)
+            .Select(l => new
+            {
+                l.Id,
+                descricao = l.Descricao,
+                categoriaNome = l.Categoria != null ? l.Categoria.Nome : null,
+                valor = l.Valor,
+                vencimento = l.Vencimento,
+                status = l.Status,
+                pagoEm = l.PagoEm,
+                numeroParcela = l.NumeroParcela,
+                totalParcelas = l.TotalParcelas,
+                origem = "avulso",
+                cartaoId = (Guid?)null,
+                cartaoNome = (string?)null,
+            })
+            .ToListAsync();
+
+        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        var linhasCartao = new List<object>();
+
+        foreach (var cartao in cartoes)
+        {
+            var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
+            var (inicio, fim) = CicloDaFatura(cartao, vencimentoFatura);
+
+            var itensCiclo = await db.LancamentosCartao
+                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra >= inicio && l.DataCompra < fim)
+                .Include(l => l.Categoria)
+                .OrderBy(l => l.DataCompra)
+                .ToListAsync();
+
+            if (itensCiclo.Count == 0) continue;
+
+            var total = itensCiclo.Sum(i => i.Valor);
+            var faturaExistente = await db.FaturasCartao
+                .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
+
+            if (modo == "detalhado")
+            {
+                foreach (var item in itensCiclo)
+                {
+                    linhasCartao.Add(new
+                    {
+                        id = item.Id,
+                        descricao = $"{cartao.Nome} — {item.Descricao}",
+                        categoriaNome = item.Categoria?.Nome,
+                        valor = item.Valor,
+                        vencimento = vencimentoFatura,
+                        status = faturaExistente?.Status ?? "pendente",
+                        pagoEm = faturaExistente?.PagoEm,
+                        numeroParcela = (int?)null,
+                        totalParcelas = (int?)null,
+                        origem = "cartao_item",
+                        cartaoId = cartao.Id,
+                        cartaoNome = cartao.Nome,
+                    });
+                }
+            }
+            else
+            {
+                linhasCartao.Add(new
+                {
+                    id = cartao.Id,
+                    descricao = $"Fatura {cartao.Nome}",
+                    categoriaNome = (string?)null,
+                    valor = total,
+                    vencimento = vencimentoFatura,
+                    status = faturaExistente?.Status ?? "pendente",
+                    pagoEm = faturaExistente?.PagoEm,
+                    numeroParcela = (int?)null,
+                    totalParcelas = (int?)null,
+                    origem = "cartao_fatura",
+                    cartaoId = cartao.Id,
+                    cartaoNome = cartao.Nome,
+                });
+            }
+        }
+
+        var unificado = lancamentos.Cast<object>().Concat(linhasCartao)
+            .OrderBy(x => ((dynamic)x).vencimento)
+            .ToList();
+
+        return Ok(unificado);
+    }
+
     // ══════════════════ CATEGORIAS ══════════════════
 
     [HttpGet("categorias")]
