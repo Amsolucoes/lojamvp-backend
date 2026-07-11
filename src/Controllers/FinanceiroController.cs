@@ -144,7 +144,12 @@ public class FinanceiroController(AppDbContext db) : ControllerBase
             .Where(a => a.ContaBancariaId == contaId && a.Tipo == "ajuste")
             .SumAsync(a => (decimal?)a.Valor) ?? 0;
 
-        return conta.SaldoInicial + recebidos - pagos + entradasAjuste - saidasAjuste + diferencasAjuste;
+        var faturasCartaoPagas = await db.FaturasCartao
+            .Include(f => f.CartaoCredito)
+            .Where(f => f.CartaoCredito!.ContaBancariaId == contaId && f.Status == "pago")
+            .SumAsync(f => (decimal?)f.Total) ?? 0;
+
+        return conta.SaldoInicial + recebidos - pagos - faturasCartaoPagas + entradasAjuste - saidasAjuste + diferencasAjuste;
     }
 
     // ══════════════════ LANÇAMENTOS ══════════════════
@@ -496,8 +501,167 @@ public class FinanceiroController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         return Ok(new { mensagem = "Categorias padrão criadas." });
     }
+
+    // ══════════════════ CARTÕES DE CRÉDITO ══════════════════
+
+    [HttpGet("cartoes")]
+    public async Task<IActionResult> ListarCartoes()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId)
+            .Select(c => new { c.Id, c.Nome, c.Limite, c.DiaFechamento, c.DiaVencimento, c.ContaBancariaId, c.Ativo })
+            .ToListAsync();
+
+        return Ok(cartoes);
+    }
+
+    [HttpPost("cartoes")]
+    public async Task<IActionResult> CriarCartao([FromBody] SalvarCartaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var cartao = new CartaoCredito
+        {
+            LojaId = lojaId.Value,
+            Nome = req.Nome.Trim(),
+            Limite = req.Limite,
+            DiaFechamento = req.DiaFechamento,
+            DiaVencimento = req.DiaVencimento,
+            ContaBancariaId = req.ContaBancariaId,
+        };
+        db.CartoesCredito.Add(cartao);
+        await db.SaveChangesAsync();
+        return Ok(new { cartao.Id });
+    }
+
+    [HttpPut("cartoes/{id:guid}")]
+    public async Task<IActionResult> AtualizarCartao(Guid id, [FromBody] SalvarCartaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        cartao.Nome = req.Nome.Trim();
+        cartao.Limite = req.Limite;
+        cartao.DiaFechamento = req.DiaFechamento;
+        cartao.DiaVencimento = req.DiaVencimento;
+        cartao.ContaBancariaId = req.ContaBancariaId;
+        await db.SaveChangesAsync();
+        return Ok(new { cartao.Id });
+    }
+
+    // ── Lançar uma compra no cartão ────────────────────────────────
+    [HttpPost("cartoes/{id:guid}/lancamentos")]
+    public async Task<IActionResult> LancarCompra(Guid id, [FromBody] SalvarLancamentoCartaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        db.LancamentosCartao.Add(new LancamentoCartao
+        {
+            LojaId = lojaId!.Value,
+            CartaoCreditoId = id,
+            Descricao = req.Descricao.Trim(),
+            Valor = req.Valor,
+            DataCompra = DateTime.SpecifyKind(req.DataCompra, DateTimeKind.Utc),
+            CategoriaId = req.CategoriaId,
+        });
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Lançamento adicionado." });
+    }
+
+    // ── Calcula a fatura de um mês (sob demanda, sem precisar de job) ──
+    private DateTime CalcularVencimentoFatura(CartaoCredito cartao, int ano, int mes)
+        => new DateTime(ano, mes, Math.Min(cartao.DiaVencimento, DateTime.DaysInMonth(ano, mes)), 0, 0, 0, DateTimeKind.Utc);
+
+    private (DateTime Inicio, DateTime Fim) CicloDaFatura(CartaoCredito cartao, DateTime vencimento)
+    {
+        // Fechamento do ciclo = 1 mês antes do vencimento, no dia de fechamento
+        var fechamentoAtual = new DateTime(vencimento.Year, vencimento.Month, Math.Min(cartao.DiaFechamento, DateTime.DaysInMonth(vencimento.Year, vencimento.Month)), 0, 0, 0, DateTimeKind.Utc);
+        var fechamentoAnterior = fechamentoAtual.AddMonths(-1);
+        return (fechamentoAnterior, fechamentoAtual);
+    }
+
+    // ── Listar faturas + total, agrupado ou detalhado ──────────────
+    [HttpGet("cartoes/{id:guid}/fatura")]
+    public async Task<IActionResult> VerFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        var vencimento = CalcularVencimentoFatura(cartao, ano, mes);
+        var (inicio, fim) = CicloDaFatura(cartao, vencimento);
+
+        var itens = await db.LancamentosCartao
+            .Where(l => l.CartaoCreditoId == id && l.DataCompra >= inicio && l.DataCompra < fim)
+            .Include(l => l.Categoria)
+            .OrderBy(l => l.DataCompra)
+            .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null })
+            .ToListAsync();
+
+        var total = itens.Sum(i => i.Valor);
+
+        var faturaExistente = await db.FaturasCartao
+            .FirstOrDefaultAsync(f => f.CartaoCreditoId == id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
+
+        return Ok(new
+        {
+            vencimento,
+            total,
+            status = faturaExistente?.Status ?? "pendente",
+            pagoEm = faturaExistente?.PagoEm,
+            itens,
+        });
+    }
+
+    // ── Pagar/desfazer a fatura do mês ──────────────────────────────
+    [HttpPost("cartoes/{id:guid}/fatura/pagamento")]
+    public async Task<IActionResult> PagarFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] MarcarPagamentoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        var vencimento = CalcularVencimentoFatura(cartao, ano, mes);
+        var mesReferencia = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var (inicio, fim) = CicloDaFatura(cartao, vencimento);
+
+        var total = await db.LancamentosCartao
+            .Where(l => l.CartaoCreditoId == id && l.DataCompra >= inicio && l.DataCompra < fim)
+            .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+        var fatura = await db.FaturasCartao
+            .FirstOrDefaultAsync(f => f.CartaoCreditoId == id && f.MesReferencia == mesReferencia);
+
+        if (fatura is null)
+        {
+            fatura = new FaturaCartao
+            {
+                LojaId = lojaId!.Value,
+                CartaoCreditoId = id,
+                MesReferencia = mesReferencia,
+                Vencimento = vencimento,
+                Total = total,
+            };
+            db.FaturasCartao.Add(fatura);
+        }
+
+        fatura.Total = total;
+        fatura.Status = req.Pago ? "pago" : "pendente";
+        fatura.PagoEm = req.Pago ? DateTime.UtcNow : null;
+
+        await db.SaveChangesAsync();
+        return Ok(new { fatura.Id, fatura.Status, fatura.Total });
+    }
 }
 
+public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId);
+public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId);
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
 public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial);
 public record AjusteSaldoRequest(string Tipo, decimal? Valor, decimal NovoSaldo, string? Observacao);

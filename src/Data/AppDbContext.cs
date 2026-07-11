@@ -34,6 +34,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
     public DbSet<AjusteContaBancaria> AjustesContaBancaria => Set<AjusteContaBancaria>();
     public DbSet<CategoriaFinanceira> CategoriasFinanceiras => Set<CategoriaFinanceira>();
+    public DbSet<CartaoCredito> CartoesCredito => Set<CartaoCredito>();
+    public DbSet<LancamentoCartao> LancamentosCartao => Set<LancamentoCartao>();
+    public DbSet<FaturaCartao> FaturasCartao => Set<FaturaCartao>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -176,6 +179,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<AjusteContaBancaria>()
             .HasOne(a => a.ContaBancaria).WithMany()
             .HasForeignKey(a => a.ContaBancariaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<CartaoCredito>()
+            .HasOne(c => c.ContaBancaria).WithMany()
+            .HasForeignKey(c => c.ContaBancariaId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<LancamentoCartao>()
+            .HasOne(l => l.CartaoCredito).WithMany()
+            .HasForeignKey(l => l.CartaoCreditoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<LancamentoCartao>()
+            .HasOne(l => l.Categoria).WithMany()
+            .HasForeignKey(l => l.CategoriaId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<FaturaCartao>()
+            .HasOne(f => f.CartaoCredito).WithMany()
+            .HasForeignKey(f => f.CartaoCreditoId).OnDelete(DeleteBehavior.Cascade);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())

@@ -126,3 +126,70 @@ public class CategoriaFinanceira
     public bool Ativa { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
+
+// ── Cartão de crédito (configuração) ───────────────────────────────
+public class CartaoCredito
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+
+    [Required, MaxLength(60)]
+    public string Nome { get; set; } = "";
+
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal Limite { get; set; }
+
+    public int DiaFechamento { get; set; } = 10;
+    public int DiaVencimento { get; set; } = 15;
+
+    public Guid ContaBancariaId { get; set; }
+    public ContaBancaria? ContaBancaria { get; set; }
+
+    public bool Ativo { get; set; } = true;
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Compra individual no cartão ────────────────────────────────────
+public class LancamentoCartao
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+
+    public Guid CartaoCreditoId { get; set; }
+    public CartaoCredito? CartaoCredito { get; set; }
+
+    [Required, MaxLength(150)]
+    public string Descricao { get; set; } = "";
+
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal Valor { get; set; }
+
+    public DateTime DataCompra { get; set; }
+
+    public Guid? CategoriaId { get; set; }
+    public CategoriaFinanceira? Categoria { get; set; }
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Fatura do cartão (agregado do ciclo, calculado) ────────────────
+public class FaturaCartao
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+
+    public Guid CartaoCreditoId { get; set; }
+    public CartaoCredito? CartaoCredito { get; set; }
+
+    public DateTime MesReferencia { get; set; } // primeiro dia do mês de vencimento
+    public DateTime Vencimento { get; set; }
+
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal Total { get; set; }
+
+    [MaxLength(20)]
+    public string Status { get; set; } = "pendente"; // pendente | pago
+    public DateTime? PagoEm { get; set; }
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
