@@ -3,6 +3,7 @@ using System;
 using LojaApi.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LojaApi.src.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260711140517_AddModuloFinanceiro")]
+    partial class AddModuloFinanceiro
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -349,51 +352,6 @@ namespace LojaApi.src.Data.Migrations
                             PerfilLojaId = new Guid("10000000-0000-0000-0000-000000000003"),
                             Tipo = "texto"
                         });
-                });
-
-            modelBuilder.Entity("LojaApi.Models.CategoriaFinanceira", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<bool>("Ativa")
-                        .HasColumnType("boolean")
-                        .HasColumnName("ativa");
-
-                    b.Property<DateTime>("CriadoEm")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("criado_em");
-
-                    b.Property<string>("Icone")
-                        .HasMaxLength(4)
-                        .HasColumnType("character varying(4)")
-                        .HasColumnName("icone");
-
-                    b.Property<Guid>("LojaId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("loja_id");
-
-                    b.Property<string>("Nome")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
-                        .HasColumnName("nome");
-
-                    b.Property<string>("Tipo")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("tipo");
-
-                    b.HasKey("Id")
-                        .HasName("p_k_categorias_financeiras");
-
-                    b.HasIndex("LojaId")
-                        .HasDatabaseName("i_x_categorias_financeiras_loja_id");
-
-                    b.ToTable("categorias_financeiras");
                 });
 
             modelBuilder.Entity("LojaApi.Models.CategoriaLoja", b =>
@@ -1034,9 +992,10 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid?>("CategoriaId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("categoria_id");
+                    b.Property<string>("Categoria")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("categoria");
 
                     b.Property<Guid>("ContaBancariaId")
                         .HasColumnType("uuid")
@@ -1105,9 +1064,6 @@ namespace LojaApi.src.Data.Migrations
                     b.HasKey("Id")
                         .HasName("p_k_lancamentos_financeiros");
 
-                    b.HasIndex("CategoriaId")
-                        .HasDatabaseName("i_x_lancamentos_financeiros_categoria_id");
-
                     b.HasIndex("ContaBancariaId")
                         .HasDatabaseName("i_x_lancamentos_financeiros_conta_bancaria_id");
 
@@ -1125,9 +1081,10 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("ativa");
 
-                    b.Property<Guid?>("CategoriaId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("categoria_id");
+                    b.Property<string>("Categoria")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("categoria");
 
                     b.Property<Guid>("ContaBancariaId")
                         .HasColumnType("uuid")
@@ -1163,9 +1120,6 @@ namespace LojaApi.src.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("p_k_lancamentos_fixos");
-
-                    b.HasIndex("CategoriaId")
-                        .HasDatabaseName("i_x_lancamentos_fixos_categoria_id");
 
                     b.HasIndex("ContaBancariaId")
                         .HasDatabaseName("i_x_lancamentos_fixos_conta_bancaria_id");
@@ -1571,7 +1525,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000009"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(8560),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(7932),
                             Descricao = "Loja em branco — você cria suas próprias categorias",
                             Icone = "🏬",
                             Nome = "Começar do zero",
@@ -1581,7 +1535,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(8603),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(7977),
                             Descricao = "Para lojas de semi joias, bijuterias e maquiagem",
                             Icone = "💍",
                             Nome = "Semi Joias e Maquiagem",
@@ -1591,7 +1545,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(8704),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8084),
                             Descricao = "Para lojas de roupas e moda",
                             Icone = "👕",
                             Nome = "Vestuário",
@@ -1601,7 +1555,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000003"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(8841),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8223),
                             Descricao = "Para lojas de sapatos, tênis e sandálias",
                             Icone = "👟",
                             Nome = "Calçados",
@@ -1611,7 +1565,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000004"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9015),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8438),
                             Descricao = "Para pet shops: ração a granel, petiscos, acessórios e mais",
                             Icone = "🐾",
                             Nome = "Pet Shop",
@@ -1621,7 +1575,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000005"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9086),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8517),
                             Descricao = "Para lojas de conveniência, mercadinhos e similares",
                             Icone = "🏪",
                             Nome = "Conveniência",
@@ -1631,7 +1585,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("10000000-0000-0000-0000-000000000006"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9302),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8594),
                             Descricao = "Para lojas de materiais de construção e ferragens",
                             Icone = "🧱",
                             Nome = "Material de Construção",
@@ -1641,7 +1595,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9437),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8674),
                             Descricao = "Para banho e tosa: agenda, serviços e caixa",
                             Icone = "🐾",
                             Nome = "Banho e Tosa",
@@ -1651,7 +1605,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9470),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8705),
                             Descricao = "Banho e tosa com venda de produtos",
                             Icone = "🐾",
                             Nome = "Banho e Tosa + Loja",
@@ -1661,7 +1615,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000003"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9500),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8736),
                             Descricao = "Para barbearias: agenda, serviços e caixa",
                             Icone = "💈",
                             Nome = "Barbearia",
@@ -1671,7 +1625,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000004"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9529),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8766),
                             Descricao = "Barbearia com venda de produtos",
                             Icone = "💈",
                             Nome = "Barbearia + Loja",
@@ -1681,7 +1635,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000005"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9557),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8829),
                             Descricao = "Para salões: agenda, serviços e caixa",
                             Icone = "💇",
                             Nome = "Salão de Beleza",
@@ -1691,7 +1645,7 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("20000000-0000-0000-0000-000000000006"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(9584),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(8859),
                             Descricao = "Salão com venda de produtos",
                             Icone = "💇",
                             Nome = "Salão de Beleza + Loja",
@@ -2371,17 +2325,17 @@ namespace LojaApi.src.Data.Migrations
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000001"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(7826),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(7069),
                             Email = "admin@loja.com",
                             Nome = "Administrador",
                             Role = "admin",
-                            SenhaHash = "$2a$11$t6vOay27OrqORDaHYGcOguQ/o3ofijHVRxijNUYpwWoBVM7K8AAfW"
+                            SenhaHash = "$2a$11$bVH7mLGB.MZbXEzEST3wRufffk6lV.XS.zmBEkUoOKPrJmle5aviy"
                         },
                         new
                         {
                             Id = new Guid("00000000-0000-0000-0000-000000000002"),
                             Ativo = true,
-                            CriadoEm = new DateTime(2026, 7, 11, 14, 21, 1, 945, DateTimeKind.Utc).AddTicks(8469),
+                            CriadoEm = new DateTime(2026, 7, 11, 14, 5, 16, 340, DateTimeKind.Utc).AddTicks(7837),
                             Email = "superadmin@suaempresa.com",
                             Nome = "Super Admin",
                             Role = "superadmin",
@@ -2560,16 +2514,6 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("PerfilLoja");
                 });
 
-            modelBuilder.Entity("LojaApi.Models.CategoriaFinanceira", b =>
-                {
-                    b.HasOne("LojaApi.Models.Loja", null)
-                        .WithMany()
-                        .HasForeignKey("LojaId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("f_k_categorias_financeiras__lojas_loja_id");
-                });
-
             modelBuilder.Entity("LojaApi.Models.CategoriaLoja", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
@@ -2668,40 +2612,24 @@ namespace LojaApi.src.Data.Migrations
 
             modelBuilder.Entity("LojaApi.Models.LancamentoFinanceiro", b =>
                 {
-                    b.HasOne("LojaApi.Models.CategoriaFinanceira", "Categoria")
-                        .WithMany()
-                        .HasForeignKey("CategoriaId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("f_k_lancamentos_financeiros_categorias_financeiras_categoria_id");
-
                     b.HasOne("LojaApi.Models.ContaBancaria", "ContaBancaria")
                         .WithMany()
                         .HasForeignKey("ContaBancariaId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("f_k_lancamentos_financeiros_contas_bancarias_conta_bancaria_id");
-
-                    b.Navigation("Categoria");
 
                     b.Navigation("ContaBancaria");
                 });
 
             modelBuilder.Entity("LojaApi.Models.LancamentoFixo", b =>
                 {
-                    b.HasOne("LojaApi.Models.CategoriaFinanceira", "Categoria")
-                        .WithMany()
-                        .HasForeignKey("CategoriaId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("f_k_lancamentos_fixos_categorias_financeiras_categoria_id");
-
                     b.HasOne("LojaApi.Models.ContaBancaria", "ContaBancaria")
                         .WithMany()
                         .HasForeignKey("ContaBancariaId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("f_k_lancamentos_fixos_contas_bancarias_conta_bancaria_id");
-
-                    b.Navigation("Categoria");
 
                     b.Navigation("ContaBancaria");
                 });

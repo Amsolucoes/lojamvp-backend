@@ -1,5 +1,5 @@
-using Microsoft.EntityFrameworkCore;
 using LojaApi.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Data;
 
@@ -29,6 +29,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AssinaturaCliente> AssinaturasCliente => Set<AssinaturaCliente>();
     public DbSet<PagamentoPlano> PagamentosPlano => Set<PagamentoPlano>();
     public DbSet<ConsumoPlano> ConsumosPlano => Set<ConsumoPlano>();
+    public DbSet<ContaBancaria> ContasBancarias => Set<ContaBancaria>();
+    public DbSet<LancamentoFixo> LancamentosFixos => Set<LancamentoFixo>();
+    public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
+    public DbSet<AjusteContaBancaria> AjustesContaBancaria => Set<AjusteContaBancaria>();
+    public DbSet<CategoriaFinanceira> CategoriasFinanceiras => Set<CategoriaFinanceira>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -151,6 +156,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .WithMany()
             .HasForeignKey(c => c.AssinaturaId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ContaBancaria>()
+            .HasOne(c => c.Loja).WithMany()
+            .HasForeignKey(c => c.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<CategoriaFinanceira>()
+            .HasOne<Loja>().WithMany()
+            .HasForeignKey(c => c.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<LancamentoFixo>()
+            .HasOne(l => l.Categoria).WithMany()
+            .HasForeignKey(l => l.CategoriaId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<LancamentoFinanceiro>()
+            .HasOne(l => l.Categoria).WithMany()
+            .HasForeignKey(l => l.CategoriaId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<AjusteContaBancaria>()
+            .HasOne(a => a.ContaBancaria).WithMany()
+            .HasForeignKey(a => a.ContaBancariaId).OnDelete(DeleteBehavior.Cascade);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())

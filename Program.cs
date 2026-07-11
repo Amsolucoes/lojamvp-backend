@@ -1,10 +1,11 @@
-using System.Text;
+using LojaApi.Data;
+using LojaApi.Services;
+using LojaApi.src.Data.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using LojaApi.Data;
-using LojaApi.Services;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +37,7 @@ builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<TenantService>();
 builder.Services.AddScoped<MercadoPagoService>();
 builder.Services.AddScoped<PlanosService>();
+builder.Services.AddScoped<FinanceiroService>();
 builder.Services.AddHostedService<BloqueioAutomaticoService>();
 
 // ── Controllers + Swagger ─────────────────────────────────────────
