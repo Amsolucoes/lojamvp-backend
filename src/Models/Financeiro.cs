@@ -43,6 +43,7 @@ public class LancamentoFixo
 
     public int DiaVencimento { get; set; } = 10;
     public bool Ativa { get; set; } = true;
+    public DateTime? GeradoAte { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 

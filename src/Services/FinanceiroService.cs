@@ -2,28 +2,28 @@
 using LojaApi.Data;
 using LojaApi.Models;
 
-namespace LojaApi.src.Data.Services;
+namespace LojaApi.Services;
 
 public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logger)
 {
-    public async Task GerarLancamentosFixosDoMesAsync()
-    {
-        var agora = DateTime.UtcNow;
-        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var proximoMes = mesAtual.AddMonths(1);
+    private const int MESES_LOTE = 24;
 
-        var fixos = await db.LancamentosFixos.Where(f => f.Ativa).ToListAsync();
+    // ── Gera um lote de N meses a partir de um mês inicial ─────────
+    public async Task GerarLoteFixoAsync(LancamentoFixo fixo, DateTime desdeMes, int meses = MESES_LOTE)
+    {
         int criados = 0;
 
-        foreach (var fixo in fixos)
+        for (int i = 0; i < meses; i++)
         {
-            var vencimento = new DateTime(mesAtual.Year, mesAtual.Month,
-                Math.Min(fixo.DiaVencimento, DateTime.DaysInMonth(mesAtual.Year, mesAtual.Month)),
+            var mesAlvo = desdeMes.AddMonths(i);
+            var vencimento = new DateTime(mesAlvo.Year, mesAlvo.Month,
+                Math.Min(fixo.DiaVencimento, DateTime.DaysInMonth(mesAlvo.Year, mesAlvo.Month)),
                 0, 0, 0, DateTimeKind.Utc);
 
+            var proximoMes = mesAlvo.AddMonths(1);
             var jaExiste = await db.LancamentosFinanceiros.AnyAsync(l =>
                 l.LancamentoFixoId == fixo.Id &&
-                l.Vencimento >= mesAtual && l.Vencimento < proximoMes);
+                l.Vencimento >= mesAlvo && l.Vencimento < proximoMes);
 
             if (jaExiste) continue;
 
@@ -34,7 +34,7 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
                 Tipo = fixo.Tipo,
                 Modo = "fixa",
                 Descricao = fixo.Descricao,
-                Categoria = fixo.Categoria,
+                CategoriaId = fixo.CategoriaId,
                 Valor = fixo.Valor,
                 Vencimento = vencimento,
                 Status = "pendente",
@@ -43,10 +43,45 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
             criados++;
         }
 
+        fixo.GeradoAte = desdeMes.AddMonths(meses - 1);
+
         if (criados > 0)
+            logger.LogInformation("{N} lançamento(s) gerados para o fixo '{Desc}' até {Ate}.", criados, fixo.Descricao, fixo.GeradoAte?.ToString("yyyy-MM"));
+    }
+
+    // ── Apaga os lançamentos futuros ainda não pagos de um fixo ────
+    public async Task LimparFuturosAsync(Guid lancamentoFixoId)
+    {
+        var hoje = DateTime.UtcNow.Date;
+        var futuros = await db.LancamentosFinanceiros
+            .Where(l => l.LancamentoFixoId == lancamentoFixoId && l.Status == "pendente" && l.Vencimento >= hoje)
+            .ToListAsync();
+
+        db.LancamentosFinanceiros.RemoveRange(futuros);
+    }
+
+    // ── Job diário: garante que cada fixo ativo tem lote suficiente ─
+    public async Task GerarPendenciasMensaisAsync()
+    {
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var fixos = await db.LancamentosFixos.Where(f => f.Ativa).ToListAsync();
+
+        foreach (var fixo in fixos)
         {
-            await db.SaveChangesAsync();
-            logger.LogInformation("{N} lançamento(s) fixo(s) gerados para o mês {Mes}.", criados, mesAtual.ToString("yyyy-MM"));
+            if (fixo.GeradoAte is null)
+            {
+                // Nunca gerou nada — gera o primeiro lote de 24 meses
+                await GerarLoteFixoAsync(fixo, mesAtual);
+            }
+            else if (mesAtual >= fixo.GeradoAte.Value)
+            {
+                // Chegou (ou passou) no último mês do lote — gera os próximos 24
+                await GerarLoteFixoAsync(fixo, fixo.GeradoAte.Value.AddMonths(1));
+            }
         }
+
+        await db.SaveChangesAsync();
     }
 }

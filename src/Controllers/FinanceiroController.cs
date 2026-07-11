@@ -1,16 +1,17 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using LojaApi.Data;
+using LojaApi.Models;
+using LojaApi.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using LojaApi.Data;
-using LojaApi.Models;
 
 namespace LojaApi.src.Controllers;
 
 [ApiController]
 [Route("api/financeiro")]
 [Authorize]
-public class FinanceiroController(AppDbContext db) : ControllerBase
+public class FinanceiroController(AppDbContext db, FinanceiroService financeiroService) : ControllerBase
 {
     private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -297,7 +298,6 @@ public class FinanceiroController(AppDbContext db) : ControllerBase
         return Ok(new { grupoParcelamentoId = grupoId, totalGerado = lista.Count });
     }
 
-    // ── Criar lançamento fixo (aluguel — recorrente sem fim) ─────────
     [HttpPost("fixos")]
     public async Task<IActionResult> CriarFixo([FromBody] SalvarLancamentoFixoRequest req)
     {
@@ -310,14 +310,61 @@ public class FinanceiroController(AppDbContext db) : ControllerBase
             ContaBancariaId = req.ContaBancariaId,
             Tipo = req.Tipo,
             Descricao = req.Descricao.Trim(),
-            CategoriaId = req.CategoriaId,      
+            CategoriaId = req.CategoriaId,
             Valor = req.Valor,
             DiaVencimento = req.DiaVencimento is >= 1 and <= 28 ? req.DiaVencimento : 10,
         };
         db.LancamentosFixos.Add(fixo);
         await db.SaveChangesAsync();
 
-        return Ok(new { fixo.Id });
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
+        await db.SaveChangesAsync();
+
+        return Ok(new { fixo.Id, geradoAte = fixo.GeradoAte });
+    }
+
+    // ── Editar um fixo (valor, dia, categoria) e regenerar o lote futuro ──
+    [HttpPut("fixos/{id:guid}")]
+    public async Task<IActionResult> AtualizarFixo(Guid id, [FromBody] SalvarLancamentoFixoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var fixo = await db.LancamentosFixos.FirstOrDefaultAsync(f => f.Id == id && f.LojaId == lojaId);
+        if (fixo is null) return NotFound();
+
+        fixo.ContaBancariaId = req.ContaBancariaId;
+        fixo.Descricao = req.Descricao.Trim();
+        fixo.CategoriaId = req.CategoriaId;
+        fixo.Valor = req.Valor;
+        fixo.DiaVencimento = req.DiaVencimento is >= 1 and <= 28 ? req.DiaVencimento : 10;
+
+        await financeiroService.LimparFuturosAsync(id);
+
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
+
+        await db.SaveChangesAsync();
+        return Ok(new { fixo.Id, geradoAte = fixo.GeradoAte });
+    }
+
+    // ── "Errei, apaga tudo que criou pra frente e gera de novo" ─────
+    [HttpPost("fixos/{id:guid}/regenerar")]
+    public async Task<IActionResult> RegenerarFixo(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var fixo = await db.LancamentosFixos.FirstOrDefaultAsync(f => f.Id == id && f.LojaId == lojaId);
+        if (fixo is null) return NotFound();
+
+        await financeiroService.LimparFuturosAsync(id);
+
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
+
+        await db.SaveChangesAsync();
+        return Ok(new { fixo.Id, geradoAte = fixo.GeradoAte });
     }
 
     [HttpPatch("fixos/{id:guid}/ativo")]
