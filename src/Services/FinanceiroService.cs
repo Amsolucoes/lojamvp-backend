@@ -18,7 +18,7 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
             var mesAlvo = desdeMes.AddMonths(i);
             var vencimento = new DateTime(mesAlvo.Year, mesAlvo.Month,
                 Math.Min(fixo.DiaVencimento, DateTime.DaysInMonth(mesAlvo.Year, mesAlvo.Month)),
-                0, 0, 0, DateTimeKind.Utc);
+                12, 0, 0, DateTimeKind.Utc);
 
             var proximoMes = mesAlvo.AddMonths(1);
             var jaExiste = await db.LancamentosFinanceiros.AnyAsync(l =>

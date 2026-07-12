@@ -251,7 +251,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Descricao = req.Descricao.Trim(),
             CategoriaId = req.CategoriaId,
             Valor = req.Valor,
-            Vencimento = DateTime.SpecifyKind(req.Vencimento, DateTimeKind.Utc),
+            Vencimento = DateTime.SpecifyKind(req.Vencimento.Date, DateTimeKind.Utc).AddHours(12),
         };
         db.LancamentosFinanceiros.Add(lancamento);
         await db.SaveChangesAsync();
@@ -274,7 +274,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         for (int i = 0; i < req.TotalParcelas; i++)
         {
-            var venc = DateTime.SpecifyKind(req.PrimeiroVencimento.AddMonths(i), DateTimeKind.Utc);
+            var venc = DateTime.SpecifyKind(req.PrimeiroVencimento.Date, DateTimeKind.Utc).AddMonths(i).AddHours(12);
 
             lista.Add(new LancamentoFinanceiro
             {
@@ -395,13 +395,34 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     }
 
     [HttpDelete("lancamentos/{id:guid}")]
-    public async Task<IActionResult> Excluir(Guid id)
+    public async Task<IActionResult> Excluir(Guid id, [FromQuery] string modo = "unica")
     {
         var lojaId = await GetLojaId();
         var lanc = await db.LancamentosFinanceiros.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
         if (lanc is null) return NotFound();
 
-        db.LancamentosFinanceiros.Remove(lanc);
+        if (modo == "todas" && lanc.Modo == "fixa" && lanc.LancamentoFixoId.HasValue)
+        {
+            var fixo = await db.LancamentosFixos.FindAsync(lanc.LancamentoFixoId.Value);
+            if (fixo != null) fixo.Ativa = false; // para de gerar novos meses
+
+            var futurosPendentes = await db.LancamentosFinanceiros
+                .Where(l => l.LancamentoFixoId == lanc.LancamentoFixoId.Value && l.Status == "pendente" && l.Vencimento >= lanc.Vencimento)
+                .ToListAsync();
+            db.LancamentosFinanceiros.RemoveRange(futurosPendentes);
+        }
+        else if (modo == "todas" && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
+        {
+            var pendentesGrupo = await db.LancamentosFinanceiros
+                .Where(l => l.GrupoParcelamentoId == lanc.GrupoParcelamentoId.Value && l.Status == "pendente")
+                .ToListAsync();
+            db.LancamentosFinanceiros.RemoveRange(pendentesGrupo);
+        }
+        else
+        {
+            db.LancamentosFinanceiros.Remove(lanc);
+        }
+
         await db.SaveChangesAsync();
         return Ok(new { mensagem = "Lançamento excluído." });
     }
@@ -721,7 +742,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
     // ── Calcula a fatura de um mês (sob demanda, sem precisar de job) ──
     private DateTime CalcularVencimentoFatura(CartaoCredito cartao, int ano, int mes)
-        => new DateTime(ano, mes, Math.Min(cartao.DiaVencimento, DateTime.DaysInMonth(ano, mes)), 0, 0, 0, DateTimeKind.Utc);
+        => new DateTime(ano, mes, Math.Min(cartao.DiaVencimento, DateTime.DaysInMonth(ano, mes)), 12, 0, 0, DateTimeKind.Utc);
 
     private (DateTime Inicio, DateTime Fim) CicloDaFatura(CartaoCredito cartao, DateTime vencimento)
     {
@@ -802,6 +823,30 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         await db.SaveChangesAsync();
         return Ok(new { fatura.Id, fatura.Status, fatura.Total });
+    }
+
+    [HttpGet("resumo-anual")]
+    public async Task<IActionResult> ResumoAnual([FromQuery] int ano)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var inicio = new DateTime(ano, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fim = inicio.AddYears(1);
+
+        var doAno = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.Vencimento >= inicio && l.Vencimento < fim)
+            .ToListAsync();
+
+        var meses = Enumerable.Range(1, 12).Select(mes =>
+        {
+            var doMes = doAno.Where(l => l.Vencimento.Month == mes).ToList();
+            var pagar = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pago").Sum(l => l.Valor);
+            var receber = doMes.Where(l => l.Tipo == "receber" && l.Status == "pago").Sum(l => l.Valor);
+            return new { mes, pagar, receber, saldo = receber - pagar };
+        }).ToList();
+
+        return Ok(meses);
     }
 }
 
