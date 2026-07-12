@@ -1170,11 +1170,39 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(l => l.LojaId == lojaId && l.Vencimento >= inicio && l.Vencimento < fim)
             .ToListAsync();
 
+        var assinaturaIds = await db.AssinaturasCliente.Where(a => a.LojaId == lojaId).Select(a => a.Id).ToListAsync();
+        var pagamentosPlanoAno = await db.PagamentosPlano
+            .Where(p => assinaturaIds.Contains(p.AssinaturaId) && p.MesReferencia >= inicio && p.MesReferencia < fim)
+            .ToListAsync();
+
+        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        var totalCartaoPorMes = new decimal[13]; // índice 1-12
+
+        foreach (var cartao in cartoes)
+        {
+            for (int mes = 1; mes <= 12; mes++)
+            {
+                var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
+                var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
+
+                var totalFatura = await db.LancamentosCartao
+                    .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cInicio.Date && l.DataCompra.Date <= cFim.Date)
+                    .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+                totalCartaoPorMes[mes] += totalFatura;
+            }
+        }
+
         var meses = Enumerable.Range(1, 12).Select(mes =>
         {
-            var doMes = doAno.Where(l => l.Vencimento.Month == mes).ToList();
-            var pagar = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pago").Sum(l => l.Valor);
-            var receber = doMes.Where(l => l.Tipo == "receber" && l.Status == "pago").Sum(l => l.Valor);
+            // Previsão: soma TUDO previsto pra esse mês (pago + pendente), não só o pago
+            var pagarLancamentos = doAno.Where(l => l.Tipo == "pagar" && l.Vencimento.Month == mes).Sum(l => l.Valor);
+            var pagar = pagarLancamentos + totalCartaoPorMes[mes];
+
+            var receberLancamentos = doAno.Where(l => l.Tipo == "receber" && l.Vencimento.Month == mes).Sum(l => l.Valor);
+            var receberPlanos = pagamentosPlanoAno.Where(p => p.MesReferencia.Month == mes).Sum(p => p.Valor);
+            var receber = receberLancamentos + receberPlanos;
+
             return new { mes, pagar, receber, saldo = receber - pagar };
         }).ToList();
 
