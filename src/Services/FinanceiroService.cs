@@ -84,4 +84,72 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
 
         await db.SaveChangesAsync();
     }
+
+    private const int CICLOS_LOTE_CARTAO = 24;
+
+    // ── Gera um lote de N ciclos futuros para um fixo de cartão ────
+    public async Task GerarLoteFixoCartaoAsync(CartaoLancamentoFixo fixo, CartaoCredito cartao, DateTime desde, int ciclos = CICLOS_LOTE_CARTAO)
+    {
+        int criados = 0;
+        var referencia = desde;
+
+        for (int i = 0; i < ciclos; i++)
+        {
+            var dataCiclo = referencia.AddMonths(i);
+
+            var jaExiste = await db.LancamentosCartao.AnyAsync(l =>
+                l.CartaoFixoId == fixo.Id &&
+                l.DataCompra.Year == dataCiclo.Year && l.DataCompra.Month == dataCiclo.Month);
+
+            if (jaExiste) continue;
+
+            db.LancamentosCartao.Add(new LancamentoCartao
+            {
+                LojaId = fixo.LojaId,
+                CartaoCreditoId = fixo.CartaoCreditoId,
+                Descricao = fixo.Descricao,
+                Valor = fixo.Valor,
+                DataCompra = new DateTime(dataCiclo.Year, dataCiclo.Month, 1, 12, 0, 0, DateTimeKind.Utc),
+                Modo = "fixa",
+                CategoriaId = fixo.CategoriaId,
+                CartaoFixoId = fixo.Id,
+            });
+            criados++;
+        }
+
+        fixo.GeradoAte = referencia.AddMonths(ciclos - 1);
+
+        if (criados > 0)
+            logger.LogInformation("{N} lançamento(s) de cartão fixo gerados para '{Desc}' até {Ate}.", criados, fixo.Descricao, fixo.GeradoAte?.ToString("yyyy-MM"));
+    }
+
+    public async Task LimparFuturosCartaoAsync(Guid cartaoFixoId)
+    {
+        var hoje = DateTime.UtcNow.Date;
+        var futuros = await db.LancamentosCartao
+            .Where(l => l.CartaoFixoId == cartaoFixoId && l.DataCompra >= hoje)
+            .ToListAsync();
+        db.LancamentosCartao.RemoveRange(futuros);
+    }
+
+    // ── Chamado pelo job diário: garante lote suficiente pros fixos de cartão ──
+    public async Task GerarPendenciasCartaoFixoAsync()
+    {
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        var fixos = await db.CartaoLancamentosFixos.Include(f => f.CartaoCredito).Where(f => f.Ativo).ToListAsync();
+
+        foreach (var fixo in fixos)
+        {
+            if (fixo.CartaoCredito is null) continue;
+
+            if (fixo.GeradoAte is null)
+                await GerarLoteFixoCartaoAsync(fixo, fixo.CartaoCredito, mesAtual);
+            else if (mesAtual >= fixo.GeradoAte.Value)
+                await GerarLoteFixoCartaoAsync(fixo, fixo.CartaoCredito, fixo.GeradoAte.Value.AddMonths(1));
+        }
+
+        await db.SaveChangesAsync();
+    }
 }

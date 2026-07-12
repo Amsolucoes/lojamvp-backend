@@ -37,7 +37,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CartaoCredito> CartoesCredito => Set<CartaoCredito>();
     public DbSet<LancamentoCartao> LancamentosCartao => Set<LancamentoCartao>();
     public DbSet<FaturaCartao> FaturasCartao => Set<FaturaCartao>();
-
+    public DbSet<CartaoLancamentoFixo> CartaoLancamentosFixos => Set<CartaoLancamentoFixo>();
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Índices únicos
@@ -195,6 +195,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<FaturaCartao>()
             .HasOne(f => f.CartaoCredito).WithMany()
             .HasForeignKey(f => f.CartaoCreditoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<CartaoLancamentoFixo>()
+            .HasOne(c => c.CartaoCredito).WithMany()
+            .HasForeignKey(c => c.CartaoCreditoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<CartaoLancamentoFixo>()
+            .HasOne(c => c.Categoria).WithMany()
+            .HasForeignKey(c => c.CategoriaId).OnDelete(DeleteBehavior.SetNull);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())

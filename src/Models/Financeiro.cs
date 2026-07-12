@@ -168,13 +168,42 @@ public class LancamentoCartao
     [Column(TypeName = "decimal(12,2)")]
     public decimal Valor { get; set; }
 
+    public DateTime DataCompra { get; set; }
     public bool EhJurosRotativo { get; set; } = false;
 
-    public DateTime DataCompra { get; set; }
+    [MaxLength(20)]
+    public string Modo { get; set; } = "avulsa"; // avulsa | parcelada | fixa
+
+    public Guid? GrupoParcelamentoId { get; set; }
+    public int? NumeroParcela { get; set; }
+    public int? TotalParcelas { get; set; }
+    public Guid? CartaoFixoId { get; set; }
 
     public Guid? CategoriaId { get; set; }
     public CategoriaFinanceira? Categoria { get; set; }
 
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Lançamento fixo/recorrente DENTRO do cartão (ex: Netflix) ──────
+public class CartaoLancamentoFixo
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+    public Guid CartaoCreditoId { get; set; }
+    public CartaoCredito? CartaoCredito { get; set; }
+
+    [Required, MaxLength(150)]
+    public string Descricao { get; set; } = "";
+
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal Valor { get; set; }
+
+    public Guid? CategoriaId { get; set; }
+    public CategoriaFinanceira? Categoria { get; set; }
+
+    public bool Ativo { get; set; } = true;
+    public DateTime? GeradoAte { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 

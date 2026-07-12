@@ -800,10 +800,102 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Descricao = req.Descricao.Trim(),
             Valor = req.Valor,
             DataCompra = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12),
+            Modo = "avulsa",
             CategoriaId = req.CategoriaId,
         });
         await db.SaveChangesAsync();
         return Ok(new { mensagem = "Lançamento adicionado." });
+    }
+
+    // ── Compra parcelada no cartão (ex: TV em 10x) ──────────────────
+    public record CompraParceladaCartaoRequest(string Descricao, decimal ValorParcela, int TotalParcelas, DateTime DataCompra, Guid? CategoriaId);
+
+    [HttpPost("cartoes/{id:guid}/lancamentos/parcelado")]
+    public async Task<IActionResult> LancarCompraParcelada(Guid id, [FromBody] CompraParceladaCartaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        if (req.TotalParcelas < 2 || req.TotalParcelas > 24)
+            return BadRequest(new { erro = "Escolha entre 2 e 24 parcelas." });
+
+        var grupoId = Guid.NewGuid();
+        var dataBase = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12);
+
+        for (int i = 0; i < req.TotalParcelas; i++)
+        {
+            db.LancamentosCartao.Add(new LancamentoCartao
+            {
+                LojaId = lojaId!.Value,
+                CartaoCreditoId = id,
+                Descricao = $"{req.Descricao.Trim()} ({i + 1}/{req.TotalParcelas})",
+                Valor = req.ValorParcela,
+                DataCompra = dataBase.AddMonths(i),
+                Modo = "parcelada",
+                GrupoParcelamentoId = grupoId,
+                NumeroParcela = i + 1,
+                TotalParcelas = req.TotalParcelas,
+                CategoriaId = req.CategoriaId,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { grupoParcelamentoId = grupoId, totalGerado = req.TotalParcelas });
+    }
+
+    // ── Lançamento fixo/recorrente no cartão (ex: Netflix) ──────────
+    public record CartaoFixoRequest(string Descricao, decimal Valor, Guid? CategoriaId);
+
+    [HttpPost("cartoes/{id:guid}/fixos")]
+    public async Task<IActionResult> CriarCartaoFixo(Guid id, [FromBody] CartaoFixoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        var fixo = new CartaoLancamentoFixo
+        {
+            LojaId = lojaId!.Value,
+            CartaoCreditoId = id,
+            Descricao = req.Descricao.Trim(),
+            Valor = req.Valor,
+            CategoriaId = req.CategoriaId,
+        };
+        db.CartaoLancamentosFixos.Add(fixo);
+        await db.SaveChangesAsync();
+
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        await financeiroService.GerarLoteFixoCartaoAsync(fixo, cartao, mesAtual);
+        await db.SaveChangesAsync();
+
+        return Ok(new { fixo.Id, geradoAte = fixo.GeradoAte });
+    }
+
+    [HttpGet("cartoes/{id:guid}/fixos")]
+    public async Task<IActionResult> ListarCartaoFixos(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var lista = await db.CartaoLancamentosFixos
+            .Where(f => f.CartaoCreditoId == id && f.CartaoCredito!.LojaId == lojaId)
+            .Select(f => new { f.Id, f.Descricao, f.Valor, f.Ativo })
+            .ToListAsync();
+        return Ok(lista);
+    }
+
+    [HttpPatch("cartoes/fixos/{id:guid}/ativo")]
+    public async Task<IActionResult> AlternarCartaoFixo(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var fixo = await db.CartaoLancamentosFixos.Include(f => f.CartaoCredito)
+            .FirstOrDefaultAsync(f => f.Id == id && f.CartaoCredito!.LojaId == lojaId);
+        if (fixo is null) return NotFound();
+
+        fixo.Ativo = !fixo.Ativo;
+        if (!fixo.Ativo) await financeiroService.LimparFuturosCartaoAsync(id);
+        await db.SaveChangesAsync();
+        return Ok(new { fixo.Id, fixo.Ativo });
     }
 
     // ── Calcula a fatura de um mês (sob demanda, sem precisar de job) ──
@@ -835,7 +927,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(l => l.CartaoCreditoId == id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
             .Include(l => l.Categoria)
             .OrderBy(l => l.DataCompra)
-            .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null })
+            .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null, l.Modo })
             .ToListAsync();
 
         var total = itens.Sum(i => i.Valor);

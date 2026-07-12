@@ -44,6 +44,7 @@ public class BloqueioAutomaticoService(
 
                 var financeiroService = scope.ServiceProvider.GetRequiredService<FinanceiroService>();
                 await financeiroService.GerarPendenciasMensaisAsync();
+                await financeiroService.GerarPendenciasCartaoFixoAsync();
 
                 logger.LogInformation("Verificação automática de bloqueio concluída em {Data} UTC.", DateTime.UtcNow);
             }
