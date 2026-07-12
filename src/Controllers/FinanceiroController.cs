@@ -395,6 +395,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         if (fixo is null) return NotFound();
 
         await financeiroService.LimparFuturosAsync(id);
+        await db.SaveChangesAsync();
 
         var agora = DateTime.UtcNow;
         var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -453,6 +454,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             fixo.DiaVencimento = novoVencimento.Day;
 
             await financeiroService.LimparFuturosAsync(fixo.Id);
+            await db.SaveChangesAsync();
+
             var agora = DateTime.UtcNow;
             var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
