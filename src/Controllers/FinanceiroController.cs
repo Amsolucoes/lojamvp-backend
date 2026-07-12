@@ -206,6 +206,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         {
             l.Id,
             descricao = l.Descricao,
+            observacao = l.Observacao,
             categoriaNome = l.Categoria != null ? l.Categoria.Nome : null,
             modo = l.Modo,
             categoriaId = l.CategoriaId,
@@ -531,6 +532,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             {
                 l.Id,
                 descricao = l.Descricao,
+                observacao = l.Observacao,
                 categoriaNome = l.Categoria != null ? l.Categoria.Nome : null,
                 categoriaId = l.CategoriaId,
                 contaBancariaId = l.ContaBancariaId,
