@@ -207,6 +207,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             l.Id,
             descricao = l.Descricao,
             modo = l.Modo,
+            categoriaId = l.CategoriaId,
+            contaBancariaId = l.ContaBancariaId,
             numeroParcela = l.NumeroParcela,
             totalParcelas = l.TotalParcelas,
             valor = l.Valor,
@@ -397,6 +399,63 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(new { lanc.Id, lanc.Status });
     }
 
+    public record EditarLancamentoRequest(string Descricao, Guid? CategoriaId, Guid ContaBancariaId, decimal Valor, DateTime Vencimento);
+
+    [HttpPut("lancamentos/{id:guid}")]
+    public async Task<IActionResult> EditarLancamento(Guid id, [FromQuery] string modo, [FromBody] EditarLancamentoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var lanc = await db.LancamentosFinanceiros.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
+        if (lanc is null) return NotFound();
+
+        var novoVencimento = DateTime.SpecifyKind(req.Vencimento.Date, DateTimeKind.Utc).AddHours(12);
+
+        if (modo == "todas" && lanc.Modo == "fixa" && lanc.LancamentoFixoId.HasValue)
+        {
+            var fixo = await db.LancamentosFixos.FindAsync(lanc.LancamentoFixoId.Value);
+            if (fixo is null) return NotFound();
+
+            fixo.Descricao = req.Descricao.Trim();
+            fixo.CategoriaId = req.CategoriaId;
+            fixo.ContaBancariaId = req.ContaBancariaId;
+            fixo.Valor = req.Valor;
+            fixo.DiaVencimento = novoVencimento.Day;
+
+            await financeiroService.LimparFuturosAsync(fixo.Id);
+            var agora = DateTime.UtcNow;
+            var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
+        }
+        else if (modo == "todas" && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
+        {
+            var pendentes = await db.LancamentosFinanceiros
+                .Where(l => l.GrupoParcelamentoId == lanc.GrupoParcelamentoId.Value && l.Status == "pendente")
+                .ToListAsync();
+
+            var novoDia = novoVencimento.Day;
+            foreach (var p in pendentes)
+            {
+                p.Descricao = req.Descricao.Trim();
+                p.CategoriaId = req.CategoriaId;
+                p.ContaBancariaId = req.ContaBancariaId;
+                p.Valor = req.Valor;
+                var diasNoMes = DateTime.DaysInMonth(p.Vencimento.Year, p.Vencimento.Month);
+                p.Vencimento = new DateTime(p.Vencimento.Year, p.Vencimento.Month, Math.Min(novoDia, diasNoMes), 12, 0, 0, DateTimeKind.Utc);
+            }
+        }
+        else
+        {
+            lanc.Descricao = req.Descricao.Trim();
+            lanc.CategoriaId = req.CategoriaId;
+            lanc.ContaBancariaId = req.ContaBancariaId;
+            lanc.Valor = req.Valor;
+            lanc.Vencimento = novoVencimento;
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Lançamento atualizado." });
+    }
+
     [HttpDelete("lancamentos/{id:guid}")]
     public async Task<IActionResult> Excluir(Guid id, [FromQuery] string modo = "unica")
     {
@@ -448,6 +507,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 l.Id,
                 descricao = l.Descricao,
                 categoriaNome = l.Categoria != null ? l.Categoria.Nome : null,
+                categoriaId = l.CategoriaId,
+                contaBancariaId = l.ContaBancariaId,
                 modo = l.Modo,
                 valor = l.Valor,
                 vencimento = l.Vencimento,
