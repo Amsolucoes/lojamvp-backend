@@ -260,6 +260,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Observacao = req.Observacao,
             Valor = req.Valor,
             Vencimento = DateTime.SpecifyKind(req.Vencimento.Date, DateTimeKind.Utc).AddHours(12),
+            Status = req.JaPago ? "pago" : "pendente",
+            PagoEm = req.JaPago ? DateTime.UtcNow : null,
         };
         db.LancamentosFinanceiros.Add(lancamento);
         await db.SaveChangesAsync();
@@ -307,6 +309,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 GrupoParcelamentoId = grupoId,
                 NumeroParcela = i + 1,
                 TotalParcelas = totalParcelas,
+                Status = (req.JaPago && i == 0) ? "pago" : "pendente",
+                PagoEm = (req.JaPago && i == 0) ? DateTime.UtcNow : null,
             });
         }
 
@@ -340,6 +344,20 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
         await db.SaveChangesAsync();
+
+        if (req.JaPago)
+        {
+            var primeiraOcorrencia = await db.LancamentosFinanceiros
+                .Where(l => l.LancamentoFixoId == fixo.Id)
+                .OrderBy(l => l.Vencimento)
+                .FirstOrDefaultAsync();
+            if (primeiraOcorrencia != null)
+            {
+                primeiraOcorrencia.Status = "pago";
+                primeiraOcorrencia.PagoEm = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        }
 
         return Ok(new { fixo.Id, geradoAte = fixo.GeradoAte });
     }
@@ -1393,8 +1411,8 @@ public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, Dat
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
 public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial);
 public record AjusteSaldoRequest(string Tipo, decimal? Valor, decimal NovoSaldo, string? Observacao);
-public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento, string? Observacao);
-public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int? TotalParcelas, DateTime PrimeiroVencimento, DateTime? DataFim, string? Observacao);
-public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao);
+public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento, string? Observacao, bool JaPago = false);
+public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int? TotalParcelas, DateTime PrimeiroVencimento, DateTime? DataFim, string? Observacao, bool JaPago = false);
+public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao, bool JaPago = false);
 public record MarcarPagamentoRequest(bool Pago);
 public record EditarLancamentoRequest(string Descricao, Guid? CategoriaId, Guid ContaBancariaId, decimal Valor, DateTime Vencimento, string? Observacao);
