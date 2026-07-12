@@ -206,6 +206,9 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         {
             l.Id,
             descricao = l.Descricao,
+            modo = l.Modo,
+            numeroParcela = l.NumeroParcela,
+            totalParcelas = l.TotalParcelas,
             valor = l.Valor,
             vencimento = l.Vencimento,
             status = l.Status,
