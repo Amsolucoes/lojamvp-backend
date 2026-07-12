@@ -502,6 +502,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     }
 
     // ── Contas a Pagar unificado (lançamentos + cartões) ───────────
+    [HttpGet("pagar-unificado")]
     public async Task<IActionResult> PagarUnificado([FromQuery] int? ano, [FromQuery] int? mes, [FromQuery] string modo = "agrupado", [FromQuery] DateTime? de = null, [FromQuery] DateTime? ate = null)
     {
         var lojaId = await GetLojaId();
