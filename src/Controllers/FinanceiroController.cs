@@ -147,8 +147,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var faturasCartaoPagas = await db.FaturasCartao
             .Include(f => f.CartaoCredito)
-            .Where(f => f.CartaoCredito!.ContaBancariaId == contaId && f.Status == "pago")
-            .SumAsync(f => (decimal?)f.Total) ?? 0;
+            .Where(f => f.CartaoCredito!.ContaBancariaId == contaId && (f.Status == "pago" || f.Status == "parcial"))
+            .SumAsync(f => (decimal?)f.ValorPago) ?? 0;
 
         return conta.SaldoInicial + recebidos - pagos - faturasCartaoPagas + entradasAjuste - saidasAjuste + diferencasAjuste;
     }
@@ -853,9 +853,10 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         });
     }
 
-    // ── Pagar/desfazer a fatura do mês ──────────────────────────────
+    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas);
+
     [HttpPost("cartoes/{id:guid}/fatura/pagamento")]
-    public async Task<IActionResult> PagarFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] MarcarPagamentoRequest req)
+    public async Task<IActionResult> PagarFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] PagarFaturaRequest req)
     {
         var lojaId = await GetLojaId();
         var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
@@ -884,14 +885,93 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             };
             db.FaturasCartao.Add(fatura);
         }
-
         fatura.Total = total;
-        fatura.Status = req.Pago ? "pago" : "pendente";
-        fatura.PagoEm = req.Pago ? DateTime.UtcNow : null;
+
+        switch (req.Modo)
+        {
+            case "desfazer":
+                fatura.Status = "pendente";
+                fatura.ValorPago = 0;
+                fatura.PagoEm = null;
+                break;
+
+            case "total":
+                fatura.Status = "pago";
+                fatura.ValorPago = total;
+                fatura.PagoEm = DateTime.UtcNow;
+                break;
+
+            case "parcial":
+                {
+                    var pago = req.ValorPago ?? 0;
+                    if (pago <= 0 || pago >= total)
+                        return BadRequest(new { erro = "Valor parcial deve ser maior que zero e menor que o total da fatura." });
+
+                    var restante = total - pago;
+                    var comJuros = restante * (1 + (cartao.TaxaJurosMensal / 100m));
+
+                    // Lança o saldo devedor + juros como um item na PRÓXIMA fatura
+                    var proximoVencimento = CalcularVencimentoFatura(cartao, mesReferencia.AddMonths(1).Year, mesReferencia.AddMonths(1).Month);
+                    var (proxInicio, _) = CicloDaFatura(cartao, proximoVencimento);
+
+                    db.LancamentosCartao.Add(new LancamentoCartao
+                    {
+                        LojaId = lojaId!.Value,
+                        CartaoCreditoId = id,
+                        Descricao = $"Saldo rotativo (fatura {MESES[mesReferencia.Month - 1]}) + juros",
+                        Valor = comJuros,
+                        DataCompra = proxInicio,
+                        EhJurosRotativo = true,
+                    });
+
+                    fatura.Status = "parcial";
+                    fatura.ValorPago = pago;
+                    fatura.PagoEm = DateTime.UtcNow;
+                    break;
+                }
+
+            case "parcelado":
+                {
+                    var parcelas = req.TotalParcelas ?? 0;
+                    if (parcelas < 2 || parcelas > 24)
+                        return BadRequest(new { erro = "Escolha entre 2 e 24 parcelas." });
+
+                    var comJuros = total * (1 + (cartao.TaxaJurosMensal / 100m) * parcelas);
+                    var valorParcela = Math.Round(comJuros / parcelas, 2);
+                    var grupoId = Guid.NewGuid();
+
+                    for (int i = 0; i < parcelas; i++)
+                    {
+                        db.LancamentosFinanceiros.Add(new LancamentoFinanceiro
+                        {
+                            LojaId = lojaId!.Value,
+                            ContaBancariaId = cartao.ContaBancariaId,
+                            Tipo = "pagar",
+                            Modo = "parcelada",
+                            Descricao = $"Financiamento fatura {cartao.Nome} ({MESES[mesReferencia.Month - 1]})",
+                            Valor = valorParcela,
+                            Vencimento = DateTime.SpecifyKind(vencimento.Date, DateTimeKind.Utc).AddMonths(i).AddHours(12),
+                            GrupoParcelamentoId = grupoId,
+                            NumeroParcela = i + 1,
+                            TotalParcelas = parcelas,
+                        });
+                    }
+
+                    fatura.Status = "financiada";
+                    fatura.ValorPago = 0;
+                    fatura.PagoEm = DateTime.UtcNow;
+                    break;
+                }
+
+            default:
+                return BadRequest(new { erro = "Modo inválido." });
+        }
 
         await db.SaveChangesAsync();
-        return Ok(new { fatura.Id, fatura.Status, fatura.Total });
+        return Ok(new { fatura.Id, fatura.Status, fatura.Total, fatura.ValorPago });
     }
+
+    private static readonly string[] MESES = { "Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez" };
 
     [HttpGet("resumo-anual")]
     public async Task<IActionResult> ResumoAnual([FromQuery] int ano)

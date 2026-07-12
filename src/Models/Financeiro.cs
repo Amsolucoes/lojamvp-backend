@@ -146,6 +146,9 @@ public class CartaoCredito
     public Guid ContaBancariaId { get; set; }
     public ContaBancaria? ContaBancaria { get; set; }
 
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal TaxaJurosMensal { get; set; } = 0; // % ao mês, usada em pagamento parcial e parcelamento
+
     public bool Ativo { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
@@ -164,6 +167,8 @@ public class LancamentoCartao
 
     [Column(TypeName = "decimal(12,2)")]
     public decimal Valor { get; set; }
+
+    public bool EhJurosRotativo { get; set; } = false;
 
     public DateTime DataCompra { get; set; }
 
@@ -188,8 +193,11 @@ public class FaturaCartao
     [Column(TypeName = "decimal(12,2)")]
     public decimal Total { get; set; }
 
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal ValorPago { get; set; } = 0;
+
     [MaxLength(20)]
-    public string Status { get; set; } = "pendente"; // pendente | pago
+    public string Status { get; set; } = "pendente"; // pendente | parcial | pago | financiada
     public DateTime? PagoEm { get; set; }
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
