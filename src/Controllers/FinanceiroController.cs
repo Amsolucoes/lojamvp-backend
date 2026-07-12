@@ -202,10 +202,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         if (de.HasValue) qLanc = qLanc.Where(l => l.Vencimento >= de.Value);
         if (ate.HasValue) qLanc = qLanc.Where(l => l.Vencimento <= ate.Value.AddDays(1));
 
-        var lancamentos = await qLanc.Select(l => new
+        var lancamentos = await qLanc.Include(l => l.Categoria).Select(l => new
         {
             l.Id,
             descricao = l.Descricao,
+            categoriaNome = l.Categoria != null ? l.Categoria.Nome : null,
             modo = l.Modo,
             categoriaId = l.CategoriaId,
             contaBancariaId = l.ContaBancariaId,
