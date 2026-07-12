@@ -35,6 +35,7 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
                 Modo = "fixa",
                 Descricao = fixo.Descricao,
                 CategoriaId = fixo.CategoriaId,
+                Observacao = fixo.Observacao,
                 Valor = fixo.Valor,
                 Vencimento = vencimento,
                 Status = "pendente",

@@ -256,6 +256,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Modo = "avulsa",
             Descricao = req.Descricao.Trim(),
             CategoriaId = req.CategoriaId,
+            Observacao = req.Observacao,
             Valor = req.Valor,
             Vencimento = DateTime.SpecifyKind(req.Vencimento.Date, DateTimeKind.Utc).AddHours(12),
         };
@@ -272,16 +273,25 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var lojaId = await GetLojaId();
         if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
 
-        if (req.TotalParcelas < 2 || req.TotalParcelas > 60)
-            return BadRequest(new { erro = "Número de parcelas inválido." });
+        int totalParcelas;
+        if (req.DataFim.HasValue)
+        {
+            totalParcelas = ((req.DataFim.Value.Year - req.PrimeiroVencimento.Year) * 12)
+                + (req.DataFim.Value.Month - req.PrimeiroVencimento.Month) + 1;
+        }
+        else
+        {
+            totalParcelas = req.TotalParcelas ?? 0;
+        }
+
+        if (totalParcelas < 2 || totalParcelas > 120)
+            return BadRequest(new { erro = "Número de parcelas deve ficar entre 2 e 120. Ajuste a quantidade ou a data fim." });
 
         var grupoId = Guid.NewGuid();
         var lista = new List<LancamentoFinanceiro>();
 
-        for (int i = 0; i < req.TotalParcelas; i++)
+        for (int i = 0; i < totalParcelas; i++)
         {
-            var venc = DateTime.SpecifyKind(req.PrimeiroVencimento.Date, DateTimeKind.Utc).AddMonths(i).AddHours(12);
-
             lista.Add(new LancamentoFinanceiro
             {
                 LojaId = lojaId.Value,
@@ -290,18 +300,19 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 Modo = "parcelada",
                 Descricao = req.Descricao.Trim(),
                 CategoriaId = req.CategoriaId,
+                Observacao = req.Observacao,
                 Valor = req.ValorParcela,
-                Vencimento = venc,
+                Vencimento = DateTime.SpecifyKind(req.PrimeiroVencimento.Date, DateTimeKind.Utc).AddMonths(i).AddHours(12),
                 GrupoParcelamentoId = grupoId,
                 NumeroParcela = i + 1,
-                TotalParcelas = req.TotalParcelas,
+                TotalParcelas = totalParcelas,
             });
         }
 
         db.LancamentosFinanceiros.AddRange(lista);
         await db.SaveChangesAsync();
 
-        return Ok(new { grupoParcelamentoId = grupoId, totalGerado = lista.Count });
+        return Ok(new { grupoParcelamentoId = grupoId, totalGerado = totalParcelas });
     }
 
     [HttpPost("fixos")]
@@ -317,6 +328,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Tipo = req.Tipo,
             Descricao = req.Descricao.Trim(),
             CategoriaId = req.CategoriaId,
+            Observacao = req.Observacao,
             Valor = req.Valor,
             DiaVencimento = req.DiaVencimento is >= 1 and <= 28 ? req.DiaVencimento : 10,
         };
@@ -399,8 +411,6 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         return Ok(new { lanc.Id, lanc.Status });
     }
-
-    public record EditarLancamentoRequest(string Descricao, Guid? CategoriaId, Guid ContaBancariaId, decimal Valor, DateTime Vencimento);
 
     [HttpPut("lancamentos/{id:guid}")]
     public async Task<IActionResult> EditarLancamento(Guid id, [FromQuery] string modo, [FromBody] EditarLancamentoRequest req)
@@ -491,14 +501,24 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     }
 
     // ── Contas a Pagar unificado (lançamentos + cartões) ───────────
-    [HttpGet("pagar-unificado")]
-    public async Task<IActionResult> PagarUnificado([FromQuery] int ano, [FromQuery] int mes, [FromQuery] string modo = "agrupado")
+    public async Task<IActionResult> PagarUnificado([FromQuery] int? ano, [FromQuery] int? mes, [FromQuery] string modo = "agrupado", [FromQuery] DateTime? de = null, [FromQuery] DateTime? ate = null)
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
-        var inicioMes = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
-        var fimMes = inicioMes.AddMonths(1);
+        DateTime inicioMes, fimMes;
+        if (de.HasValue && ate.HasValue)
+        {
+            inicioMes = DateTime.SpecifyKind(de.Value.Date, DateTimeKind.Utc);
+            fimMes = DateTime.SpecifyKind(ate.Value.Date, DateTimeKind.Utc).AddDays(1);
+        }
+        else
+        {
+            var a = ano ?? DateTime.UtcNow.Year;
+            var m = mes ?? DateTime.UtcNow.Month;
+            inicioMes = new DateTime(a, m, 1, 0, 0, 0, DateTimeKind.Utc);
+            fimMes = inicioMes.AddMonths(1);
+        }
 
         var lancamentos = await db.LancamentosFinanceiros
             .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes)
@@ -526,12 +546,25 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         var linhasCartao = new List<object>();
 
-        foreach (var cartao in cartoes)
+        var mesesCursor = new DateTime(inicioMes.Year, inicioMes.Month, 1);
+        var mesesLimite = new DateTime(fimMes.AddDays(-1).Year, fimMes.AddDays(-1).Month, 1);
+        var mesesParaChecar = new List<(int Ano, int Mes)>();
+        int seguranca = 0;
+        while (mesesCursor <= mesesLimite && seguranca < 36)
         {
-            var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
-            var (inicio, fim) = CicloDaFatura(cartao, vencimentoFatura);
+            mesesParaChecar.Add((mesesCursor.Year, mesesCursor.Month));
+            mesesCursor = mesesCursor.AddMonths(1);
+            seguranca++;
+        }
 
-            var itensCiclo = await db.LancamentosCartao
+        foreach (var cartao in cartoes)
+            foreach (var (anoC, mesC) in mesesParaChecar)
+            {
+                var vencimentoFatura = CalcularVencimentoFatura(cartao, anoC, mesC);
+                if (vencimentoFatura < inicioMes || vencimentoFatura >= fimMes) continue;
+                var (inicio, fim) = CicloDaFatura(cartao, vencimentoFatura);
+
+                var itensCiclo = await db.LancamentosCartao
                 .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
                 .Include(l => l.Categoria)
                 .OrderBy(l => l.DataCompra)
@@ -680,36 +713,49 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(l => l.LojaId == lojaId && l.Vencimento >= inicio && l.Vencimento < fim)
             .ToListAsync();
 
-        object Resumo(string tipo)
+        decimal pagarPago = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pago").Sum(l => l.Valor);
+        int pagarQtdPago = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pago");
+        decimal pagarPendente = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date >= hoje).Sum(l => l.Valor);
+        int pagarQtdPendente = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date >= hoje);
+        decimal pagarVencido = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date < hoje).Sum(l => l.Valor);
+        int pagarQtdVencido = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date < hoje);
+
+        decimal receberPago = doMes.Where(l => l.Tipo == "receber" && l.Status == "pago").Sum(l => l.Valor);
+        int receberQtdPago = doMes.Count(l => l.Tipo == "receber" && l.Status == "pago");
+        decimal receberPendente = doMes.Where(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date >= hoje).Sum(l => l.Valor);
+        int receberQtdPendente = doMes.Count(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date >= hoje);
+        decimal receberVencido = doMes.Where(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date < hoje).Sum(l => l.Valor);
+        int receberQtdVencido = doMes.Count(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date < hoje);
+
+        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        foreach (var cartao in cartoes)
         {
-            var itens = doMes.Where(l => l.Tipo == tipo).ToList();
-            return new
-            {
-                totalPago = itens.Where(l => l.Status == "pago").Sum(l => l.Valor),
-                qtdPago = itens.Count(l => l.Status == "pago"),
-                totalPendente = itens.Where(l => l.Status == "pendente" && l.Vencimento.Date >= hoje).Sum(l => l.Valor),
-                qtdPendente = itens.Count(l => l.Status == "pendente" && l.Vencimento.Date >= hoje),
-                totalVencido = itens.Where(l => l.Status == "pendente" && l.Vencimento.Date < hoje).Sum(l => l.Valor),
-                qtdVencido = itens.Count(l => l.Status == "pendente" && l.Vencimento.Date < hoje),
-            };
+            var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
+            if (vencimentoFatura < inicio || vencimentoFatura >= fim) continue;
+
+            var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
+            var totalFatura = await db.LancamentosCartao
+                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cInicio.Date && l.DataCompra.Date <= cFim.Date)
+                .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+            if (totalFatura <= 0) continue;
+
+            var faturaExistente = await db.FaturasCartao
+                .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
+
+            if (faturaExistente?.Status == "pago") { pagarPago += totalFatura; pagarQtdPago++; }
+            else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFatura; pagarQtdVencido++; }
+            else { pagarPendente += totalFatura; pagarQtdPendente++; }
         }
 
-        var resumoPagar = (dynamic)Resumo("pagar");
-        var resumoReceber = (dynamic)Resumo("receber");
-
-        decimal previstoReceita = (decimal)resumoReceber.totalPago + (decimal)resumoReceber.totalPendente + (decimal)resumoReceber.totalVencido;
-        decimal previstoDespesa = (decimal)resumoPagar.totalPago + (decimal)resumoPagar.totalPendente + (decimal)resumoPagar.totalVencido;
+        var previstoReceita = receberPago + receberPendente + receberVencido;
+        var previstoDespesa = pagarPago + pagarPendente + pagarVencido;
 
         return Ok(new
         {
-            pagar = resumoPagar,
-            receber = resumoReceber,
-            previsao = new
-            {
-                receitaPrevista = previstoReceita,
-                despesaPrevista = previstoDespesa,
-                saldoPrevisto = previstoReceita - previstoDespesa,
-            }
+            pagar = new { totalPago = pagarPago, qtdPago = pagarQtdPago, totalPendente = pagarPendente, qtdPendente = pagarQtdPendente, totalVencido = pagarVencido, qtdVencido = pagarQtdVencido },
+            receber = new { totalPago = receberPago, qtdPago = receberQtdPago, totalPendente = receberPendente, qtdPendente = receberQtdPendente, totalVencido = receberVencido, qtdVencido = receberQtdVencido },
+            previsao = new { receitaPrevista = previstoReceita, despesaPrevista = previstoDespesa, saldoPrevisto = previstoReceita - previstoDespesa }
         });
     }
 
@@ -943,7 +989,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(l => l.CartaoCreditoId == id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
             .Include(l => l.Categoria)
             .OrderBy(l => l.DataCompra)
-            .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null, l.Modo })
+            .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null, categoriaId = l.CategoriaId, l.Modo })
             .ToListAsync();
 
         var total = itens.Sum(i => i.Valor);
@@ -1309,7 +1355,8 @@ public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, Dat
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
 public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial);
 public record AjusteSaldoRequest(string Tipo, decimal? Valor, decimal NovoSaldo, string? Observacao);
-public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento);
-public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int TotalParcelas, DateTime PrimeiroVencimento);
-public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento);
+public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento, string? Observacao);
+public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int? TotalParcelas, DateTime PrimeiroVencimento, DateTime? DataFim, string? Observacao);
+public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao);
 public record MarcarPagamentoRequest(bool Pago);
+public record EditarLancamentoRequest(string Descricao, Guid? CategoriaId, Guid ContaBancariaId, decimal Valor, DateTime Vencimento, string? Observacao);
