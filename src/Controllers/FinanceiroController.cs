@@ -914,6 +914,116 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         return Ok(meses);
     }
+
+    [HttpGet("alertas-vencimento")]
+    public async Task<IActionResult> AlertasVencimento([FromQuery] int dias = 7)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var hoje = DateTime.UtcNow.Date;
+        var limite = hoje.AddDays(dias);
+
+        var lancamentos = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.Status == "pendente" && l.Vencimento >= hoje && l.Vencimento <= limite)
+            .OrderBy(l => l.Vencimento)
+            .Select(l => new
+            {
+                l.Id,
+                descricao = l.Descricao,
+                tipo = l.Tipo,
+                valor = l.Valor,
+                vencimento = l.Vencimento,
+                origem = "lancamento",
+            })
+            .ToListAsync();
+
+        var alertasCartao = new List<object>();
+        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+
+        foreach (var cartao in cartoes)
+        {
+            var (vencimento, total, _) = await CicloAtualCartaoAsync(cartao);
+            if (total > 0 && vencimento >= hoje && vencimento <= limite)
+            {
+                var faturaExistente = await db.FaturasCartao
+                    .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == vencimento.Year && f.MesReferencia.Month == vencimento.Month);
+                if (faturaExistente?.Status != "pago")
+                {
+                    alertasCartao.Add(new
+                    {
+                        id = cartao.Id,
+                        descricao = $"Fatura {cartao.Nome}",
+                        tipo = "pagar",
+                        valor = total,
+                        vencimento,
+                        origem = "cartao",
+                    });
+                }
+            }
+        }
+
+        var resultado = lancamentos.Cast<object>().Concat(alertasCartao)
+            .OrderBy(x => ((dynamic)x).vencimento)
+            .ToList();
+
+        return Ok(resultado);
+    }
+
+    // ── Resumo de cartões (limite usado no ciclo atual) ────────────
+    [HttpGet("cartoes-resumo")]
+    public async Task<IActionResult> CartoesResumo()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        var resultado = new List<object>();
+
+        foreach (var cartao in cartoes)
+        {
+            var (vencimento, total, status) = await CicloAtualCartaoAsync(cartao);
+            resultado.Add(new
+            {
+                cartao.Id,
+                cartao.Nome,
+                cartao.Limite,
+                usado = total,
+                disponivel = cartao.Limite - total,
+                vencimentoAtual = vencimento,
+                status,
+            });
+        }
+
+        return Ok(resultado);
+    }
+
+    // ── Acha o ciclo (fatura) que está "aberto" agora, e seu total ──
+    private async Task<(DateTime Vencimento, decimal Total, string Status)> CicloAtualCartaoAsync(CartaoCredito cartao)
+    {
+        var hoje = DateTime.UtcNow;
+        int ano = hoje.Year, mes = hoje.Month;
+        DateTime vencimento = default;
+        (DateTime Inicio, DateTime Fim) ciclo = default;
+
+        for (int i = 0; i < 3; i++)
+        {
+            vencimento = CalcularVencimentoFatura(cartao, ano, mes);
+            ciclo = CicloDaFatura(cartao, vencimento);
+            if (hoje >= ciclo.Inicio && hoje < ciclo.Fim) break;
+            mes++;
+            if (mes > 12) { mes = 1; ano++; }
+        }
+
+        var total = await db.LancamentosCartao
+            .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra >= ciclo.Inicio && l.DataCompra < ciclo.Fim)
+            .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+        var fatura = await db.FaturasCartao
+            .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == vencimento.Year && f.MesReferencia.Month == vencimento.Month);
+
+        return (vencimento, total, fatura?.Status ?? "pendente");
+    }
 }
 
 public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId);
