@@ -694,7 +694,23 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             };
         }
 
-        return Ok(new { pagar = Resumo("pagar"), receber = Resumo("receber") });
+        var resumoPagar = (dynamic)Resumo("pagar");
+        var resumoReceber = (dynamic)Resumo("receber");
+
+        decimal previstoReceita = (decimal)resumoReceber.totalPago + (decimal)resumoReceber.totalPendente + (decimal)resumoReceber.totalVencido;
+        decimal previstoDespesa = (decimal)resumoPagar.totalPago + (decimal)resumoPagar.totalPendente + (decimal)resumoPagar.totalVencido;
+
+        return Ok(new
+        {
+            pagar = resumoPagar,
+            receber = resumoReceber,
+            previsao = new
+            {
+                receitaPrevista = previstoReceita,
+                despesaPrevista = previstoDespesa,
+                saldoPrevisto = previstoReceita - previstoDespesa,
+            }
+        });
     }
 
     [HttpPost("categorias/seed-padrao")]
