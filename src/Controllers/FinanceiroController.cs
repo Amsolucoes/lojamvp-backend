@@ -430,6 +430,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             fixo.CategoriaId = req.CategoriaId;
             fixo.ContaBancariaId = req.ContaBancariaId;
             fixo.Valor = req.Valor;
+            fixo.Observacao = req.Observacao;
             fixo.DiaVencimento = novoVencimento.Day;
 
             await financeiroService.LimparFuturosAsync(fixo.Id);
