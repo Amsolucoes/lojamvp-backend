@@ -1172,6 +1172,94 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(resultado);
     }
 
+    // ── Editar item de compra do cartão ─────────────────────────────
+    public record EditarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId);
+
+    [HttpPut("cartoes/lancamentos/{id:guid}")]
+    public async Task<IActionResult> EditarLancamentoCartao(Guid id, [FromQuery] string modo, [FromBody] EditarLancamentoCartaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var item = await db.LancamentosCartao.Include(l => l.CartaoCredito)
+            .FirstOrDefaultAsync(l => l.Id == id && l.CartaoCredito!.LojaId == lojaId);
+        if (item is null) return NotFound();
+
+        var novaData = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12);
+
+        if (modo == "todas" && item.Modo == "fixa" && item.CartaoFixoId.HasValue)
+        {
+            var fixo = await db.CartaoLancamentosFixos.FindAsync(item.CartaoFixoId.Value);
+            if (fixo is null) return NotFound();
+
+            fixo.Descricao = req.Descricao.Trim();
+            fixo.Valor = req.Valor;
+            fixo.CategoriaId = req.CategoriaId;
+
+            await financeiroService.LimparFuturosCartaoAsync(fixo.Id);
+            var agora = DateTime.UtcNow;
+            var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            await financeiroService.GerarLoteFixoCartaoAsync(fixo, item.CartaoCredito!, mesAtual);
+        }
+        else if (modo == "todas" && item.Modo == "parcelada" && item.GrupoParcelamentoId.HasValue)
+        {
+            var pendentes = await db.LancamentosCartao
+                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value && l.DataCompra >= DateTime.UtcNow.Date)
+                .ToListAsync();
+
+            foreach (var p in pendentes)
+            {
+                var baseDescricao = req.Descricao.Trim();
+                p.Descricao = p.TotalParcelas.HasValue ? $"{baseDescricao} ({p.NumeroParcela}/{p.TotalParcelas})" : baseDescricao;
+                p.Valor = req.Valor;
+                p.CategoriaId = req.CategoriaId;
+            }
+        }
+        else
+        {
+            item.Descricao = req.Descricao.Trim();
+            item.Valor = req.Valor;
+            item.DataCompra = novaData;
+            item.CategoriaId = req.CategoriaId;
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Lançamento atualizado." });
+    }
+
+    // ── Excluir item de compra do cartão ────────────────────────────
+    [HttpDelete("cartoes/lancamentos/{id:guid}")]
+    public async Task<IActionResult> ExcluirLancamentoCartao(Guid id, [FromQuery] string modo = "unica")
+    {
+        var lojaId = await GetLojaId();
+        var item = await db.LancamentosCartao.Include(l => l.CartaoCredito)
+            .FirstOrDefaultAsync(l => l.Id == id && l.CartaoCredito!.LojaId == lojaId);
+        if (item is null) return NotFound();
+
+        if (modo == "todas" && item.Modo == "fixa" && item.CartaoFixoId.HasValue)
+        {
+            var fixo = await db.CartaoLancamentosFixos.FindAsync(item.CartaoFixoId.Value);
+            if (fixo != null) fixo.Ativo = false;
+
+            var futuros = await db.LancamentosCartao
+                .Where(l => l.CartaoFixoId == item.CartaoFixoId.Value && l.DataCompra >= DateTime.UtcNow.Date)
+                .ToListAsync();
+            db.LancamentosCartao.RemoveRange(futuros);
+        }
+        else if (modo == "todas" && item.Modo == "parcelada" && item.GrupoParcelamentoId.HasValue)
+        {
+            var futuras = await db.LancamentosCartao
+                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value && l.DataCompra >= DateTime.UtcNow.Date)
+                .ToListAsync();
+            db.LancamentosCartao.RemoveRange(futuras);
+        }
+        else
+        {
+            db.LancamentosCartao.Remove(item);
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Lançamento excluído." });
+    }
+
     // ── Acha o ciclo (fatura) que está "aberto" agora, e seu total ──
     private async Task<(DateTime Vencimento, decimal Total, string Status)> CicloAtualCartaoAsync(CartaoCredito cartao)
     {
