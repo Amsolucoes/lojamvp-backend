@@ -451,6 +451,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 p.CategoriaId = req.CategoriaId;
                 p.ContaBancariaId = req.ContaBancariaId;
                 p.Valor = req.Valor;
+                p.Observacao = req.Observacao;
                 var diasNoMes = DateTime.DaysInMonth(p.Vencimento.Year, p.Vencimento.Month);
                 p.Vencimento = new DateTime(p.Vencimento.Year, p.Vencimento.Month, Math.Min(novoDia, diasNoMes), 12, 0, 0, DateTimeKind.Utc);
             }
@@ -461,6 +462,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             lanc.CategoriaId = req.CategoriaId;
             lanc.ContaBancariaId = req.ContaBancariaId;
             lanc.Valor = req.Valor;
+            lanc.Observacao = req.Observacao;
             lanc.Vencimento = novoVencimento;
         }
 
