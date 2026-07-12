@@ -445,6 +445,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 l.Id,
                 descricao = l.Descricao,
                 categoriaNome = l.Categoria != null ? l.Categoria.Nome : null,
+                modo = l.Modo,
                 valor = l.Valor,
                 vencimento = l.Vencimento,
                 status = l.Status,
