@@ -729,6 +729,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         decimal receberVencido = doMes.Where(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date < hoje).Sum(l => l.Valor);
         int receberQtdVencido = doMes.Count(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date < hoje);
 
+        var detalheCartoesPagar = new List<object>();
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         foreach (var cartao in cartoes)
         {
@@ -748,7 +749,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             if (faturaExistente?.Status == "pago") { pagarPago += totalFatura; pagarQtdPago++; }
             else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFatura; pagarQtdVencido++; }
             else { pagarPendente += totalFatura; pagarQtdPendente++; }
+
+            detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = totalFatura, status = faturaExistente?.Status ?? "pendente" });
         }
+
+        var totalLancamentosPagar = pagarPago + pagarPendente + pagarVencido - detalheCartoesPagar.Sum(c => (decimal)((dynamic)c).valor);
 
         var previstoReceita = receberPago + receberPendente + receberVencido;
         var previstoDespesa = pagarPago + pagarPendente + pagarVencido;
@@ -757,7 +762,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         {
             pagar = new { totalPago = pagarPago, qtdPago = pagarQtdPago, totalPendente = pagarPendente, qtdPendente = pagarQtdPendente, totalVencido = pagarVencido, qtdVencido = pagarQtdVencido },
             receber = new { totalPago = receberPago, qtdPago = receberQtdPago, totalPendente = receberPendente, qtdPendente = receberQtdPendente, totalVencido = receberVencido, qtdVencido = receberQtdVencido },
-            previsao = new { receitaPrevista = previstoReceita, despesaPrevista = previstoDespesa, saldoPrevisto = previstoReceita - previstoDespesa }
+            previsao = new { receitaPrevista = previstoReceita, despesaPrevista = previstoDespesa, saldoPrevisto = previstoReceita - previstoDespesa },
+            detalhePagar = new { lancamentos = totalLancamentosPagar, cartoes = detalheCartoesPagar }
         });
     }
 
@@ -1324,14 +1330,40 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(new { mensagem = "Lançamento excluído." });
     }
 
-    // ── Acha o ciclo (fatura) que está "aberto" agora, e seu total ──
+    // Retorna a fatura "a pagar agora": a mais antiga já FECHADA e ainda não paga
+    // (bate com o que aparece em Contas a Pagar). Se não houver nenhuma pendente
+    // já fechada, cai no ciclo que ainda está acumulando (informativo).
     private async Task<(DateTime Vencimento, decimal Total, string Status)> CicloAtualCartaoAsync(CartaoCredito cartao)
     {
         var hoje = DateTime.UtcNow;
+
+        for (int offset = -3; offset <= 0; offset++)
+        {
+            var refBase = new DateTime(hoje.Year, hoje.Month, 1).AddMonths(offset);
+            var vencimentoCheck = CalcularVencimentoFatura(cartao, refBase.Year, refBase.Month);
+            var cicloCheck = CicloDaFatura(cartao, vencimentoCheck);
+
+            var cicloJaFechou = hoje.Date > cicloCheck.Fim.Date;
+            if (!cicloJaFechou) continue;
+
+            var totalCheck = await db.LancamentosCartao
+                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cicloCheck.Inicio.Date && l.DataCompra.Date <= cicloCheck.Fim.Date)
+                .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+            if (totalCheck <= 0) continue;
+
+            var faturaCheck = await db.FaturasCartao
+                .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == vencimentoCheck.Year && f.MesReferencia.Month == vencimentoCheck.Month);
+
+            if (faturaCheck?.Status == "pago") continue;
+
+            return (vencimentoCheck, totalCheck, faturaCheck?.Status ?? "pendente");
+        }
+
+        // Nenhuma fatura fechada pendente — mostra o ciclo em aberto (só informativo)
         int ano = hoje.Year, mes = hoje.Month;
         DateTime vencimento = default;
         (DateTime Inicio, DateTime Fim) ciclo = default;
-
         for (int i = 0; i < 3; i++)
         {
             vencimento = CalcularVencimentoFatura(cartao, ano, mes);
