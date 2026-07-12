@@ -532,7 +532,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             var (inicio, fim) = CicloDaFatura(cartao, vencimentoFatura);
 
             var itensCiclo = await db.LancamentosCartao
-                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra >= inicio && l.DataCompra < fim)
+                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
                 .Include(l => l.Categoria)
                 .OrderBy(l => l.DataCompra)
                 .ToListAsync();
@@ -799,7 +799,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             CartaoCreditoId = id,
             Descricao = req.Descricao.Trim(),
             Valor = req.Valor,
-            DataCompra = DateTime.SpecifyKind(req.DataCompra, DateTimeKind.Utc),
+            DataCompra = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12),
             CategoriaId = req.CategoriaId,
         });
         await db.SaveChangesAsync();
@@ -812,10 +812,12 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
     private (DateTime Inicio, DateTime Fim) CicloDaFatura(CartaoCredito cartao, DateTime vencimento)
     {
-        // Fechamento do ciclo = 1 mês antes do vencimento, no dia de fechamento
+        // Fechamento do ciclo = 1 mês antes do vencimento, no dia de fechamento.
+        // O DIA DE FECHAMENTO em si pertence à fatura que está fechando (inclusive),
+        // então o ciclo vai do dia seguinte ao fechamento anterior até o fechamento atual, inclusive.
         var fechamentoAtual = new DateTime(vencimento.Year, vencimento.Month, Math.Min(cartao.DiaFechamento, DateTime.DaysInMonth(vencimento.Year, vencimento.Month)), 0, 0, 0, DateTimeKind.Utc);
         var fechamentoAnterior = fechamentoAtual.AddMonths(-1);
-        return (fechamentoAnterior, fechamentoAtual);
+        return (fechamentoAnterior.AddDays(1), fechamentoAtual);
     }
 
     // ── Listar faturas + total, agrupado ou detalhado ──────────────
@@ -830,7 +832,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var (inicio, fim) = CicloDaFatura(cartao, vencimento);
 
         var itens = await db.LancamentosCartao
-            .Where(l => l.CartaoCreditoId == id && l.DataCompra >= inicio && l.DataCompra < fim)
+            .Where(l => l.CartaoCreditoId == id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
             .Include(l => l.Categoria)
             .OrderBy(l => l.DataCompra)
             .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null })
@@ -864,7 +866,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var (inicio, fim) = CicloDaFatura(cartao, vencimento);
 
         var total = await db.LancamentosCartao
-            .Where(l => l.CartaoCreditoId == id && l.DataCompra >= inicio && l.DataCompra < fim)
+            .Where(l => l.CartaoCreditoId == id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
             .SumAsync(l => (decimal?)l.Valor) ?? 0;
 
         var fatura = await db.FaturasCartao
@@ -1010,13 +1012,13 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         {
             vencimento = CalcularVencimentoFatura(cartao, ano, mes);
             ciclo = CicloDaFatura(cartao, vencimento);
-            if (hoje >= ciclo.Inicio && hoje < ciclo.Fim) break;
+            if (hoje.Date >= ciclo.Inicio.Date && hoje.Date <= ciclo.Fim.Date) break;
             mes++;
             if (mes > 12) { mes = 1; ano++; }
         }
 
         var total = await db.LancamentosCartao
-            .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra >= ciclo.Inicio && l.DataCompra < ciclo.Fim)
+            .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= ciclo.Inicio.Date && l.DataCompra.Date <= ciclo.Fim.Date)
             .SumAsync(l => (decimal?)l.Valor) ?? 0;
 
         var fatura = await db.FaturasCartao
