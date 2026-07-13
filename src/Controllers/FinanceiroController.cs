@@ -338,7 +338,9 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Observacao = req.Observacao,
             Valor = req.Valor,
             DiaVencimento = req.DiaVencimento is >= 1 and <= 28 ? req.DiaVencimento : 10,
-            DataInicio = req.DataInicio,
+            DataInicio = req.DataInicio.HasValue
+                ? DateTime.SpecifyKind(req.DataInicio.Value.Date, DateTimeKind.Utc)
+                : null,
         };
         db.LancamentosFixos.Add(fixo);
         await db.SaveChangesAsync();
