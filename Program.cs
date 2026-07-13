@@ -1,5 +1,6 @@
 using LojaApi.Data;
 using LojaApi.Services;
+using LojaApi.src.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -41,6 +42,7 @@ internal class Program
         builder.Services.AddScoped<MercadoPagoService>();
         builder.Services.AddScoped<PlanosService>();
         builder.Services.AddScoped<FinanceiroService>();
+        builder.Services.AddScoped<TurmasService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
 
         // ── Controllers + Swagger ─────────────────────────────────────────

@@ -1,4 +1,5 @@
 using LojaApi.Models;
+using LojaApi.src.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Data;
@@ -38,6 +39,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LancamentoCartao> LancamentosCartao => Set<LancamentoCartao>();
     public DbSet<FaturaCartao> FaturasCartao => Set<FaturaCartao>();
     public DbSet<CartaoLancamentoFixo> CartaoLancamentosFixos => Set<CartaoLancamentoFixo>();
+    public DbSet<Turma> Turmas => Set<Turma>();
+    public DbSet<MatriculaTurma> MatriculasTurma => Set<MatriculaTurma>();
+    public DbSet<SessaoTurma> SessoesTurma => Set<SessaoTurma>();
+    public DbSet<InscricaoSessao> InscricoesSessao => Set<InscricaoSessao>();
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Índices únicos
@@ -203,6 +208,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<CartaoLancamentoFixo>()
             .HasOne(c => c.Categoria).WithMany()
             .HasForeignKey(c => c.CategoriaId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<MatriculaTurma>()
+            .HasOne(m => m.Turma).WithMany()
+            .HasForeignKey(m => m.TurmaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<SessaoTurma>()
+            .HasOne(s => s.Turma).WithMany()
+            .HasForeignKey(s => s.TurmaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<InscricaoSessao>()
+            .HasOne(i => i.SessaoTurma).WithMany()
+            .HasForeignKey(i => i.SessaoTurmaId).OnDelete(DeleteBehavior.Cascade);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
