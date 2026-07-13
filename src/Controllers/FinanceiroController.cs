@@ -36,7 +36,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         foreach (var conta in contas)
         {
             var saldo = await CalcularSaldoAsync(conta.Id);
-            resultado.Add(new { conta.Id, conta.Nome, conta.SaldoInicial, conta.Ativa, saldoAtual = saldo });
+            resultado.Add(new { conta.Id, conta.Nome, conta.SaldoInicial, conta.Ativa, conta.Banco, saldoAtual = saldo });
         }
         return Ok(resultado);
     }
@@ -52,11 +52,12 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             LojaId = lojaId.Value,
             Nome = req.Nome.Trim(),
             SaldoInicial = req.SaldoInicial,
+            Banco = req.Banco,
         };
         db.ContasBancarias.Add(conta);
         await db.SaveChangesAsync();
 
-        return Ok(new { conta.Id, conta.Nome, conta.SaldoInicial, conta.Ativa, saldoAtual = conta.SaldoInicial });
+        return Ok(new { conta.Id, conta.Nome, conta.SaldoInicial, conta.Ativa, conta.Banco, saldoAtual = conta.SaldoInicial });
     }
 
     [HttpPut("contas/{id:guid}")]
@@ -68,10 +69,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         conta.Nome = req.Nome.Trim();
         conta.SaldoInicial = req.SaldoInicial;
+        conta.Banco = req.Banco;
         await db.SaveChangesAsync();
 
         var saldo = await CalcularSaldoAsync(conta.Id);
-        return Ok(new { conta.Id, conta.Nome, conta.SaldoInicial, conta.Ativa, saldoAtual = saldo });
+        return Ok(new { conta.Id, conta.Nome, conta.SaldoInicial, conta.Ativa, conta.Banco, saldoAtual = saldo });
     }
 
     [HttpPatch("contas/{id:guid}/ativo")]
@@ -336,6 +338,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Observacao = req.Observacao,
             Valor = req.Valor,
             DiaVencimento = req.DiaVencimento is >= 1 and <= 28 ? req.DiaVencimento : 10,
+            DataInicio = req.DataInicio,
         };
         db.LancamentosFixos.Add(fixo);
         await db.SaveChangesAsync();
@@ -1440,10 +1443,10 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId);
 public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId);
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
-public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial);
+public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial, string? Banco = null);
 public record AjusteSaldoRequest(string Tipo, decimal? Valor, decimal NovoSaldo, string? Observacao);
 public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento, string? Observacao, bool JaPago = false);
 public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int? TotalParcelas, DateTime PrimeiroVencimento, DateTime? DataFim, string? Observacao, bool JaPago = false);
-public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao, bool JaPago = false);
+public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao, DateTime? DataInicio = null, bool JaPago = false);
 public record MarcarPagamentoRequest(bool Pago);
 public record EditarLancamentoRequest(string Descricao, Guid? CategoriaId, Guid ContaBancariaId, decimal Valor, DateTime Vencimento, string? Observacao);

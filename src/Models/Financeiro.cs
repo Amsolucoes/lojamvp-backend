@@ -16,6 +16,9 @@ public class ContaBancaria
     [Column(TypeName = "decimal(12,2)")]
     public decimal SaldoInicial { get; set; } = 0;
 
+    [MaxLength(30)]
+    public string? Banco { get; set; }
+
     public bool Ativa { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
@@ -44,6 +47,7 @@ public class LancamentoFixo
     public int DiaVencimento { get; set; } = 10;
     public bool Ativa { get; set; } = true;
     public DateTime? GeradoAte { get; set; }
+    public DateTime? DataInicio { get; set; }
 
     [MaxLength(300)]
     public string? Observacao { get; set; }

@@ -9,13 +9,19 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
     private const int MESES_LOTE = 24;
 
     // ── Gera um lote de N meses a partir de um mês inicial ─────────
-    public async Task GerarLoteFixoAsync(LancamentoFixo fixo, DateTime desdeMes, int meses = MESES_LOTE)
+   public async Task GerarLoteFixoAsync(LancamentoFixo fixo, DateTime desde, int meses = MESES_LOTE)
     {
         int criados = 0;
+        var inicioPermitido = fixo.DataInicio.HasValue
+            ? new DateTime(fixo.DataInicio.Value.Year, fixo.DataInicio.Value.Month, 1)
+            : (DateTime?)null;
 
         for (int i = 0; i < meses; i++)
         {
-            var mesAlvo = desdeMes.AddMonths(i);
+            var mesAlvo = desde.AddMonths(i);
+
+            if (inicioPermitido.HasValue && mesAlvo < inicioPermitido.Value) continue;
+
             var vencimento = new DateTime(mesAlvo.Year, mesAlvo.Month,
                 Math.Min(fixo.DiaVencimento, DateTime.DaysInMonth(mesAlvo.Year, mesAlvo.Month)),
                 12, 0, 0, DateTimeKind.Utc);
@@ -44,7 +50,7 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
             criados++;
         }
 
-        fixo.GeradoAte = desdeMes.AddMonths(meses - 1);
+        fixo.GeradoAte = desde.AddMonths(meses - 1);
 
         if (criados > 0)
             logger.LogInformation("{N} lançamento(s) gerados para o fixo '{Desc}' até {Ate}.", criados, fixo.Descricao, fixo.GeradoAte?.ToString("yyyy-MM"));
