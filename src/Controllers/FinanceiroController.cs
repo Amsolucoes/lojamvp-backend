@@ -223,8 +223,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }).ToListAsync();
 
         var qPlano = db.PagamentosPlano.Where(p => p.LojaId == lojaId);
-        if (de.HasValue) qPlano = qPlano.Where(p => p.MesReferencia >= de.Value);
-        if (ate.HasValue) qPlano = qPlano.Where(p => p.MesReferencia <= ate.Value);
+        if (de.HasValue) qPlano = qPlano.Where(p => p.MesReferencia.Date >= de.Value.Date);
+        if (ate.HasValue) qPlano = qPlano.Where(p => p.MesReferencia.Date <= ate.Value.Date);
 
         var pagamentosPlano = await qPlano
             .Join(db.AssinaturasCliente, p => p.AssinaturaId, a => a.Id, (p, a) => new { p, a })
