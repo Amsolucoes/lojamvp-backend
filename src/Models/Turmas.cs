@@ -67,5 +67,22 @@ public class InscricaoSessao
     // Se essa vaga foi remarcada, aponta pra sessão de destino
     public Guid? RemarcadoParaSessaoId { get; set; }
 
+    // Profissional que atende esse aluno NESSA sessão específica — pode variar semana a semana
+    public Guid? ProfissionalId { get; set; }
+    public Profissional? Profissional { get; set; }
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Profissional que atende os alunos nas sessões ───────────────────
+public class Profissional
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+
+    [Required, MaxLength(100)]
+    public string Nome { get; set; } = "";
+
+    public bool Ativo { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }

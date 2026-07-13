@@ -210,6 +210,7 @@ public class TurmasController(AppDbContext db, TurmasService turmasService) : Co
         foreach (var s in sessoes)
         {
             var inscricoes = await db.InscricoesSessao
+                .Include(i => i.Profissional)
                 .Where(i => i.SessaoTurmaId == s.Id && i.Status != "faltou")
                 .Join(db.Clientes, i => i.ClienteId, c => c.Id, (i, c) => new
                 {
@@ -219,6 +220,8 @@ public class TurmasController(AppDbContext db, TurmasService turmasService) : Co
                     i.Tipo,
                     i.Status,
                     i.RemarcadoParaSessaoId,
+                    profissionalId = i.ProfissionalId,
+                    profissionalNome = i.Profissional != null ? i.Profissional.Nome : null,
                 })
                 .ToListAsync();
 
@@ -322,5 +325,65 @@ public class TurmasController(AppDbContext db, TurmasService turmasService) : Co
         await db.SaveChangesAsync();
 
         return Ok(new { inscricao.Id, inscricao.Status });
+    }
+
+    // ══════════════════ PROFISSIONAIS ══════════════════
+
+    [HttpGet("profissionais")]
+    public async Task<IActionResult> ListarProfissionais()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.Profissionais
+            .Where(p => p.LojaId == lojaId && p.Ativo)
+            .OrderBy(p => p.Nome)
+            .Select(p => new { p.Id, p.Nome })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    public record SalvarProfissionalRequest(string Nome);
+
+    [HttpPost("profissionais")]
+    public async Task<IActionResult> CriarProfissional([FromBody] SalvarProfissionalRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var prof = new Profissional { LojaId = lojaId.Value, Nome = req.Nome.Trim() };
+        db.Profissionais.Add(prof);
+        await db.SaveChangesAsync();
+
+        return Ok(new { prof.Id, prof.Nome });
+    }
+
+    [HttpPatch("profissionais/{id:guid}/ativo")]
+    public async Task<IActionResult> AlternarProfissional(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var prof = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == id && p.LojaId == lojaId);
+        if (prof is null) return NotFound();
+
+        prof.Ativo = !prof.Ativo;
+        await db.SaveChangesAsync();
+        return Ok(new { prof.Id, prof.Ativo });
+    }
+
+    // ── Define/troca o profissional de um aluno NESSA sessão ───────
+    public record DefinirProfissionalRequest(Guid? ProfissionalId);
+
+    [HttpPatch("inscricoes/{id:guid}/profissional")]
+    public async Task<IActionResult> DefinirProfissional(Guid id, [FromBody] DefinirProfissionalRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var inscricao = await db.InscricoesSessao.FirstOrDefaultAsync(i => i.Id == id && i.LojaId == lojaId);
+        if (inscricao is null) return NotFound();
+
+        inscricao.ProfissionalId = req.ProfissionalId;
+        await db.SaveChangesAsync();
+
+        return Ok(new { inscricao.Id, inscricao.ProfissionalId });
     }
 }

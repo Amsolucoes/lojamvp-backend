@@ -44,6 +44,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SessaoTurma> SessoesTurma => Set<SessaoTurma>();
     public DbSet<InscricaoSessao> InscricoesSessao => Set<InscricaoSessao>();
     public DbSet<ModuloPreco> ModulosPreco => Set<ModuloPreco>();
+    public DbSet<Profissional> Profissionais => Set<Profissional>();
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Índices únicos
