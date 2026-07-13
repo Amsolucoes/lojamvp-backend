@@ -222,8 +222,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             origem = "avulso",
         }).ToListAsync();
 
-        var pagamentosPlano = await db.PagamentosPlano
-            .Where(p => p.LojaId == lojaId)
+        var qPlano = db.PagamentosPlano.Where(p => p.LojaId == lojaId);
+        if (de.HasValue) qPlano = qPlano.Where(p => p.MesReferencia >= de.Value);
+        if (ate.HasValue) qPlano = qPlano.Where(p => p.MesReferencia <= ate.Value);
+
+        var pagamentosPlano = await qPlano
             .Join(db.AssinaturasCliente, p => p.AssinaturaId, a => a.Id, (p, a) => new { p, a })
             .Join(db.Clientes, x => x.a.ClienteId, c => c.Id, (x, c) => new
             {
@@ -758,6 +761,18 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         int receberQtdPendente = doMes.Count(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date >= hoje);
         decimal receberVencido = doMes.Where(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date < hoje).Sum(l => l.Valor);
         int receberQtdVencido = doMes.Count(l => l.Tipo == "receber" && l.Status == "pendente" && l.Vencimento.Date < hoje);
+
+        var assinaturaIdsResumo = await db.AssinaturasCliente.Where(a => a.LojaId == lojaId).Select(a => a.Id).ToListAsync();
+        var pagamentosPlanoMes = await db.PagamentosPlano
+            .Where(p => assinaturaIdsResumo.Contains(p.AssinaturaId) && p.MesReferencia >= inicio && p.MesReferencia < fim)
+            .ToListAsync();
+
+        foreach (var p in pagamentosPlanoMes)
+        {
+            if (p.Status == "pago") { receberPago += p.Valor; receberQtdPago++; }
+            else if (p.MesReferencia.Date < hoje) { receberVencido += p.Valor; receberQtdVencido++; }
+            else { receberPendente += p.Valor; receberQtdPendente++; }
+        }
 
         var detalheCartoesPagar = new List<object>();
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
