@@ -47,6 +47,10 @@ public class PerfisController(AppDbContext db) : ControllerBase
         var lojaId = await GetLojaId();
         if (lojaId is null) return NotFound(new { erro = "Loja não encontrada." });
 
+        var jaTemPerfil = await db.CategoriasLoja.AnyAsync(c => c.LojaId == lojaId);
+        if (jaTemPerfil)
+            return StatusCode(403, new { erro = "O perfil da sua loja já foi definido. Para alterar, fale com o suporte da AldevSoftware." });
+
         var perfil = await db.PerfisLoja
             .Include(p => p.Categorias)
             .Include(p => p.CamposExtras)
