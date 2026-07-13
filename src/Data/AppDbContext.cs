@@ -43,6 +43,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MatriculaTurma> MatriculasTurma => Set<MatriculaTurma>();
     public DbSet<SessaoTurma> SessoesTurma => Set<SessaoTurma>();
     public DbSet<InscricaoSessao> InscricoesSessao => Set<InscricaoSessao>();
+    public DbSet<ModuloPreco> ModulosPreco => Set<ModuloPreco>();
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Índices únicos
@@ -557,6 +558,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilSalaoLoja, Nome = "Coloração / tintura", Categoria = "Química", Preco = 120m, DuracaoMin = 120, Ordem = 2 },
             new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilSalaoLoja, Nome = "Manicure", Categoria = "Unhas", Preco = 35m, DuracaoMin = 45, Ordem = 3 },
             new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilSalaoLoja, Nome = "Pedicure", Categoria = "Unhas", Preco = 40m, DuracaoMin = 45, Ordem = 4 }
+        );
+
+        mb.Entity<ModuloPreco>().HasData(
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111101"), Chave = "servicos", Nome = "Serviços e Agenda", Valor = 0, DisponivelParaAtivar = true },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111102"), Chave = "financeiro", Nome = "Financeiro (Contas a Pagar/Receber)", Valor = 29.90m, DisponivelParaAtivar = true },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111103"), Chave = "turmas", Nome = "Turmas (aulas em grupo)", Valor = 39.90m, DisponivelParaAtivar = true },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111104"), Chave = "etiquetas", Nome = "Impressão de etiquetas", Valor = 0, DisponivelParaAtivar = false },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111105"), Chave = "nf", Nome = "Importação de NF", Valor = 0, DisponivelParaAtivar = false }
         );
     }
 
