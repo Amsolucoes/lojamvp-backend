@@ -115,6 +115,45 @@ public class LojaController(AppDbContext db) : ControllerBase
         });
     }
 
+    // ── Cliente ativa/desativa módulo sozinho ───────────────────────
+    public record AlternarModuloRequest(string Chave, bool Ativar);
+
+    [HttpPatch("modulos")]
+    public async Task<IActionResult> AlternarModulo([FromBody] AlternarModuloRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        var loja = await db.Lojas.FindAsync(lojaId.Value);
+        if (loja is null) return NotFound();
+
+        var moduloPreco = await db.ModulosPreco.FirstOrDefaultAsync(m => m.Chave == req.Chave);
+        if (moduloPreco is null || !moduloPreco.DisponivelParaAtivar)
+            return BadRequest(new { erro = "Módulo indisponível." });
+
+        var lista = (loja.ModulosAtivos ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+        if (req.Ativar)
+        {
+            if (!lista.Contains(req.Chave)) lista.Add(req.Chave);
+            loja.MensalidadeValor += moduloPreco.Valor;
+        }
+        else
+        {
+            if (lista.Contains(req.Chave))
+            {
+                lista.Remove(req.Chave);
+                loja.MensalidadeValor = Math.Max(0, loja.MensalidadeValor - moduloPreco.Valor);
+            }
+        }
+
+        loja.ModulosAtivos = string.Join(",", lista);
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.ModulosAtivos, loja.MensalidadeValor });
+    }
+
     // Normaliza texto para slug de URL (minúsculo, sem acento, hífens)
     private static string GerarSlug(string texto)
     {
