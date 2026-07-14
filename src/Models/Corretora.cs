@@ -40,6 +40,11 @@ public class Oportunidade
 
     public int Ordem { get; set; } = 0; // posição dentro da coluna do funil (drag and drop)
 
+    public Guid? LancamentoFinanceiroId { get; set; }
+
+    [MaxLength(500)]
+    public string? Observacao { get; set; }
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
 }

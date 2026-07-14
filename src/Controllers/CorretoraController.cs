@@ -142,7 +142,7 @@ public class CorretoraController(AppDbContext db) : ControllerBase
     }
 
     // ── Mover card entre etapas (drag and drop) ─────────────────────
-    public record MoverEtapaRequest(string Etapa, int Ordem, string? MotivoPerda);
+    public record MoverEtapaRequest(string Etapa, int Ordem, string? MotivoPerda, decimal? Valor, Guid? ContaBancariaId);
 
     [HttpPatch("oportunidades/{id:guid}/etapa")]
     public async Task<IActionResult> MoverEtapa(Guid id, [FromBody] MoverEtapaRequest req)
@@ -159,6 +159,26 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         op.Ordem = req.Ordem;
         op.AtualizadoEm = DateTime.UtcNow;
         if (req.Etapa == "perdido") op.MotivoPerda = req.MotivoPerda;
+
+        // Ao chegar em "ganho", gera automaticamente o lançamento de comissão no Financeiro
+        if (req.Etapa == "ganho" && op.LancamentoFinanceiroId is null && req.ContaBancariaId.HasValue)
+        {
+            var cliente = await db.Clientes.FindAsync(op.ClienteId);
+            var lancamento = new LancamentoFinanceiro
+            {
+                LojaId = lojaId!.Value,
+                ContaBancariaId = req.ContaBancariaId.Value,
+                Tipo = "receber",
+                Modo = "avulsa",
+                Descricao = $"Comissão — {op.PlanoDesejado ?? "Plano"} ({cliente?.Nome})",
+                Valor = req.Valor ?? op.ValorEstimado ?? 0,
+                Vencimento = DateTime.SpecifyKind(DateTime.UtcNow.Date, DateTimeKind.Utc).AddHours(12),
+                Avisar = true,
+            };
+            db.LancamentosFinanceiros.Add(lancamento);
+            await db.SaveChangesAsync();
+            op.LancamentoFinanceiroId = lancamento.Id;
+        }
 
         await db.SaveChangesAsync();
         return Ok(new { op.Id, op.Etapa });
