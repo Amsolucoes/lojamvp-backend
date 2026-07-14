@@ -44,7 +44,7 @@ public class AlertaEmailService(AppDbContext db, IResend resend, ILogger<AlertaE
             {
                 var msg = new EmailMessage
                 {
-                    From = "AldevSoftware <financeiro@aldevsoftware.com.br>",
+                    From = "AldevSoftware <onboarding@resend.dev>", // TEMPORÁRIO: trocar para financeiro@aldevsoftware.com.br quando o domínio estiver verificado
                     Subject = $"💰 {grupo.Count()} conta(s) vencendo hoje — R$ {total:N2}",
                     HtmlBody = html,
                 };
