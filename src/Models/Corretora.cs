@@ -32,6 +32,8 @@ public class Oportunidade
     [Column(TypeName = "decimal(10,2)")]
     public decimal? ValorEstimado { get; set; }
 
+    public int? QuantidadeVidas { get; set; }
+
     [MaxLength(30)]
     public string Etapa { get; set; } = "lead"; // lead | contato | proposta | negociacao | ganho | perdido
 

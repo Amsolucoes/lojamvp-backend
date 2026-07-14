@@ -88,6 +88,8 @@ public class CorretoraController(AppDbContext db) : ControllerBase
                 o.ValorEstimado,
                 o.Etapa,
                 o.Ordem,
+                o.Observacao,
+                o.QuantidadeVidas,
                 o.CriadoEm,
             })
             .OrderBy(x => x.Ordem)
@@ -96,7 +98,7 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         return Ok(lista);
     }
 
-    public record SalvarOportunidadeRequest(Guid ClienteId, Guid? SeguradoraId, string? PlanoDesejado, decimal? ValorEstimado);
+    public record SalvarOportunidadeRequest(Guid ClienteId, Guid? SeguradoraId, string? PlanoDesejado, decimal? ValorEstimado, string? Observacao, int? QuantidadeVidas);
 
     [HttpPost("oportunidades")]
     public async Task<IActionResult> CriarOportunidade([FromBody] SalvarOportunidadeRequest req)
@@ -116,6 +118,8 @@ public class CorretoraController(AppDbContext db) : ControllerBase
             SeguradoraId = req.SeguradoraId,
             PlanoDesejado = req.PlanoDesejado,
             ValorEstimado = req.ValorEstimado,
+            QuantidadeVidas = req.QuantidadeVidas,
+            Observacao = req.Observacao,
             Ordem = maxOrdem + 1,
         };
         db.Oportunidades.Add(op);
@@ -135,6 +139,8 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         op.SeguradoraId = req.SeguradoraId;
         op.PlanoDesejado = req.PlanoDesejado;
         op.ValorEstimado = req.ValorEstimado;
+        op.QuantidadeVidas = req.QuantidadeVidas;
+        op.Observacao = req.Observacao;
         op.AtualizadoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
@@ -369,6 +375,38 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         seg.Nome = req.Nome.Trim();
         await db.SaveChangesAsync();
         return Ok(new { seg.Id, seg.Nome });
+    }
+
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> Dashboard([FromQuery] int dias = 15)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(new { });
+
+        var desde = DateTime.UtcNow.AddDays(-dias);
+
+        var oportunidades = await db.Oportunidades
+            .Where(o => o.LojaId == lojaId && o.CriadoEm >= desde)
+            .ToListAsync();
+
+        var emAndamento = oportunidades.Where(o => o.Etapa != "ganho" && o.Etapa != "perdido").ToList();
+        var implantadas = oportunidades.Where(o => o.Etapa == "ganho").ToList();
+
+        return Ok(new
+        {
+            emAndamento = new
+            {
+                propostas = emAndamento.Count,
+                vidas = emAndamento.Sum(o => o.QuantidadeVidas ?? 0),
+                valorTotal = emAndamento.Sum(o => o.ValorEstimado ?? 0),
+            },
+            implantadas = new
+            {
+                propostas = implantadas.Count,
+                vidas = implantadas.Sum(o => o.QuantidadeVidas ?? 0),
+                valorTotal = implantadas.Sum(o => o.ValorEstimado ?? 0),
+            },
+        });
     }
 
     public record AtualizarSeguradoraRequest(string Nome);
