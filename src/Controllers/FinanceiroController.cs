@@ -1342,6 +1342,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             fixo.CategoriaId = req.CategoriaId;
 
             await financeiroService.LimparFuturosCartaoAsync(fixo.Id);
+            await db.SaveChangesAsync();
+
             var agora = DateTime.UtcNow;
             var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             await financeiroService.GerarLoteFixoCartaoAsync(fixo, item.CartaoCredito!, mesAtual);
