@@ -116,6 +116,8 @@ public class AjusteContaBancaria
     [MaxLength(200)]
     public string? Observacao { get; set; }
 
+    public Guid? TransferenciaGrupoId { get; set; } // liga as 2 pontas (saída+entrada) de uma transferência
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 

@@ -1418,6 +1418,60 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(new { mensagem = "Lançamento excluído." });
     }
 
+    public record TransferenciaContaRequest(Guid ContaOrigemId, Guid ContaDestinoId, decimal Valor, bool Registrar, string? Observacao);
+
+    [HttpPost("contas/transferencia")]
+    public async Task<IActionResult> TransferirEntreContas([FromBody] TransferenciaContaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        if (req.ContaOrigemId == req.ContaDestinoId)
+            return BadRequest(new { erro = "Escolha duas contas diferentes." });
+        if (req.Valor <= 0)
+            return BadRequest(new { erro = "Valor deve ser maior que zero." });
+
+        var origem = await db.ContasBancarias.FirstOrDefaultAsync(c => c.Id == req.ContaOrigemId && c.LojaId == lojaId);
+        var destino = await db.ContasBancarias.FirstOrDefaultAsync(c => c.Id == req.ContaDestinoId && c.LojaId == lojaId);
+        if (origem is null || destino is null) return NotFound(new { erro = "Conta não encontrada." });
+
+        if (req.Registrar)
+        {
+            var grupoId = Guid.NewGuid();
+            db.AjustesContaBancaria.Add(new AjusteContaBancaria
+            {
+                LojaId = lojaId.Value,
+                ContaBancariaId = origem.Id,
+                Tipo = "saida",
+                Valor = req.Valor,
+                Observacao = $"Transferência para {destino.Nome}" + (string.IsNullOrWhiteSpace(req.Observacao) ? "" : $" — {req.Observacao}"),
+                TransferenciaGrupoId = grupoId,
+            });
+            db.AjustesContaBancaria.Add(new AjusteContaBancaria
+            {
+                LojaId = lojaId.Value,
+                ContaBancariaId = destino.Id,
+                Tipo = "entrada",
+                Valor = req.Valor,
+                Observacao = $"Transferência de {origem.Nome}" + (string.IsNullOrWhiteSpace(req.Observacao) ? "" : $" — {req.Observacao}"),
+                TransferenciaGrupoId = grupoId,
+            });
+        }
+        else
+        {
+            // Sem registro: move direto no saldo inicial de cada conta, sem deixar rastro no histórico de ajustes
+            origem.SaldoInicial -= req.Valor;
+            destino.SaldoInicial += req.Valor;
+        }
+
+        await db.SaveChangesAsync();
+
+        var saldoOrigem = await CalcularSaldoAsync(origem.Id);
+        var saldoDestino = await CalcularSaldoAsync(destino.Id);
+
+        return Ok(new { saldoOrigem, saldoDestino });
+    }
+
     // Retorna a fatura "a pagar agora": a mais antiga já FECHADA e ainda não paga
     // (bate com o que aparece em Contas a Pagar). Se não houver nenhuma pendente
     // já fechada, cai no ciclo que ainda está acumulando (informativo).
