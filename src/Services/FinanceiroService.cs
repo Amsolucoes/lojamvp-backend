@@ -110,13 +110,14 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
 
             if (jaExiste) continue;
 
+            var diaValido = Math.Min(fixo.DiaCompra, DateTime.DaysInMonth(dataCiclo.Year, dataCiclo.Month));
             db.LancamentosCartao.Add(new LancamentoCartao
             {
                 LojaId = fixo.LojaId,
                 CartaoCreditoId = fixo.CartaoCreditoId,
                 Descricao = fixo.Descricao,
                 Valor = fixo.Valor,
-                DataCompra = new DateTime(dataCiclo.Year, dataCiclo.Month, 1, 12, 0, 0, DateTimeKind.Utc),
+                DataCompra = new DateTime(dataCiclo.Year, dataCiclo.Month, diaValido, 12, 0, 0, DateTimeKind.Utc),
                 Modo = "fixa",
                 CategoriaId = fixo.CategoriaId,
                 Observacao = fixo.Observacao,

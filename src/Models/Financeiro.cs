@@ -221,6 +221,8 @@ public class CartaoLancamentoFixo
     public Guid? CategoriaId { get; set; }
     public CategoriaFinanceira? Categoria { get; set; }
 
+    public int DiaCompra { get; set; } = 1;
+
     [MaxLength(300)]
     public string? Observacao { get; set; }
 

@@ -963,7 +963,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     }
 
     // ── Lançamento fixo/recorrente no cartão (ex: Netflix) ──────────
-    public record CartaoFixoRequest(string Descricao, decimal Valor, Guid? CategoriaId, string? Observacao = null);
+    public record CartaoFixoRequest(string Descricao, decimal Valor, Guid? CategoriaId, string? Observacao = null, int DiaCompra = 1);
 
     [HttpPost("cartoes/{id:guid}/fixos")]
     public async Task<IActionResult> CriarCartaoFixo(Guid id, [FromBody] CartaoFixoRequest req)
@@ -980,6 +980,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Valor = req.Valor,
             CategoriaId = req.CategoriaId,
             Observacao = req.Observacao,
+            DiaCompra = req.DiaCompra is >= 1 and <= 28 ? req.DiaCompra : 1,
         };
         db.CartaoLancamentosFixos.Add(fixo);
         await db.SaveChangesAsync();
@@ -1340,6 +1341,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             fixo.Descricao = req.Descricao.Trim();
             fixo.Valor = req.Valor;
             fixo.CategoriaId = req.CategoriaId;
+            fixo.Observacao = req.Observacao;
+            fixo.DiaCompra = novaData.Day;
 
             await financeiroService.LimparFuturosCartaoAsync(fixo.Id);
             await db.SaveChangesAsync();
