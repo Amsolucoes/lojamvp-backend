@@ -24,15 +24,16 @@ public class CorretoraController(AppDbContext db) : ControllerBase
     // ══════════════════ SEGURADORAS ══════════════════
 
     [HttpGet("seguradoras")]
-    public async Task<IActionResult> ListarSeguradoras()
+    public async Task<IActionResult> ListarSeguradoras([FromQuery] bool todas = false)
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
-        var lista = await db.Seguradoras
-            .Where(s => s.LojaId == lojaId && s.Ativa)
-            .OrderBy(s => s.Nome)
-            .Select(s => new { s.Id, s.Nome })
+        var q = db.Seguradoras.Where(s => s.LojaId == lojaId);
+        if (!todas) q = q.Where(s => s.Ativa);
+
+        var lista = await q.OrderBy(s => s.Nome)
+            .Select(s => new { s.Id, s.Nome, s.Ativa })
             .ToListAsync();
 
         return Ok(lista);
