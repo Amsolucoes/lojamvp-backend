@@ -51,6 +51,9 @@ public class BloqueioAutomaticoService(
                 var turmasService = scope.ServiceProvider.GetRequiredService<TurmasService>();
                 await turmasService.GerarSessoesFuturasAsync();
 
+                var alertaEmailService = scope.ServiceProvider.GetRequiredService<AlertaEmailService>();
+                await alertaEmailService.EnviarAlertasDoDiaAsync();
+
                 logger.LogInformation("Verificação automática de bloqueio concluída em {Data} UTC.", DateTime.UtcNow);
             }
             catch (Exception ex)

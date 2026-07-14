@@ -566,6 +566,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 categoriaId = l.CategoriaId,
                 contaBancariaId = l.ContaBancariaId,
                 modo = l.Modo,
+                avisar = l.Avisar,
                 valor = l.Valor,
                 vencimento = l.Vencimento,
                 status = l.Status,
@@ -1472,6 +1473,20 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(new { saldoOrigem, saldoDestino });
     }
 
+    public record ToggleAvisarRequest(bool Avisar);
+
+    [HttpPatch("lancamentos/{id:guid}/avisar")]
+    public async Task<IActionResult> AlternarAvisar(Guid id, [FromBody] ToggleAvisarRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var lanc = await db.LancamentosFinanceiros.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
+        if (lanc is null) return NotFound();
+
+        lanc.Avisar = req.Avisar;
+        await db.SaveChangesAsync();
+        return Ok(new { lanc.Id, lanc.Avisar });
+    }
+
     // Retorna a fatura "a pagar agora": a mais antiga já FECHADA e ainda não paga
     // (bate com o que aparece em Contas a Pagar). Se não houver nenhuma pendente
     // já fechada, cai no ciclo que ainda está acumulando (informativo).
@@ -1531,8 +1546,8 @@ public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, Dat
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
 public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial, string? Banco = null);
 public record AjusteSaldoRequest(string Tipo, decimal? Valor, decimal NovoSaldo, string? Observacao);
-public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento, string? Observacao, bool JaPago = false);
-public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int? TotalParcelas, DateTime PrimeiroVencimento, DateTime? DataFim, string? Observacao, bool JaPago = false);
-public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao, DateTime? DataInicio = null, bool JaPago = false);
+public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento, string? Observacao, bool JaPago = false, bool Avisar = true);
+public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int? TotalParcelas, DateTime PrimeiroVencimento, DateTime? DataFim, string? Observacao, bool JaPago = false, bool Avisar = true);
+public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao, DateTime? DataInicio = null, bool JaPago = false, bool Avisar = true);
 public record MarcarPagamentoRequest(bool Pago);
 public record EditarLancamentoRequest(string Descricao, Guid? CategoriaId, Guid ContaBancariaId, decimal Valor, DateTime Vencimento, string? Observacao);

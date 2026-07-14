@@ -43,6 +43,7 @@ internal class Program
         builder.Services.AddScoped<PlanosService>();
         builder.Services.AddScoped<FinanceiroService>();
         builder.Services.AddScoped<TurmasService>();
+        builder.Services.AddScoped<AlertaEmailService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
 
         // ── Controllers + Swagger ─────────────────────────────────────────
@@ -80,6 +81,11 @@ internal class Program
              .AllowAnyHeader()
              .AllowAnyMethod();
         }));
+
+        //builder.Services.AddResend(o =>
+        //{
+        //    o.ApiToken = Environment.GetEnvironmentVariable("RESEND_APITOKEN") ?? "";
+        //});
 
         var app = builder.Build();
 

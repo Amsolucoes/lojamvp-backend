@@ -51,6 +51,8 @@ public class LancamentoFixo
 
     [MaxLength(300)]
     public string? Observacao { get; set; }
+
+    public bool Avisar { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
@@ -94,6 +96,8 @@ public class LancamentoFinanceiro
 
     [MaxLength(300)]
     public string? Observacao { get; set; }
+
+    public bool Avisar { get; set; } = true;
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
