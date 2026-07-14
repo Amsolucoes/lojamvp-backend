@@ -119,6 +119,7 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
                 DataCompra = new DateTime(dataCiclo.Year, dataCiclo.Month, 1, 12, 0, 0, DateTimeKind.Utc),
                 Modo = "fixa",
                 CategoriaId = fixo.CategoriaId,
+                Observacao = fixo.Observacao,
                 CartaoFixoId = fixo.Id,
             });
             criados++;

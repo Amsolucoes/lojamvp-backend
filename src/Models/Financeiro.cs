@@ -198,6 +198,9 @@ public class LancamentoCartao
     public Guid? CategoriaId { get; set; }
     public CategoriaFinanceira? Categoria { get; set; }
 
+    [MaxLength(300)]
+    public string? Observacao { get; set; }
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
@@ -217,6 +220,9 @@ public class CartaoLancamentoFixo
 
     public Guid? CategoriaId { get; set; }
     public CategoriaFinanceira? Categoria { get; set; }
+
+    [MaxLength(300)]
+    public string? Observacao { get; set; }
 
     public bool Ativo { get; set; } = true;
     public DateTime? GeradoAte { get; set; }

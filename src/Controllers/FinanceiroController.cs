@@ -918,13 +918,14 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             DataCompra = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12),
             Modo = "avulsa",
             CategoriaId = req.CategoriaId,
+            Observacao = req.Observacao,
         });
         await db.SaveChangesAsync();
         return Ok(new { mensagem = "Lançamento adicionado." });
     }
 
     // ── Compra parcelada no cartão (ex: TV em 10x) ──────────────────
-    public record CompraParceladaCartaoRequest(string Descricao, decimal ValorParcela, int TotalParcelas, DateTime DataCompra, Guid? CategoriaId);
+    public record CompraParceladaCartaoRequest(string Descricao, decimal ValorParcela, int TotalParcelas, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);
 
     [HttpPost("cartoes/{id:guid}/lancamentos/parcelado")]
     public async Task<IActionResult> LancarCompraParcelada(Guid id, [FromBody] CompraParceladaCartaoRequest req)
@@ -953,6 +954,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 NumeroParcela = i + 1,
                 TotalParcelas = req.TotalParcelas,
                 CategoriaId = req.CategoriaId,
+                Observacao = req.Observacao,
             });
         }
 
@@ -961,7 +963,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     }
 
     // ── Lançamento fixo/recorrente no cartão (ex: Netflix) ──────────
-    public record CartaoFixoRequest(string Descricao, decimal Valor, Guid? CategoriaId);
+    public record CartaoFixoRequest(string Descricao, decimal Valor, Guid? CategoriaId, string? Observacao = null);
 
     [HttpPost("cartoes/{id:guid}/fixos")]
     public async Task<IActionResult> CriarCartaoFixo(Guid id, [FromBody] CartaoFixoRequest req)
@@ -977,6 +979,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             Descricao = req.Descricao.Trim(),
             Valor = req.Valor,
             CategoriaId = req.CategoriaId,
+            Observacao = req.Observacao,
         };
         db.CartaoLancamentosFixos.Add(fixo);
         await db.SaveChangesAsync();
@@ -1043,7 +1046,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(l => l.CartaoCreditoId == id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
             .Include(l => l.Categoria)
             .OrderBy(l => l.DataCompra)
-            .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null, categoriaId = l.CategoriaId, l.Modo })
+            .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null, categoriaId = l.CategoriaId, l.Modo, l.Observacao })
             .ToListAsync();
 
         var total = itens.Sum(i => i.Valor);
@@ -1317,7 +1320,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     }
 
     // ── Editar item de compra do cartão ─────────────────────────────
-    public record EditarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId);
+    public record EditarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);
 
     [HttpPut("cartoes/lancamentos/{id:guid}")]
     public async Task<IActionResult> EditarLancamentoCartao(Guid id, [FromQuery] string modo, [FromBody] EditarLancamentoCartaoRequest req)
@@ -1542,7 +1545,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 }
 
 public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId);
-public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId);
+public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
 public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial, string? Banco = null);
 public record AjusteSaldoRequest(string Tipo, decimal? Valor, decimal NovoSaldo, string? Observacao);
