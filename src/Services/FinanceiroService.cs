@@ -6,7 +6,7 @@ namespace LojaApi.Services;
 
 public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logger)
 {
-    private const int MESES_LOTE = 24;
+    private const int MESES_LOTE = 60;
 
     // ── Gera um lote de N meses a partir de um mês inicial ─────────
    public async Task GerarLoteFixoAsync(LancamentoFixo fixo, DateTime desde, int meses = MESES_LOTE)
@@ -92,7 +92,7 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
         await db.SaveChangesAsync();
     }
 
-    private const int CICLOS_LOTE_CARTAO = 24;
+    private const int CICLOS_LOTE_CARTAO = 60;
 
     // ── Gera um lote de N ciclos futuros para um fixo de cartão ────
     public async Task GerarLoteFixoCartaoAsync(CartaoLancamentoFixo fixo, CartaoCredito cartao, DateTime desde, int ciclos = CICLOS_LOTE_CARTAO)
