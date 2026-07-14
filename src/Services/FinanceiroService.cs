@@ -133,9 +133,10 @@ public class FinanceiroService(AppDbContext db, ILogger<FinanceiroService> logge
 
     public async Task LimparFuturosCartaoAsync(Guid cartaoFixoId)
     {
-        var hoje = DateTime.UtcNow.Date;
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         var futuros = await db.LancamentosCartao
-            .Where(l => l.CartaoFixoId == cartaoFixoId && l.DataCompra >= hoje)
+            .Where(l => l.CartaoFixoId == cartaoFixoId && l.DataCompra >= mesAtual)
             .ToListAsync();
         db.LancamentosCartao.RemoveRange(futuros);
     }

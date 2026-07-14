@@ -1401,17 +1401,38 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             var fixo = await db.CartaoLancamentosFixos.FindAsync(item.CartaoFixoId.Value);
             if (fixo != null) fixo.Ativo = false;
 
+            var agora = DateTime.UtcNow;
+            var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var futuros = await db.LancamentosCartao
-                .Where(l => l.CartaoFixoId == item.CartaoFixoId.Value && l.DataCompra >= DateTime.UtcNow.Date)
+                .Where(l => l.CartaoFixoId == item.CartaoFixoId.Value && l.DataCompra >= mesAtual)
                 .ToListAsync();
             db.LancamentosCartao.RemoveRange(futuros);
         }
         else if (modo == "todas" && item.Modo == "parcelada" && item.GrupoParcelamentoId.HasValue)
         {
-            var futuras = await db.LancamentosCartao
-                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value && l.DataCompra >= DateTime.UtcNow.Date)
+            var cartao = item.CartaoCredito!;
+            var todasDoGrupo = await db.LancamentosCartao
+                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value)
                 .ToListAsync();
-            db.LancamentosCartao.RemoveRange(futuras);
+
+            var mesesPagos = (await db.FaturasCartao
+                .Where(f => f.CartaoCreditoId == cartao.Id && f.Status == "pago")
+                .ToListAsync())
+                .Select(f => (f.MesReferencia.Year, f.MesReferencia.Month))
+                .ToHashSet();
+
+            var removiveis = new List<LancamentoCartao>();
+            foreach (var p in todasDoGrupo)
+            {
+                var vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.Year, p.DataCompra.Month);
+                var (ini, fim) = CicloDaFatura(cartao, vencTeste);
+                if (p.DataCompra.Date < ini.Date || p.DataCompra.Date > fim.Date)
+                    vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.AddMonths(1).Year, p.DataCompra.AddMonths(1).Month);
+
+                if (!mesesPagos.Contains((vencTeste.Year, vencTeste.Month)))
+                    removiveis.Add(p);
+            }
+            db.LancamentosCartao.RemoveRange(removiveis);
         }
         else
         {
