@@ -1487,6 +1487,14 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(new { lanc.Id, lanc.Avisar });
     }
 
+    // TEMPORÁRIO — só para testar o envio de e-mail manualmente. Remover depois.
+    [HttpPost("testar-alerta-email")]
+    public async Task<IActionResult> TestarAlertaEmail([FromServices] AlertaEmailService alertaEmailService)
+    {
+        await alertaEmailService.EnviarAlertasDoDiaAsync();
+        return Ok(new { mensagem = "Executado. Confira sua caixa de entrada (e o spam)." });
+    }
+
     // Retorna a fatura "a pagar agora": a mais antiga já FECHADA e ainda não paga
     // (bate com o que aparece em Contas a Pagar). Se não houver nenhuma pendente
     // já fechada, cai no ciclo que ainda está acumulando (informativo).
