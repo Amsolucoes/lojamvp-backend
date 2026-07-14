@@ -167,6 +167,8 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         if (req.Etapa == "perdido") op.MotivoPerda = req.MotivoPerda;
 
         // Ao chegar em "ganho", gera automaticamente o lançamento de comissão no Financeiro
+        // Ao chegar em "ganho", gera automaticamente o lançamento de comissão no Financeiro
+        var comissaoLancada = false;
         if (req.Etapa == "ganho" && op.LancamentoFinanceiroId is null && req.ContaBancariaId.HasValue)
         {
             var cliente = await db.Clientes.FindAsync(op.ClienteId);
@@ -184,10 +186,15 @@ public class CorretoraController(AppDbContext db) : ControllerBase
             db.LancamentosFinanceiros.Add(lancamento);
             await db.SaveChangesAsync();
             op.LancamentoFinanceiroId = lancamento.Id;
+            comissaoLancada = true;
+        }
+        else if (op.LancamentoFinanceiroId.HasValue)
+        {
+            comissaoLancada = true; // já tinha sido lançada antes
         }
 
         await db.SaveChangesAsync();
-        return Ok(new { op.Id, op.Etapa });
+        return Ok(new { op.Id, op.Etapa, comissaoLancada });
     }
 
     [HttpDelete("oportunidades/{id:guid}")]
