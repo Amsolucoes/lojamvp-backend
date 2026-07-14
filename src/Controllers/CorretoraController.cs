@@ -337,4 +337,18 @@ public class CorretoraController(AppDbContext db) : ControllerBase
             funil,
         });
     }
+
+    [HttpPut("seguradoras/{id:guid}")]
+    public async Task<IActionResult> AtualizarSeguradora(Guid id, [FromBody] AtualizarSeguradoraRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var seg = await db.Seguradoras.FirstOrDefaultAsync(s => s.Id == id && s.LojaId == lojaId);
+        if (seg is null) return NotFound();
+
+        seg.Nome = req.Nome.Trim();
+        await db.SaveChangesAsync();
+        return Ok(new { seg.Id, seg.Nome });
+    }
+
+    public record AtualizarSeguradoraRequest(string Nome);
 }
