@@ -1344,12 +1344,27 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
         else if (modo == "todas" && item.Modo == "parcelada" && item.GrupoParcelamentoId.HasValue)
         {
-            var pendentes = await db.LancamentosCartao
-                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value && l.DataCompra >= DateTime.UtcNow.Date)
+            var cartao = item.CartaoCredito!;
+            var todasDoGrupo = await db.LancamentosCartao
+                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value)
                 .ToListAsync();
 
-            foreach (var p in pendentes)
+            var mesesPagos = (await db.FaturasCartao
+                .Where(f => f.CartaoCreditoId == cartao.Id && f.Status == "pago")
+                .ToListAsync())
+                .Select(f => (f.MesReferencia.Year, f.MesReferencia.Month))
+                .ToHashSet();
+
+            foreach (var p in todasDoGrupo)
             {
+                // Descobre o mês de vencimento da fatura à qual essa compra pertence
+                var vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.Year, p.DataCompra.Month);
+                var (ini, fim) = CicloDaFatura(cartao, vencTeste);
+                if (p.DataCompra.Date < ini.Date || p.DataCompra.Date > fim.Date)
+                    vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.AddMonths(1).Year, p.DataCompra.AddMonths(1).Month);
+
+                if (mesesPagos.Contains((vencTeste.Year, vencTeste.Month))) continue; // já foi paga — não mexe
+
                 var baseDescricao = req.Descricao.Trim();
                 p.Descricao = p.TotalParcelas.HasValue ? $"{baseDescricao} ({p.NumeroParcela}/{p.TotalParcelas})" : baseDescricao;
                 p.Valor = req.Valor;
