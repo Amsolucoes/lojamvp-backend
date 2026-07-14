@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Resend;
 using System.Text;
 
 internal class Program
@@ -82,10 +83,10 @@ internal class Program
              .AllowAnyMethod();
         }));
 
-        //builder.Services.AddResend(o =>
-        //{
-        //    o.ApiToken = Environment.GetEnvironmentVariable("RESEND_APITOKEN") ?? "";
-        //});
+        builder.Services.AddResend(o =>
+        {
+            o.ApiToken = Environment.GetEnvironmentVariable("RESEND_APITOKEN") ?? "";
+        });
 
         var app = builder.Build();
 
