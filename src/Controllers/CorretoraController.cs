@@ -409,5 +409,19 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         });
     }
 
+    [HttpGet("oportunidades/verificar-cliente/{clienteId:guid}")]
+    public async Task<IActionResult> VerificarClienteJaTemOportunidade(Guid clienteId)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(new { existe = false });
+
+        var existentes = await db.Oportunidades
+            .Where(o => o.LojaId == lojaId && o.ClienteId == clienteId && o.Etapa != "ganho" && o.Etapa != "perdido")
+            .Select(o => new { o.Id, o.Etapa, o.PlanoDesejado })
+            .ToListAsync();
+
+        return Ok(new { existe = existentes.Count > 0, quantidade = existentes.Count, oportunidades = existentes });
+    }
+
     public record AtualizarSeguradoraRequest(string Nome);
 }
