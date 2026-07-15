@@ -16,6 +16,9 @@ public class ContaBancaria
     [Column(TypeName = "decimal(12,2)")]
     public decimal SaldoInicial { get; set; } = 0;
 
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal Limite { get; set; } = 0;
+
     [MaxLength(30)]
     public string? Banco { get; set; }
 
