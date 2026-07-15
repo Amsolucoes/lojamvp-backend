@@ -1308,14 +1308,43 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         foreach (var cartao in cartoes)
         {
-            var (vencimento, total, status) = await CicloAtualCartaoAsync(cartao);
+            // Fatura em aberto (ciclo atual) — vale pra qualquer modo (avulsa, fixa, parcelada)
+            var (vencimento, totalCicloAtual, status) = await CicloAtualCartaoAsync(cartao);
+
+            // Parcelas FUTURAS de compras parceladas ainda não pagas (não conta fixa recorrente indefinida)
+            var parcelasFuturas = await db.LancamentosCartao
+                .Where(l => l.CartaoCreditoId == cartao.Id
+                    && l.Modo == "parcelada"
+                    && l.DataCompra.Date > vencimento.Date)
+                .ToListAsync();
+
+            var faturasPagas = (await db.FaturasCartao
+                .Where(f => f.CartaoCreditoId == cartao.Id && f.Status == "pago")
+                .ToListAsync())
+                .Select(f => (f.MesReferencia.Year, f.MesReferencia.Month))
+                .ToHashSet();
+
+            decimal totalParcelasFuturas = 0;
+            foreach (var p in parcelasFuturas)
+            {
+                var vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.Year, p.DataCompra.Month);
+                var (ini, fim) = CicloDaFatura(cartao, vencTeste);
+                if (p.DataCompra.Date < ini.Date || p.DataCompra.Date > fim.Date)
+                    vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.AddMonths(1).Year, p.DataCompra.AddMonths(1).Month);
+
+                if (!faturasPagas.Contains((vencTeste.Year, vencTeste.Month)))
+                    totalParcelasFuturas += p.Valor;
+            }
+
+            var usado = totalCicloAtual + totalParcelasFuturas;
+
             resultado.Add(new
             {
                 cartao.Id,
                 cartao.Nome,
                 cartao.Limite,
-                usado = total,
-                disponivel = cartao.Limite - total,
+                usado,
+                disponivel = cartao.Limite - usado,
                 vencimentoAtual = vencimento,
                 status,
             });
