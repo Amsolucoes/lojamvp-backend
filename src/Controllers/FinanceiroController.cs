@@ -1601,6 +1601,37 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         return (vencimento, total, fatura?.Status ?? "pendente");
     }
+
+    [HttpGet("cartoes/{id:guid}/faturas-referencia")]
+    public async Task<IActionResult> FaturasReferencia(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        // Ciclo em aberto (ainda acumulando, ainda não fechou)
+        var hoje = DateTime.UtcNow;
+        int anoAberta = hoje.Year, mesAberta = hoje.Month;
+        DateTime vencimentoAberta = default;
+        (DateTime Inicio, DateTime Fim) cicloAberta = default;
+        for (int i = 0; i < 3; i++)
+        {
+            vencimentoAberta = CalcularVencimentoFatura(cartao, anoAberta, mesAberta);
+            cicloAberta = CicloDaFatura(cartao, vencimentoAberta);
+            if (hoje.Date >= cicloAberta.Inicio.Date && hoje.Date <= cicloAberta.Fim.Date) break;
+            mesAberta++;
+            if (mesAberta > 12) { mesAberta = 1; anoAberta++; }
+        }
+
+        // Última fatura já fechada e pendente (a que já foi "para cobrança")
+        var (vencimentoFechada, totalFechada, statusFechada) = await CicloAtualCartaoAsync(cartao);
+
+        return Ok(new
+        {
+            aberta = new { ano = anoAberta, mes = mesAberta },
+            fechada = new { ano = vencimentoFechada.Year, mes = vencimentoFechada.Month, total = totalFechada, status = statusFechada },
+        });
+    }
 }
 
 public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId, decimal TaxaJurosMensal = 0);
