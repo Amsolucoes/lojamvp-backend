@@ -861,7 +861,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         if (lojaId is null) return Ok(Array.Empty<object>());
 
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId)
-            .Select(c => new { c.Id, c.Nome, c.Limite, c.DiaFechamento, c.DiaVencimento, c.ContaBancariaId, c.Ativo })
+            .Select(c => new { c.Id, c.Nome, c.Limite, c.DiaFechamento, c.DiaVencimento, c.ContaBancariaId, c.Ativo, c.TaxaJurosMensal })
             .ToListAsync();
 
         return Ok(cartoes);
@@ -881,6 +881,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             DiaFechamento = req.DiaFechamento,
             DiaVencimento = req.DiaVencimento,
             ContaBancariaId = req.ContaBancariaId,
+            TaxaJurosMensal = req.TaxaJurosMensal,
         };
         db.CartoesCredito.Add(cartao);
         await db.SaveChangesAsync();
@@ -899,6 +900,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         cartao.DiaFechamento = req.DiaFechamento;
         cartao.DiaVencimento = req.DiaVencimento;
         cartao.ContaBancariaId = req.ContaBancariaId;
+        cartao.TaxaJurosMensal = req.TaxaJurosMensal;
         await db.SaveChangesAsync();
         return Ok(new { cartao.Id });
     }
@@ -1572,7 +1574,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     }
 }
 
-public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId);
+public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId, decimal TaxaJurosMensal = 0);
 public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
 public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial, string? Banco = null, decimal Limite = 0);
