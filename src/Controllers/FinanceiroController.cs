@@ -1246,9 +1246,13 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             var pagar = pagarLancamentos + totalCartaoPorMes[mes];
 
             var receberLancamentos = doAno.Where(l => l.Tipo == "receber" && l.Vencimento.Month == mes).Sum(l => l.Valor);
+            var mesAtual = DateTime.UtcNow.Month;
+            var anoAtual = DateTime.UtcNow.Year;
+            var ehFuturo = ano > anoAtual || (ano == anoAtual && mes >= mesAtual);
+
             var receberPlanos = mesesComPagamento.Contains(mes)
                 ? pagamentosPlanoAno.Where(p => p.MesReferencia.Month == mes).Sum(p => p.Valor)
-                : receitaProjetadaMensal; // mês sem pagamento gerado ainda — projeta pelas assinaturas ativas
+                : ehFuturo ? receitaProjetadaMensal : 0; // só projeta mês atual em diante
             var receber = receberLancamentos + receberPlanos;
 
             return new { mes, pagar, receber, saldo = receber - pagar };
