@@ -1202,10 +1202,24 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(l => l.LojaId == lojaId && l.Vencimento >= inicio && l.Vencimento < fim)
             .ToListAsync();
 
-        var assinaturaIds = await db.AssinaturasCliente.Where(a => a.LojaId == lojaId).Select(a => a.Id).ToListAsync();
+        // Planos: busca pagamentos já gerados no ano
+        var assinaturas = await db.AssinaturasCliente
+            .Where(a => a.LojaId == lojaId && a.Status == "ativa")
+            .ToListAsync();
+        var assinaturaIds = assinaturas.Select(a => a.Id).ToList();
+
         var pagamentosPlanoAno = await db.PagamentosPlano
             .Where(p => assinaturaIds.Contains(p.AssinaturaId) && p.MesReferencia >= inicio && p.MesReferencia < fim)
             .ToListAsync();
+
+        // Soma o valor dos planos vinculados às assinaturas ativas para projeção mensal
+        var planoIds = assinaturas.Select(a => a.PlanoId).Distinct().ToList();
+        var planos = await db.Planos.Where(p => planoIds.Contains(p.Id)).ToListAsync();
+        var receitaProjetadaMensal = assinaturas
+            .Sum(a => planos.FirstOrDefault(p => p.Id == a.PlanoId)?.Valor ?? 0);
+
+        // Meses com pagamento já gerado — para os demais, projeta com base nas assinaturas ativas
+        var mesesComPagamento = pagamentosPlanoAno.Select(p => p.MesReferencia.Month).ToHashSet();
 
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         var totalCartaoPorMes = new decimal[13]; // índice 1-12
@@ -1232,7 +1246,9 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             var pagar = pagarLancamentos + totalCartaoPorMes[mes];
 
             var receberLancamentos = doAno.Where(l => l.Tipo == "receber" && l.Vencimento.Month == mes).Sum(l => l.Valor);
-            var receberPlanos = pagamentosPlanoAno.Where(p => p.MesReferencia.Month == mes).Sum(p => p.Valor);
+            var receberPlanos = mesesComPagamento.Contains(mes)
+                ? pagamentosPlanoAno.Where(p => p.MesReferencia.Month == mes).Sum(p => p.Valor)
+                : receitaProjetadaMensal; // mês sem pagamento gerado ainda — projeta pelas assinaturas ativas
             var receber = receberLancamentos + receberPlanos;
 
             return new { mes, pagar, receber, saldo = receber - pagar };
