@@ -52,6 +52,7 @@ public class LojaController(AppDbContext db) : ControllerBase
             agendamentoOnlineAtivo = loja.AgendamentoOnlineAtivo,
             agendamentoOnlineConfirmacao = string.IsNullOrEmpty(loja.AgendamentoOnlineConfirmacao) ? "aprovacao" : loja.AgendamentoOnlineConfirmacao,
             slug = loja.Slug,
+            modulosAlteradoEm = loja.ModulosAlteradoEm,
         });
     }
 
@@ -131,6 +132,23 @@ public class LojaController(AppDbContext db) : ControllerBase
         if (moduloPreco is null || !moduloPreco.DisponivelParaAtivar)
             return BadRequest(new { erro = "Módulo indisponível." });
 
+        // Cooldown de 30 dias por módulo
+        const int CooldownDias = 30;
+        if (loja.ModulosAlteradoEm.TryGetValue(req.Chave, out var ultimaAlteracao))
+        {
+            var diasPassados = (DateTime.UtcNow - ultimaAlteracao).TotalDays;
+            if (diasPassados < CooldownDias)
+            {
+                var diasRestantes = (int)Math.Ceiling(CooldownDias - diasPassados);
+                return BadRequest(new
+                {
+                    erro = $"Este módulo foi alterado recentemente. Aguarde {diasRestantes} dia(s) para alterar novamente.",
+                    cooldown = true,
+                    diasRestantes
+                });
+            }
+        }
+
         var lista = (loja.ModulosAtivos ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
         if (req.Ativar)
@@ -148,6 +166,7 @@ public class LojaController(AppDbContext db) : ControllerBase
         }
 
         loja.ModulosAtivos = string.Join(",", lista);
+        loja.ModulosAlteradoEm[req.Chave] = DateTime.UtcNow;
         loja.AtualizadoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();
 

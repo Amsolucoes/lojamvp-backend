@@ -85,6 +85,10 @@ public class Loja
     [MaxLength(200)]
     public string ModulosAtivos { get; set; } = "";
 
+    // Cooldown: guarda quando cada módulo foi alterado pela última vez
+    [Column(TypeName = "jsonb")]
+    public Dictionary<string, DateTime> ModulosAlteradoEm { get; set; } = new();
+
     public DateTime? UltimaCobranca { get; set; }
     public DateTime? ProximoVencimento { get; set; }
 
