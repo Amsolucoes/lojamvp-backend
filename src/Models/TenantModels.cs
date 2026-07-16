@@ -85,9 +85,16 @@ public class Loja
     [MaxLength(200)]
     public string ModulosAtivos { get; set; } = "";
 
-    // Cooldown: guarda quando cada módulo foi alterado pela última vez
+    // Cooldown: guarda quando cada módulo foi alterado pela última vez (JSON serializado)
     [Column(TypeName = "jsonb")]
-    public Dictionary<string, DateTime> ModulosAlteradoEm { get; set; } = new();
+    public string ModulosAlteradoEmJson { get; set; } = "{}";
+
+    [NotMapped]
+    public Dictionary<string, DateTime> ModulosAlteradoEm
+    {
+        get => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, DateTime>>(ModulosAlteradoEmJson ?? "{}") ?? new();
+        set => ModulosAlteradoEmJson = System.Text.Json.JsonSerializer.Serialize(value);
+    }
 
     public DateTime? UltimaCobranca { get; set; }
     public DateTime? ProximoVencimento { get; set; }

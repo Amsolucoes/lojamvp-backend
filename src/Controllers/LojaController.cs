@@ -6,6 +6,7 @@ using LojaApi.Data;
 using LojaApi.Services;
 using LojaApi.DTOs;
 
+
 namespace LojaApi.Controllers;
 
 [ApiController]
@@ -52,7 +53,7 @@ public class LojaController(AppDbContext db) : ControllerBase
             agendamentoOnlineAtivo = loja.AgendamentoOnlineAtivo,
             agendamentoOnlineConfirmacao = string.IsNullOrEmpty(loja.AgendamentoOnlineConfirmacao) ? "aprovacao" : loja.AgendamentoOnlineConfirmacao,
             slug = loja.Slug,
-            modulosAlteradoEm = loja.ModulosAlteradoEm,
+            modulosAlteradoEm = loja.ModulosAlteradoEm, // propriedade NotMapped, serializa ok no retorno
         });
     }
 
