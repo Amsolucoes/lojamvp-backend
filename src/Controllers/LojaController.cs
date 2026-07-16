@@ -167,7 +167,12 @@ public class LojaController(AppDbContext db) : ControllerBase
         }
 
         loja.ModulosAtivos = string.Join(",", lista);
-        loja.ModulosAlteradoEm[req.Chave] = DateTime.UtcNow;
+
+        // Atualiza o dicionário e reatribui para forçar o EF a rastrear a mudança no campo json
+        var alterados = loja.ModulosAlteradoEm;
+        alterados[req.Chave] = DateTime.UtcNow;
+        loja.ModulosAlteradoEm = alterados;
+
         loja.AtualizadoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
