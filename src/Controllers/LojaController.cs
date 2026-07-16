@@ -133,17 +133,18 @@ public class LojaController(AppDbContext db) : ControllerBase
         if (moduloPreco is null || !moduloPreco.DisponivelParaAtivar)
             return BadRequest(new { erro = "Módulo indisponível." });
 
-        // Cooldown de 30 dias por módulo
+        // Cooldown de 30 dias — só bloqueia DESATIVAÇÃO
+        // Ativar é sempre livre; o cooldown começa a contar a partir da desativação
         const int CooldownDias = 30;
-        if (loja.ModulosAlteradoEm.TryGetValue(req.Chave, out var ultimaAlteracao))
+        if (!req.Ativar && loja.ModulosAlteradoEm.TryGetValue(req.Chave, out var ultimaDesativacao))
         {
-            var diasPassados = (DateTime.UtcNow - ultimaAlteracao).TotalDays;
+            var diasPassados = (DateTime.UtcNow - ultimaDesativacao).TotalDays;
             if (diasPassados < CooldownDias)
             {
                 var diasRestantes = (int)Math.Ceiling(CooldownDias - diasPassados);
                 return BadRequest(new
                 {
-                    erro = $"Este módulo foi alterado recentemente. Aguarde {diasRestantes} dia(s) para alterar novamente.",
+                    erro = $"Este módulo foi desativado recentemente. Aguarde {diasRestantes} dia(s) para desativar novamente.",
                     cooldown = true,
                     diasRestantes
                 });
@@ -168,10 +169,13 @@ public class LojaController(AppDbContext db) : ControllerBase
 
         loja.ModulosAtivos = string.Join(",", lista);
 
-        // Atualiza o dicionário e reatribui para forçar o EF a rastrear a mudança no campo json
-        var alterados = loja.ModulosAlteradoEm;
-        alterados[req.Chave] = DateTime.UtcNow;
-        loja.ModulosAlteradoEm = alterados;
+        // Registra data só na desativação (cooldown não penaliza ativação)
+        if (!req.Ativar)
+        {
+            var alterados = loja.ModulosAlteradoEm;
+            alterados[req.Chave] = DateTime.UtcNow;
+            loja.ModulosAlteradoEm = alterados;
+        }
 
         loja.AtualizadoEm = DateTime.UtcNow;
         await db.SaveChangesAsync();
