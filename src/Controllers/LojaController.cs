@@ -133,10 +133,10 @@ public class LojaController(AppDbContext db) : ControllerBase
         if (moduloPreco is null || !moduloPreco.DisponivelParaAtivar)
             return BadRequest(new { erro = "Módulo indisponível." });
 
-        // Cooldown de 30 dias — só bloqueia DESATIVAÇÃO
-        // Ativar é sempre livre; o cooldown começa a contar a partir da desativação
+        // Cooldown de 30 dias — bloqueia REATIVAÇÃO após desativação
+        // Fluxo: ativou → desativou (grava data) → tenta ativar de novo → bloqueado
         const int CooldownDias = 30;
-        if (!req.Ativar && loja.ModulosAlteradoEm.TryGetValue(req.Chave, out var ultimaDesativacao))
+        if (req.Ativar && loja.ModulosAlteradoEm.TryGetValue(req.Chave, out var ultimaDesativacao))
         {
             var diasPassados = (DateTime.UtcNow - ultimaDesativacao).TotalDays;
             if (diasPassados < CooldownDias)
@@ -144,7 +144,7 @@ public class LojaController(AppDbContext db) : ControllerBase
                 var diasRestantes = (int)Math.Ceiling(CooldownDias - diasPassados);
                 return BadRequest(new
                 {
-                    erro = $"Este módulo foi desativado recentemente. Aguarde {diasRestantes} dia(s) para desativar novamente.",
+                    erro = $"Este módulo foi desativado recentemente. Aguarde {diasRestantes} dia(s) para reativar.",
                     cooldown = true,
                     diasRestantes
                 });
