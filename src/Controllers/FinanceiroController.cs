@@ -1406,6 +1406,12 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             // Fatura em aberto (ciclo atual) — vale pra qualquer modo (avulsa, fixa, parcelada)
             var (vencimento, totalCicloAtual, status) = await CicloAtualCartaoAsync(cartao);
 
+            // Quantidade de compras no ciclo atual (mesmo período usado no total)
+            var (cicloInicio, cicloFim) = CicloDaFatura(cartao, vencimento);
+            var qtdComprasCiclo = await db.LancamentosCartao
+                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cicloInicio.Date && l.DataCompra.Date <= cicloFim.Date)
+                .CountAsync();
+
             // Parcelas FUTURAS de compras parceladas ainda não pagas (não conta fixa recorrente indefinida)
             var parcelasFuturas = await db.LancamentosCartao
                 .Where(l => l.CartaoCreditoId == cartao.Id
@@ -1442,6 +1448,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 disponivel = cartao.Limite - usado,
                 vencimentoAtual = vencimento,
                 status,
+                qtdCompras = qtdComprasCiclo,
             });
         }
 
