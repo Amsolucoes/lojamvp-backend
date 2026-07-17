@@ -1,11 +1,12 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using LojaApi.Data;
+using LojaApi.Models;
+using LojaApi.src.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using LojaApi.Data;
-using LojaApi.Models;
 
 namespace LojaApi.src.Controllers;
 
