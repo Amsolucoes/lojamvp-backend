@@ -815,6 +815,81 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         });
     }
 
+    // ── Balanço mensal por categoria (Receitas x Despesas agrupado) ──
+    [HttpGet("balanco-por-categoria")]
+    public async Task<IActionResult> BalancoPorCategoria([FromQuery] int ano, [FromQuery] int mes)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(new { });
+
+        var inicio = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fim = inicio.AddMonths(1);
+
+        var doMes = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.Vencimento >= inicio && l.Vencimento < fim)
+            .Include(l => l.Categoria)
+            .ToListAsync();
+
+        // Planos entram como receita agrupada em "Mensalidade/Assinatura"
+        var assinaturaIds = await db.AssinaturasCliente.Where(a => a.LojaId == lojaId).Select(a => a.Id).ToListAsync();
+        var pagamentosPlanoMes = await db.PagamentosPlano
+            .Where(p => assinaturaIds.Contains(p.AssinaturaId) && p.MesReferencia >= inicio && p.MesReferencia < fim)
+            .SumAsync(p => (decimal?)p.Valor) ?? 0;
+
+        // Cartões entram como despesa agrupada em "Cartão de Crédito"
+        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        decimal totalCartoesMes = 0;
+        foreach (var cartao in cartoes)
+        {
+            var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
+            if (vencimentoFatura < inicio || vencimentoFatura >= fim) continue;
+            var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
+            totalCartoesMes += await db.LancamentosCartao
+                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cInicio.Date && l.DataCompra.Date <= cFim.Date)
+                .SumAsync(l => (decimal?)l.Valor) ?? 0;
+        }
+
+        var receitasPorCategoria = doMes
+            .Where(l => l.Tipo == "receber")
+            .GroupBy(l => new { Nome = l.Categoria?.Nome ?? "Sem categoria", Icone = l.Categoria?.Icone ?? "📁" })
+            .Select(g => new { nome = g.Key.Nome, icone = g.Key.Icone, valor = g.Sum(x => x.Valor) })
+            .ToList();
+
+        var despesasPorCategoria = doMes
+            .Where(l => l.Tipo == "pagar")
+            .GroupBy(l => new { Nome = l.Categoria?.Nome ?? "Sem categoria", Icone = l.Categoria?.Icone ?? "📁" })
+            .Select(g => new { nome = g.Key.Nome, icone = g.Key.Icone, valor = g.Sum(x => x.Valor) })
+            .ToList();
+
+        if (pagamentosPlanoMes > 0)
+        {
+            var existente = receitasPorCategoria.FirstOrDefault(r => r.nome == "Mensalidade/Assinatura");
+            receitasPorCategoria = receitasPorCategoria.Where(r => r.nome != "Mensalidade/Assinatura")
+                .Append(new { nome = "Mensalidade/Assinatura", icone = "💳", valor = (existente?.valor ?? 0) + pagamentosPlanoMes })
+                .ToList();
+        }
+
+        if (totalCartoesMes > 0)
+        {
+            var existente = despesasPorCategoria.FirstOrDefault(d => d.nome == "Cartão de Crédito");
+            despesasPorCategoria = despesasPorCategoria.Where(d => d.nome != "Cartão de Crédito")
+                .Append(new { nome = "Cartão de Crédito", icone = "💳", valor = (existente?.valor ?? 0) + totalCartoesMes })
+                .ToList();
+        }
+
+        var totalReceitas = receitasPorCategoria.Sum(r => r.valor);
+        var totalDespesas = despesasPorCategoria.Sum(d => d.valor);
+
+        return Ok(new
+        {
+            receitas = receitasPorCategoria.OrderByDescending(r => r.valor),
+            despesas = despesasPorCategoria.OrderByDescending(d => d.valor),
+            totalReceitas,
+            totalDespesas,
+            saldo = totalReceitas - totalDespesas,
+        });
+    }
+
     [HttpPost("categorias/seed-padrao")]
     public async Task<IActionResult> SeedCategoriasPadrao()
     {
