@@ -53,7 +53,7 @@ internal class Program
         builder.Services.AddSwaggerGen(c =>
         {
             c.SwaggerDoc("v1", new OpenApiInfo { Title = "Loja API", Version = "v1" });
-            c.MapType<IFormFile>(() => new Microsoft.OpenApi.Models.OpenApiSchema { Type = "string", Format = "binary" });
+            c.OperationFilter<LojaApi.src.Utils.FileUploadOperationFilter>();
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
                 Name = "Authorization",
