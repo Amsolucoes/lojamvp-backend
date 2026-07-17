@@ -35,7 +35,8 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
 
     [HttpPost("preview")]
     [Authorize(Roles = "admin,superadmin")]
-    public async Task<IActionResult> Preview(IFormFile arquivo)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> Preview([FromForm] IFormFile arquivo)
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });

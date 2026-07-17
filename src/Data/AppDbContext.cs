@@ -586,7 +586,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111102"), Chave = "financeiro", Nome = "Financeiro (Contas a Pagar/Receber)", Valor = 29.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111103"), Chave = "turmas", Nome = "Turmas (aulas em grupo)", Valor = 39.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111104"), Chave = "etiquetas", Nome = "Impressão de etiquetas", Valor = 0, DisponivelParaAtivar = false },
-            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111105"), Chave = "nf", Nome = "Importação de NF", Valor = 0, DisponivelParaAtivar = false }
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111105"), Chave = "nf", Nome = "Importação de NF", Valor = 29.90m, DisponivelParaAtivar = true }
         );
     }
 
