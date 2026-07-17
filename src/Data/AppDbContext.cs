@@ -48,6 +48,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Seguradora> Seguradoras => Set<Seguradora>();
     public DbSet<Oportunidade> Oportunidades => Set<Oportunidade>();
     public DbSet<Apolice> Apolices => Set<Apolice>();
+    public DbSet<NfProdutoMapeamento> NfProdutoMapeamentos => Set<NfProdutoMapeamento>();
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Índices únicos
@@ -233,6 +234,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<Apolice>()
             .HasOne(a => a.Seguradora).WithMany()
             .HasForeignKey(a => a.SeguradoraId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<NfProdutoMapeamento>()
+            .HasIndex(m => new { m.LojaId, m.CnpjFornecedor, m.CodigoFornecedor })
+            .IsUnique();
+
+        mb.Entity<NfProdutoMapeamento>()
+            .HasOne(m => m.Produto).WithMany()
+            .HasForeignKey(m => m.ProdutoId).OnDelete(DeleteBehavior.Cascade);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
