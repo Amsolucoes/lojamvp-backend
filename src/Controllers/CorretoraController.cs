@@ -372,6 +372,28 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         });
     }
 
+    [HttpDelete("seguradoras/{id:guid}")]
+    public async Task<IActionResult> ExcluirSeguradora(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var seg = await db.Seguradoras.FirstOrDefaultAsync(s => s.Id == id && s.LojaId == lojaId);
+        if (seg is null) return NotFound();
+
+        var emUso = await db.Oportunidades.AnyAsync(o => o.SeguradoraId == id)
+                 || await db.Apolices.AnyAsync(a => a.SeguradoraId == id);
+
+        if (emUso)
+        {
+            seg.Ativa = false; // desativa em vez de excluir, se já usada
+            await db.SaveChangesAsync();
+            return Ok(new { mensagem = "Seguradora em uso — foi desativada em vez de excluída." });
+        }
+
+        db.Seguradoras.Remove(seg);
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Seguradora excluída." });
+    }
+
     [HttpPut("seguradoras/{id:guid}")]
     public async Task<IActionResult> AtualizarSeguradora(Guid id, [FromBody] AtualizarSeguradoraRequest req)
     {
