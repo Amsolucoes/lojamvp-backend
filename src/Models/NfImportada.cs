@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace LojaApi.src.Models;
 
@@ -16,4 +17,8 @@ public class NfImportada
     public string NomeFornecedor { get; set; } = "";
     public int QtdItens { get; set; }
     public DateTime ImportadoEm { get; set; } = DateTime.UtcNow;
+    public bool Desfeita { get; set; } = false;
+    // JSON com o detalhe de cada item processado, pra permitir desfazer depois
+    [Column(TypeName = "jsonb")]
+    public string ItensJson { get; set; } = "[]";
 }

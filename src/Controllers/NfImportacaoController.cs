@@ -55,18 +55,6 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         return char.ToUpper(primeira[0]) + primeira[1..].ToLowerInvariant();
     }
 
-    public record ItemNfPreview(
-        string CodigoFornecedor, string? Gtin, string Descricao,
-        string NomeBase, string? Cor, string? Tamanho,
-        decimal Quantidade, decimal ValorUnitario, decimal ValorTotal,
-        string StatusMatch, // "gtin" | "mapeamento" | "nome_exato" | "sugestao" | "novo"
-        Guid? ProdutoSugeridoId, string? ProdutoSugeridoNome,
-        bool VariacaoJaExiste, int? EstoqueVariacaoAtual,
-        string CategoriaSugerida, bool CategoriaJaExiste
-    );
-
-    public record NfPreviewResponse(string CnpjFornecedor, string NomeFornecedor, string NumeroNf, string ChaveAcesso, List<ItemNfPreview> Itens);
-
     [HttpPost("preview")]
     [Authorize(Roles = "admin,superadmin")]
     [Consumes("multipart/form-data")]
@@ -99,7 +87,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(chaveAcesso) || chaveAcesso.Length != 44)
             return BadRequest(new { erro = "Não foi possível identificar a chave de acesso da nota." });
 
-        var jaImportada = await db.NfsImportadas.FirstOrDefaultAsync(n => n.LojaId == lojaId && n.ChaveAcesso == chaveAcesso);
+        var jaImportada = await db.NfsImportadas.FirstOrDefaultAsync(n => n.LojaId == lojaId && n.ChaveAcesso == chaveAcesso && !n.Desfeita);
         if (jaImportada != null)
             return Conflict(new
             {
@@ -240,18 +228,6 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
     }
 
     // ── Confirmação da importação ────────────────────────────────────
-    public record ItemConfirmacao(
-        string CodigoFornecedor, string? Gtin,
-        string NomeBase, string? Cor, string? Tamanho,
-        decimal Quantidade, decimal ValorUnitario,
-        string Acao, // "existente" | "novo"
-        Guid? ProdutoId, // obrigatório se Acao == "existente"
-        decimal? PrecoVenda, // obrigatório se Acao == "novo"
-        string? CategoriaNome // obrigatório se Acao == "novo"
-    );
-
-    public record ConfirmarImportacaoRequest(string CnpjFornecedor, string NumeroNf, string ChaveAcesso, string NomeFornecedor, List<ItemConfirmacao> Itens);
-
     [HttpPost("confirmar")]
     [Authorize(Roles = "admin,superadmin")]
     public async Task<IActionResult> Confirmar([FromBody] ConfirmarImportacaoRequest req)
@@ -260,18 +236,22 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
 
         // Trava definitiva contra reenvio da mesma nota, mesmo se o preview foi burlado
-        var jaImportada = await db.NfsImportadas.AnyAsync(n => n.LojaId == lojaId && n.ChaveAcesso == req.ChaveAcesso);
+        var jaImportada = await db.NfsImportadas.AnyAsync(n => n.LojaId == lojaId && n.ChaveAcesso == req.ChaveAcesso && !n.Desfeita);
         if (jaImportada)
             return Conflict(new { erro = "Esta nota já foi importada anteriormente." });
 
         var criados = 0;
         var atualizados = 0;
         var categoriasCriadas = 0;
+        var detalhesParaDesfazer = new List<ItemImportadoDetalhe>();
 
         foreach (var item in req.Itens)
         {
             Guid produtoId;
             var temVariacao = item.Cor != null || item.Tamanho != null;
+            bool produtoCriado = false, variacaoCriada = false, categoriaCriadaAgora = false;
+            Guid? categoriaId = null;
+            Guid? variacaoId = null;
 
             if (item.Acao == "novo")
             {
@@ -293,14 +273,16 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                     };
                     db.CategoriasLoja.Add(categoria);
                     categoriasCriadas++;
+                    categoriaCriadaAgora = true;
                 }
+                categoriaId = categoria.Id;
 
                 var novoProduto = new Produto
                 {
                     Nome = item.NomeBase,
                     Categoria = categoria.Nome,
-                    PrecoCusto = item.ValorUnitario,
-                    PrecoVenda = item.PrecoVenda ?? item.ValorUnitario,
+                    PrecoCusto = item.PrecoCusto ?? 0,
+                    PrecoVenda = item.PrecoVenda ?? item.PrecoCusto ?? 0,
                     Estoque = temVariacao ? 0 : item.Quantidade,
                     CodigoBarras = string.IsNullOrWhiteSpace(item.Gtin) ? null : item.Gtin,
                     LojaId = lojaId,
@@ -308,15 +290,21 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 db.Produtos.Add(novoProduto);
                 await db.SaveChangesAsync(); // precisa do Id antes de criar variação
 
+                produtoCriado = true;
+
                 if (temVariacao)
                 {
-                    db.ProdutoVariacoes.Add(new ProdutoVariacao
+                    var novaVariacao = new ProdutoVariacao
                     {
                         ProdutoId = novoProduto.Id,
                         Cor = item.Cor,
                         Tamanho = item.Tamanho,
                         Estoque = (int)item.Quantidade,
-                    });
+                    };
+                    db.ProdutoVariacoes.Add(novaVariacao);
+                    await db.SaveChangesAsync();
+                    variacaoId = novaVariacao.Id;
+                    variacaoCriada = true;
                 }
 
                 produtoId = novoProduto.Id;
@@ -347,16 +335,21 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                     {
                         variacao.Estoque += (int)item.Quantidade;
                         variacao.AtualizadoEm = DateTime.UtcNow;
+                        variacaoId = variacao.Id;
                     }
                     else
                     {
-                        db.ProdutoVariacoes.Add(new ProdutoVariacao
+                        var novaVariacao = new ProdutoVariacao
                         {
                             ProdutoId = produto.Id,
                             Cor = item.Cor,
                             Tamanho = item.Tamanho,
                             Estoque = (int)item.Quantidade,
-                        });
+                        };
+                        db.ProdutoVariacoes.Add(novaVariacao);
+                        await db.SaveChangesAsync();
+                        variacaoId = novaVariacao.Id;
+                        variacaoCriada = true;
                     }
                 }
                 else
@@ -377,6 +370,11 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                     LojaId = lojaId,
                 });
             }
+
+            detalhesParaDesfazer.Add(new ItemImportadoDetalhe(
+                produtoId, variacaoId, item.Quantidade,
+                produtoCriado, variacaoCriada, categoriaCriadaAgora, categoriaId
+            ));
 
             // Salva/atualiza o mapeamento código-do-fornecedor -> produto, pra próxima nota casar direto
             var mapeamentoExistente = await db.NfProdutoMapeamentos.FirstOrDefaultAsync(m =>
@@ -405,6 +403,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             NumeroNf = req.NumeroNf,
             NomeFornecedor = req.NomeFornecedor,
             QtdItens = req.Itens.Count,
+            ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhesParaDesfazer),
         });
 
         await db.SaveChangesAsync();
@@ -417,4 +416,151 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             categoriasCriadas,
         });
     }
+
+    // ── Histórico de importações ──────────────────────────────────
+    [HttpGet("historico")]
+    public async Task<IActionResult> Historico()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.NfsImportadas
+            .Where(n => n.LojaId == lojaId)
+            .OrderByDescending(n => n.ImportadoEm)
+            .Select(n => new
+            {
+                n.Id,
+                n.NumeroNf,
+                n.NomeFornecedor,
+                n.QtdItens,
+                n.ImportadoEm,
+                n.Desfeita,
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    // ── Desfazer uma importação ────────────────────────────────────
+    [HttpPost("{id:guid}/desfazer")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Desfazer(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var nf = await db.NfsImportadas.FirstOrDefaultAsync(n => n.Id == id && n.LojaId == lojaId);
+        if (nf is null) return NotFound();
+        if (nf.Desfeita) return BadRequest(new { erro = "Esta importação já foi desfeita." });
+
+        var itens = System.Text.Json.JsonSerializer.Deserialize<List<ItemImportadoDetalhe>>(nf.ItensJson) ?? new();
+
+        var produtosParaExcluir = new List<Guid>();
+        var categoriasParaChecar = new HashSet<Guid>();
+
+        foreach (var item in itens)
+        {
+            if (item.ProdutoCriado)
+            {
+                // Produto inteiro foi criado só por essa importação — remove tudo
+                produtosParaExcluir.Add(item.ProdutoId);
+                continue;
+            }
+
+            var produto = await db.Produtos.Include(p => p.Variacoes).FirstOrDefaultAsync(p => p.Id == item.ProdutoId);
+            if (produto is null) continue;
+
+            if (item.VariacaoId.HasValue)
+            {
+                var variacao = produto.Variacoes.FirstOrDefault(v => v.Id == item.VariacaoId.Value);
+                if (variacao != null)
+                {
+                    if (item.VariacaoCriada)
+                    {
+                        db.ProdutoVariacoes.Remove(variacao);
+                    }
+                    else
+                    {
+                        variacao.Estoque = Math.Max(0, variacao.Estoque - (int)item.Quantidade);
+                        variacao.AtualizadoEm = DateTime.UtcNow;
+                    }
+                }
+            }
+            else
+            {
+                produto.Estoque = Math.Max(0, produto.Estoque - item.Quantidade);
+                produto.AtualizadoEm = DateTime.UtcNow;
+            }
+
+            if (item.CategoriaId.HasValue) categoriasParaChecar.Add(item.CategoriaId.Value);
+        }
+
+        // Remove os produtos criados exclusivamente por essa importação
+        // (só remove se não tiverem vendas registradas, por segurança)
+        foreach (var produtoId in produtosParaExcluir.Distinct())
+        {
+            var temVendas = await db.ItensVenda.AnyAsync(iv => iv.ProdutoId == produtoId);
+            if (temVendas) continue; // não mexe se já foi vendido
+
+            await db.ProdutoVariacoes.Where(v => v.ProdutoId == produtoId).ExecuteDeleteAsync();
+            await db.Movimentos.Where(m => m.ProdutoId == produtoId).ExecuteDeleteAsync();
+            await db.Produtos.Where(p => p.Id == produtoId).ExecuteDeleteAsync();
+        }
+
+        // Remove categorias que foram criadas só por essa importação e continuam sem produtos
+        foreach (var catId in categoriasParaChecar)
+        {
+            var cat = await db.CategoriasLoja.FindAsync(catId);
+            if (cat is null) continue;
+            var criadaNestaImportacao = itens.Any(i => i.CategoriaId == catId && i.CategoriaCriada);
+            if (!criadaNestaImportacao) continue;
+
+            var aindaTemProduto = await db.Produtos.AnyAsync(p => p.LojaId == lojaId && p.Categoria == cat.Nome && p.Ativo);
+            if (!aindaTemProduto)
+                cat.Ativo = false;
+        }
+
+        // Remove os movimentos de estoque criados por essa importação (todos com a mesma observação)
+        await db.Movimentos
+            .Where(m => m.LojaId == lojaId && m.Observacao == $"Importação NF {nf.NumeroNf}")
+            .ExecuteDeleteAsync();
+
+        // Remove o mapeamento fornecedor->produto criado por essa nota (só se apontar pra produto agora excluído)
+        // Mantemos os mapeamentos que ainda apontam pra produtos existentes — mais seguro.
+
+        nf.Desfeita = true;
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Importação desfeita. Você já pode reimportar esta nota se quiser." });
+    }
+
+    public record ItemNfPreview(
+      string CodigoFornecedor, string? Gtin, string Descricao,
+      string NomeBase, string? Cor, string? Tamanho,
+      decimal Quantidade, decimal ValorUnitario, decimal ValorTotal,
+      string StatusMatch, // "gtin" | "mapeamento" | "nome_exato" | "sugestao" | "novo"
+      Guid? ProdutoSugeridoId, string? ProdutoSugeridoNome,
+      bool VariacaoJaExiste, int? EstoqueVariacaoAtual,
+      string CategoriaSugerida, bool CategoriaJaExiste
+    );
+
+    public record NfPreviewResponse(string CnpjFornecedor, string NomeFornecedor, string NumeroNf, string ChaveAcesso, List<ItemNfPreview> Itens);
+
+    public record ItemConfirmacao(
+        string CodigoFornecedor, string? Gtin,
+        string NomeBase, string? Cor, string? Tamanho,
+        decimal Quantidade,
+        string Acao, // "existente" | "novo"
+        Guid? ProdutoId, // obrigatório se Acao == "existente"
+        decimal? PrecoCusto, // obrigatório se Acao == "novo" — editável, pré-preenchido com o valor da nota
+        decimal? PrecoVenda, // obrigatório se Acao == "novo"
+        string? CategoriaNome // obrigatório se Acao == "novo"
+    );
+
+    public record ConfirmarImportacaoRequest(string CnpjFornecedor, string NumeroNf, string ChaveAcesso, string NomeFornecedor, List<ItemConfirmacao> Itens);
+
+    public record ItemImportadoDetalhe(
+    Guid ProdutoId, Guid? VariacaoId, decimal Quantidade,
+    bool ProdutoCriado, bool VariacaoCriada, bool CategoriaCriada, Guid? CategoriaId
+    );
 }
