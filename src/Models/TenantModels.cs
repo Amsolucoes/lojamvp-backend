@@ -73,6 +73,10 @@ public class Loja
     // ── Agendamento online público ────────────────────────────────
     public bool AgendamentoOnlineAtivo { get; set; } = false;
 
+    public DateTime? PausaAte { get; set; }
+    [MaxLength(300)]
+    public string? PausaMensagem { get; set; }
+
     [MaxLength(20)]
     public string AgendamentoOnlineConfirmacao { get; set; } = "aprovacao";
 

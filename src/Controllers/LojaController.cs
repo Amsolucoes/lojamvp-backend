@@ -53,7 +53,9 @@ public class LojaController(AppDbContext db) : ControllerBase
             agendamentoOnlineAtivo = loja.AgendamentoOnlineAtivo,
             agendamentoOnlineConfirmacao = string.IsNullOrEmpty(loja.AgendamentoOnlineConfirmacao) ? "aprovacao" : loja.AgendamentoOnlineConfirmacao,
             slug = loja.Slug,
-            modulosAlteradoEm = loja.ModulosAlteradoEm, // propriedade NotMapped, serializa ok no retorno
+            modulosAlteradoEm = loja.ModulosAlteradoEm,
+            pausaAte = loja.PausaAte,
+            pausaMensagem = loja.PausaMensagem,
         });
     }
 
@@ -183,6 +185,37 @@ public class LojaController(AppDbContext db) : ControllerBase
         return Ok(new { loja.ModulosAtivos, loja.MensalidadeValor });
     }
 
+    [HttpPatch("pausa-agendamento")]
+    public async Task<IActionResult> ConfigurarPausa([FromBody] PausaAgendamentoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return NotFound();
+
+        var loja = await db.Lojas.FindAsync(lojaId.Value);
+        if (loja is null) return NotFound();
+
+        if (req.Ativar)
+        {
+            if (!req.PausaAte.HasValue || req.PausaAte.Value.Date < DateTime.UtcNow.Date)
+                return BadRequest(new { erro = "Informe uma data de retorno válida (hoje ou futura)." });
+
+            loja.PausaAte = DateTime.SpecifyKind(req.PausaAte.Value.Date, DateTimeKind.Utc).AddHours(23).AddMinutes(59);
+            loja.PausaMensagem = string.IsNullOrWhiteSpace(req.Mensagem)
+                ? "Estamos temporariamente fechados. Voltamos em breve!"
+                : req.Mensagem.Trim();
+        }
+        else
+        {
+            loja.PausaAte = null;
+            loja.PausaMensagem = null;
+        }
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.PausaAte, loja.PausaMensagem });
+    }
+
     // Normaliza texto para slug de URL (minúsculo, sem acento, hífens)
     private static string GerarSlug(string texto)
     {
@@ -196,4 +229,7 @@ public class LojaController(AppDbContext db) : ControllerBase
         while (slug.Contains("--")) slug = slug.Replace("--", "-");
         return slug.Trim('-');
     }
+
+    public record PausaAgendamentoRequest(bool Ativar, DateTime? PausaAte, string? Mensagem);
+
 }

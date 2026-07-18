@@ -19,11 +19,15 @@ public class PublicoController(AppDbContext db) : ControllerBase
         if (loja is null || !loja.AgendamentoOnlineAtivo)
             return NotFound(new { erro = "Página de agendamento não encontrada." });
 
-        var servicos = await db.Servicos
-            .Where(s => s.LojaId == loja.Id && s.Ativo)
-            .OrderBy(s => s.Categoria).ThenBy(s => s.Nome)
-            .Select(s => new { s.Id, s.Nome, s.Categoria, s.Preco, s.DuracaoMin })
-            .ToListAsync();
+        var pausado = loja.PausaAte.HasValue && loja.PausaAte.Value > DateTime.UtcNow;
+
+        var servicos = pausado
+            ? new List<object>()
+            : await db.Servicos
+                .Where(s => s.LojaId == loja.Id && s.Ativo)
+                .OrderBy(s => s.Categoria).ThenBy(s => s.Nome)
+                .Select(s => (object)new { s.Id, s.Nome, s.Categoria, s.Preco, s.DuracaoMin })
+                .ToListAsync();
 
         return Ok(new
         {
@@ -32,6 +36,9 @@ public class PublicoController(AppDbContext db) : ControllerBase
             corPrimaria = loja.CorPrimaria,
             confirmacao = string.IsNullOrEmpty(loja.AgendamentoOnlineConfirmacao) ? "aprovacao" : loja.AgendamentoOnlineConfirmacao,
             servicos,
+            pausado,
+            pausaAte = pausado ? loja.PausaAte : null,
+            pausaMensagem = pausado ? (loja.PausaMensagem ?? "Estamos temporariamente fechados. Voltamos em breve!") : null,
         });
     }
 
@@ -42,6 +49,9 @@ public class PublicoController(AppDbContext db) : ControllerBase
         var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
         if (loja is null || !loja.AgendamentoOnlineAtivo)
             return NotFound(new { erro = "Página não encontrada." });
+
+        if (loja.PausaAte.HasValue && loja.PausaAte.Value > DateTime.UtcNow)
+            return BadRequest(new { erro = loja.PausaMensagem ?? "Agendamentos temporariamente pausados." });
 
         var servico = await db.Servicos.FirstOrDefaultAsync(s => s.Id == servicoId && s.LojaId == loja.Id);
         if (servico is null) return BadRequest(new { erro = "Serviço não encontrado." });
@@ -101,6 +111,9 @@ public class PublicoController(AppDbContext db) : ControllerBase
         var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
         if (loja is null || !loja.AgendamentoOnlineAtivo)
             return NotFound(new { erro = "Página não encontrada." });
+
+        if (loja.PausaAte.HasValue && loja.PausaAte.Value > DateTime.UtcNow)
+            return BadRequest(new { erro = loja.PausaMensagem ?? "Agendamentos temporariamente pausados." });
 
         if (string.IsNullOrWhiteSpace(req.NomeCliente) || string.IsNullOrWhiteSpace(req.Telefone))
             return BadRequest(new { erro = "Informe nome e telefone." });
