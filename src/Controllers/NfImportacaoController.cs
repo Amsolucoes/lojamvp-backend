@@ -65,7 +65,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         string CategoriaSugerida, bool CategoriaJaExiste
     );
 
-    public record NfPreviewResponse(string CnpjFornecedor, string NomeFornecedor, string NumeroNf, List<ItemNfPreview> Itens);
+    public record NfPreviewResponse(string CnpjFornecedor, string NomeFornecedor, string NumeroNf, string ChaveAcesso, List<ItemNfPreview> Itens);
 
     [HttpPost("preview")]
     [Authorize(Roles = "admin,superadmin")]
@@ -91,6 +91,20 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
 
         var infNFe = doc.Descendants(Ns + "infNFe").FirstOrDefault();
         if (infNFe is null) return BadRequest(new { erro = "XML não parece ser uma NF-e válida." });
+
+        // A chave de acesso vem no atributo Id="NFe<44 dígitos>" do infNFe
+        var idAttr = infNFe.Attribute("Id")?.Value ?? "";
+        var chaveAcesso = idAttr.StartsWith("NFe") ? idAttr[3..] : idAttr;
+
+        if (string.IsNullOrWhiteSpace(chaveAcesso) || chaveAcesso.Length != 44)
+            return BadRequest(new { erro = "Não foi possível identificar a chave de acesso da nota." });
+
+        var jaImportada = await db.NfsImportadas.FirstOrDefaultAsync(n => n.LojaId == lojaId && n.ChaveAcesso == chaveAcesso);
+        if (jaImportada != null)
+            return Conflict(new
+            {
+                erro = $"Esta nota já foi importada em {jaImportada.ImportadoEm:dd/MM/yyyy HH:mm} ({jaImportada.QtdItens} item(ns))."
+            });
 
         var emit = infNFe.Element(Ns + "emit");
         var cnpjFornecedor = emit?.Element(Ns + "CNPJ")?.Value ?? "";
@@ -192,7 +206,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             ));
         }
 
-        return Ok(new NfPreviewResponse(cnpjFornecedor, nomeFornecedor, numeroNf, itens));
+        return Ok(new NfPreviewResponse(cnpjFornecedor, nomeFornecedor, numeroNf, chaveAcesso, itens));
     }
 
     // Similaridade simples por palavras em comum — suficiente pra sugestão, não pra match automático
@@ -236,7 +250,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         string? CategoriaNome // obrigatório se Acao == "novo"
     );
 
-    public record ConfirmarImportacaoRequest(string CnpjFornecedor, string NumeroNf, List<ItemConfirmacao> Itens);
+    public record ConfirmarImportacaoRequest(string CnpjFornecedor, string NumeroNf, string ChaveAcesso, string NomeFornecedor, List<ItemConfirmacao> Itens);
 
     [HttpPost("confirmar")]
     [Authorize(Roles = "admin,superadmin")]
@@ -244,6 +258,11 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        // Trava definitiva contra reenvio da mesma nota, mesmo se o preview foi burlado
+        var jaImportada = await db.NfsImportadas.AnyAsync(n => n.LojaId == lojaId && n.ChaveAcesso == req.ChaveAcesso);
+        if (jaImportada)
+            return Conflict(new { erro = "Esta nota já foi importada anteriormente." });
 
         var criados = 0;
         var atualizados = 0;
@@ -378,6 +397,15 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 mapeamentoExistente.ProdutoId = produtoId;
             }
         }
+
+        db.NfsImportadas.Add(new NfImportada
+        {
+            LojaId = lojaId.Value,
+            ChaveAcesso = req.ChaveAcesso,
+            NumeroNf = req.NumeroNf,
+            NomeFornecedor = req.NomeFornecedor,
+            QtdItens = req.Itens.Count,
+        });
 
         await db.SaveChangesAsync();
 
