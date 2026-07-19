@@ -608,54 +608,54 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 .OrderBy(l => l.DataCompra)
                 .ToListAsync();
 
-            if (itensCiclo.Count == 0) continue;
+                if (itensCiclo.Count == 0) continue;
 
-            var total = itensCiclo.Sum(i => i.Valor);
-            var faturaExistente = await db.FaturasCartao
-                .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
+                var total = itensCiclo.Sum(i => i.Valor);
+                var faturaExistente = await db.FaturasCartao
+                    .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
 
-            if (modo == "detalhado")
-            {
-                foreach (var item in itensCiclo)
+                if (modo == "detalhado")
+                {
+                    foreach (var item in itensCiclo)
+                    {
+                        linhasCartao.Add(new
+                        {
+                            id = item.Id,
+                            descricao = $"{cartao.Nome} — {item.Descricao}",
+                            categoriaNome = item.Categoria?.Nome,
+                            valor = item.Valor,
+                            vencimento = vencimentoFatura,
+                            status = faturaExistente?.Status ?? "pendente",
+                            pagoEm = faturaExistente?.PagoEm,
+                            numeroParcela = (int?)null,
+                            totalParcelas = (int?)null,
+                            origem = "cartao_item",
+                            cartaoId = cartao.Id,
+                            cartaoNome = cartao.Nome,
+                        });
+                    }
+                }
+                else
                 {
                     linhasCartao.Add(new
                     {
-                        id = item.Id,
-                        descricao = $"{cartao.Nome} — {item.Descricao}",
-                        categoriaNome = item.Categoria?.Nome,
-                        valor = item.Valor,
+                        id = cartao.Id,
+                        descricao = $"Fatura {cartao.Nome}",
+                        categoriaNome = (string?)null,
+                        valor = total,
                         vencimento = vencimentoFatura,
                         status = faturaExistente?.Status ?? "pendente",
                         pagoEm = faturaExistente?.PagoEm,
                         numeroParcela = (int?)null,
                         totalParcelas = (int?)null,
-                        origem = "cartao_item",
+                        origem = faturaExistente?.Status == "financiada" ? "cartao_fatura_financiada" : "cartao_fatura",
                         cartaoId = cartao.Id,
                         cartaoNome = cartao.Nome,
                     });
                 }
             }
-            else
-            {
-                linhasCartao.Add(new
-                {
-                    id = cartao.Id,
-                    descricao = $"Fatura {cartao.Nome}",
-                    categoriaNome = (string?)null,
-                    valor = total,
-                    vencimento = vencimentoFatura,
-                    status = faturaExistente?.Status ?? "pendente",
-                    pagoEm = faturaExistente?.PagoEm,
-                    numeroParcela = (int?)null,
-                    totalParcelas = (int?)null,
-                    origem = "cartao_fatura",
-                    cartaoId = cartao.Id,
-                    cartaoNome = cartao.Nome,
-                });
-            }
-        }
 
-        var unificado = lancamentos.Cast<object>().Concat(linhasCartao)
+                var unificado = lancamentos.Cast<object>().Concat(linhasCartao)
             .OrderBy(x => ((dynamic)x).vencimento)
             .ToList();
 
