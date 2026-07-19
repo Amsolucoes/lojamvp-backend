@@ -151,7 +151,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var faturasCartaoPagas = await db.FaturasCartao
             .Include(f => f.CartaoCredito)
-            .Where(f => f.CartaoCredito!.ContaBancariaId == contaId && (f.Status == "pago" || f.Status == "parcial"))
+            .Where(f => f.CartaoCredito!.ContaBancariaId == contaId && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada"))
             .SumAsync(f => (decimal?)f.ValorPago) ?? 0;
 
         return conta.SaldoInicial + recebidos - pagos - faturasCartaoPagas + entradasAjuste - saidasAjuste + diferencasAjuste;
@@ -1134,13 +1134,12 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var faturaExistente = await db.FaturasCartao
             .FirstOrDefaultAsync(f => f.CartaoCreditoId == id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
 
-        var parcelasFinanciamento = faturaExistente != null
-            ? await db.LancamentosFinanceiros
-                .Where(l => l.FaturaCartaoId == faturaExistente.Id)
-                .OrderBy(l => l.NumeroParcela)
-                .Select(l => new { l.Id, l.Descricao, l.Valor, l.Vencimento, l.Status, l.NumeroParcela, l.TotalParcelas })
-                .ToListAsync()
-            : new();
+        // Parcelas do financiamento que caem NESTE mês (independente de qual fatura originou o parcelamento)
+        var parcelasFinanciamento = await db.LancamentosFinanceiros
+            .Where(l => l.CartaoOrigemId == id && l.Vencimento.Year == ano && l.Vencimento.Month == mes)
+            .OrderBy(l => l.NumeroParcela)
+            .Select(l => new { l.Id, l.Descricao, l.Valor, l.Vencimento, l.Status, l.NumeroParcela, l.TotalParcelas })
+            .ToListAsync();
 
         return Ok(new
         {
@@ -1267,6 +1266,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                             NumeroParcela = i + 1,
                             TotalParcelas = parcelas,
                             FaturaCartaoId = fatura.Id,
+                            CartaoOrigemId = cartao.Id,
                         });
                     }
 

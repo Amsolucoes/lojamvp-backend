@@ -96,8 +96,12 @@ public class LancamentoFinanceiro
 
     // Origem, se veio de um lançamento fixo (aluguel, etc.)
     public Guid? LancamentoFixoId { get; set; }
+
     // Se essa parcela veio do financiamento de uma fatura de cartão, aponta pra ela
     public Guid? FaturaCartaoId { get; set; }
+
+    // Cartão de origem do financiamento — facilita achar a parcela em qualquer mês futuro
+    public Guid? CartaoOrigemId { get; set; }
 
     [MaxLength(300)]
     public string? Observacao { get; set; }
