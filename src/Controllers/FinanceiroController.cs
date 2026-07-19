@@ -1190,6 +1190,15 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         switch (req.Modo)
         {
             case "desfazer":
+                // Se era um financiamento, remove todas as parcelas geradas (só as ainda não pagas, por segurança)
+                if (fatura.Status == "financiada")
+                {
+                    var parcelasParaRemover = await db.LancamentosFinanceiros
+                        .Where(l => l.FaturaCartaoId == fatura.Id && l.Status == "pendente")
+                        .ToListAsync();
+                    db.LancamentosFinanceiros.RemoveRange(parcelasParaRemover);
+                }
+
                 fatura.Status = "pendente";
                 fatura.ValorPago = 0;
                 fatura.PagoEm = null;
