@@ -1134,17 +1134,27 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var faturaExistente = await db.FaturasCartao
             .FirstOrDefaultAsync(f => f.CartaoCreditoId == id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
 
+        var parcelasFinanciamento = faturaExistente != null
+            ? await db.LancamentosFinanceiros
+                .Where(l => l.FaturaCartaoId == faturaExistente.Id)
+                .OrderBy(l => l.NumeroParcela)
+                .Select(l => new { l.Id, l.Descricao, l.Valor, l.Vencimento, l.Status, l.NumeroParcela, l.TotalParcelas })
+                .ToListAsync()
+            : new();
+
         return Ok(new
         {
             vencimento,
             total,
             status = faturaExistente?.Status ?? "pendente",
             pagoEm = faturaExistente?.PagoEm,
+            valorEntrada = faturaExistente?.Status == "financiada" ? faturaExistente.ValorPago : (decimal?)null,
             itens,
+            parcelasFinanciamento,
         });
     }
 
-    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas);
+    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela);
 
     [HttpPost("cartoes/{id:guid}/fatura/pagamento")]
     public async Task<IActionResult> PagarFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] PagarFaturaRequest req)
@@ -1227,9 +1237,20 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     if (parcelas < 2 || parcelas > 24)
                         return BadRequest(new { erro = "Escolha entre 2 e 24 parcelas." });
 
-                    var comJuros = total * (1 + (cartao.TaxaJurosMensal / 100m) * parcelas);
+                    var entrada = req.ValorEntrada ?? 0;
+                    if (entrada < 0 || entrada >= total)
+                        return BadRequest(new { erro = "O valor de entrada deve ser maior ou igual a zero e menor que o total da fatura." });
+
+                    var valorFinanciar = total - entrada;
+                    var comJuros = valorFinanciar * (1 + (cartao.TaxaJurosMensal / 100m) * parcelas);
                     var valorParcela = Math.Round(comJuros / parcelas, 2);
                     var grupoId = Guid.NewGuid();
+
+                    // Por padrão, a 1ª parcela cai no mês seguinte ao vencimento da fatura;
+                    // o usuário pode escolher outra data se preferir.
+                    var primeiraParcela = req.PrimeiraParcela.HasValue
+                        ? DateTime.SpecifyKind(req.PrimeiraParcela.Value.Date, DateTimeKind.Utc).AddHours(12)
+                        : DateTime.SpecifyKind(vencimento.Date, DateTimeKind.Utc).AddMonths(1).AddHours(12);
 
                     for (int i = 0; i < parcelas; i++)
                     {
@@ -1241,15 +1262,16 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                             Modo = "parcelada",
                             Descricao = $"Financiamento fatura {cartao.Nome} ({MESES[mesReferencia.Month - 1]})",
                             Valor = valorParcela,
-                            Vencimento = DateTime.SpecifyKind(vencimento.Date, DateTimeKind.Utc).AddMonths(i).AddHours(12),
+                            Vencimento = primeiraParcela.AddMonths(i),
                             GrupoParcelamentoId = grupoId,
                             NumeroParcela = i + 1,
                             TotalParcelas = parcelas,
+                            FaturaCartaoId = fatura.Id,
                         });
                     }
 
                     fatura.Status = "financiada";
-                    fatura.ValorPago = 0;
+                    fatura.ValorPago = entrada;
                     fatura.PagoEm = DateTime.UtcNow;
                     break;
                 }
@@ -1391,7 +1413,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return Ok(resultado);
     }
 
-    // ── Resumo de cartões (limite usado no ciclo atual) ────────────
+    // ── Resumo de cartões (limite usado somando TODAS as faturas em aberto) ────
     [HttpGet("cartoes-resumo")]
     public async Task<IActionResult> CartoesResumo()
     {
@@ -1400,30 +1422,52 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         var resultado = new List<object>();
+        var hoje = DateTime.UtcNow;
 
         foreach (var cartao in cartoes)
         {
-            // Fatura em aberto (ciclo atual) — vale pra qualquer modo (avulsa, fixa, parcelada)
-            var (vencimento, totalCicloAtual, status) = await CicloAtualCartaoAsync(cartao);
+            // Descobre o ciclo em aberto (ainda acumulando, não fechou)
+            int anoAberta = hoje.Year, mesAberta = hoje.Month;
+            DateTime vencimentoAberta = default;
+            (DateTime Inicio, DateTime Fim) cicloAberta = default;
+            for (int i = 0; i < 3; i++)
+            {
+                vencimentoAberta = CalcularVencimentoFatura(cartao, anoAberta, mesAberta);
+                cicloAberta = CicloDaFatura(cartao, vencimentoAberta);
+                if (hoje.Date >= cicloAberta.Inicio.Date && hoje.Date <= cicloAberta.Fim.Date) break;
+                mesAberta++;
+                if (mesAberta > 12) { mesAberta = 1; anoAberta++; }
+            }
 
-            // Quantidade de compras no ciclo atual (mesmo período usado no total)
-            var (cicloInicio, cicloFim) = CicloDaFatura(cartao, vencimento);
-            var qtdComprasCiclo = await db.LancamentosCartao
-                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cicloInicio.Date && l.DataCompra.Date <= cicloFim.Date)
-                .CountAsync();
+            // Soma TODAS as faturas dos últimos 12 meses (até a aberta) que ainda não estão pagas/financiadas
+            decimal usado = 0;
+            var cursor = new DateTime(anoAberta, mesAberta, 1).AddMonths(-11);
+            for (int i = 0; i < 12; i++)
+            {
+                var vencimentoCiclo = CalcularVencimentoFatura(cartao, cursor.Year, cursor.Month);
+                var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoCiclo);
 
-            // Parcelas FUTURAS de compras parceladas ainda não pagas (não conta fixa recorrente indefinida)
+                var totalCiclo = await db.LancamentosCartao
+                    .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cInicio.Date && l.DataCompra.Date <= cFim.Date)
+                    .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+                if (totalCiclo > 0)
+                {
+                    var faturaExistente = await db.FaturasCartao
+                        .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == cursor.Year && f.MesReferencia.Month == cursor.Month);
+
+                    // "financiada" tira a dívida do cartão (virou um pagamento parcelado à parte)
+                    if (faturaExistente?.Status != "pago" && faturaExistente?.Status != "financiada")
+                        usado += totalCiclo - (faturaExistente?.ValorPago ?? 0);
+                }
+
+                cursor = cursor.AddMonths(1);
+            }
+
+            // Parcelas futuras (compras parceladas) que caem em ciclos além do aberto — ainda não contadas acima
             var parcelasFuturas = await db.LancamentosCartao
-                .Where(l => l.CartaoCreditoId == cartao.Id
-                    && l.Modo == "parcelada"
-                    && l.DataCompra.Date > vencimento.Date)
+                .Where(l => l.CartaoCreditoId == cartao.Id && l.Modo == "parcelada" && l.DataCompra.Date > cicloAberta.Fim.Date)
                 .ToListAsync();
-
-            var faturasPagas = (await db.FaturasCartao
-                .Where(f => f.CartaoCreditoId == cartao.Id && f.Status == "pago")
-                .ToListAsync())
-                .Select(f => (f.MesReferencia.Year, f.MesReferencia.Month))
-                .ToHashSet();
 
             decimal totalParcelasFuturas = 0;
             foreach (var p in parcelasFuturas)
@@ -1433,11 +1477,20 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 if (p.DataCompra.Date < ini.Date || p.DataCompra.Date > fim.Date)
                     vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.AddMonths(1).Year, p.DataCompra.AddMonths(1).Month);
 
-                if (!faturasPagas.Contains((vencTeste.Year, vencTeste.Month)))
+                var faturaFutura = await db.FaturasCartao
+                    .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == vencTeste.Year && f.MesReferencia.Month == vencTeste.Month);
+
+                if (faturaFutura?.Status != "pago" && faturaFutura?.Status != "financiada")
                     totalParcelasFuturas += p.Valor;
             }
 
-            var usado = totalCicloAtual + totalParcelasFuturas;
+            usado += totalParcelasFuturas;
+
+            // Fatura "principal" pra exibir vencimento/status no card (a mais antiga fechada e pendente, senão a aberta)
+            var (vencimentoPrincipal, _, statusPrincipal) = await CicloAtualCartaoAsync(cartao);
+            var (piInicio, piFim) = CicloDaFatura(cartao, vencimentoPrincipal);
+            var qtdCompras = await db.LancamentosCartao
+                .CountAsync(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= piInicio.Date && l.DataCompra.Date <= piFim.Date);
 
             resultado.Add(new
             {
@@ -1446,9 +1499,9 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 cartao.Limite,
                 usado,
                 disponivel = cartao.Limite - usado,
-                vencimentoAtual = vencimento,
-                status,
-                qtdCompras = qtdComprasCiclo,
+                vencimentoAtual = vencimentoPrincipal,
+                status = statusPrincipal,
+                qtdCompras,
             });
         }
 
