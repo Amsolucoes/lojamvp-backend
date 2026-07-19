@@ -1129,8 +1129,6 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Select(l => new { l.Id, l.Descricao, l.Valor, l.DataCompra, categoriaNome = l.Categoria != null ? l.Categoria.Nome : null, categoriaId = l.CategoriaId, l.Modo, l.Observacao })
             .ToListAsync();
 
-        var total = itens.Sum(i => i.Valor);
-
         var faturaExistente = await db.FaturasCartao
             .FirstOrDefaultAsync(f => f.CartaoCreditoId == id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
 
@@ -1140,6 +1138,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .OrderBy(l => l.NumeroParcela)
             .Select(l => new { l.Id, l.Descricao, l.Valor, l.Vencimento, l.Status, l.NumeroParcela, l.TotalParcelas })
             .ToListAsync();
+
+        var total = itens.Sum(i => i.Valor) + parcelasFinanciamento.Sum(p => p.Valor);
 
         return Ok(new
         {
