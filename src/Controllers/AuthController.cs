@@ -32,6 +32,9 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
                 await tenantService.VerificarAcessoAsync(vinculo.LojaId);
         }
 
+        usuario.UltimoLoginEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
         var token = tokenService.GerarToken(usuario);
         return Ok(new LoginResponse(token, usuario.Nome, usuario.Email, usuario.Role));
     }

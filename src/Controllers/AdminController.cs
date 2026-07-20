@@ -58,7 +58,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     [HttpGet("lojas")]
     public async Task<IActionResult> Listar([FromQuery] string? status, [FromQuery] string? busca)
     {
-        var q = db.Lojas.Include(l => l.Pagamentos).Include(l => l.Usuarios).AsQueryable();
+        var q = db.Lojas.Include(l => l.Pagamentos).Include(l => l.Usuarios).ThenInclude(ul => ul.Usuario).AsQueryable();
 
         if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLoja>(status, true, out var s))
             q = q.Where(l => l.Status == s);
@@ -524,6 +524,12 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
        ? Math.Max(0, (int)(agora - l.ProximoVencimento.Value).TotalDays)
        : 0;
         var (fase, diasRest) = TenantService.CalcularSituacao(l);
+        var ultimoLogin = l.Usuarios
+            .Where(ul => ul.Usuario != null)
+            .Select(ul => ul.Usuario!.UltimoLoginEm)
+            .Where(d => d.HasValue)
+            .OrderByDescending(d => d)
+            .FirstOrDefault();
         return new(
             l.Id, l.Nome, l.Email, l.Cnpj, l.Cpf, l.Telefone, l.Endereco,
             l.CorPrimaria, l.LogoUrl, l.Status.ToString(),
@@ -538,7 +544,8 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
             TipoPlano: l.TipoPlano, ModulosAtivos: l.ModulosAtivos,
             EhTeste: l.EhTeste,
             AssinaturaStatus: l.AssinaturaStatus,
-            AssinaturaCartaoFinal: l.AssinaturaCartaoFinal
+            AssinaturaCartaoFinal: l.AssinaturaCartaoFinal,
+            UltimoLoginEm: ultimoLogin
         );
     }
 

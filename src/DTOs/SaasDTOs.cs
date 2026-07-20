@@ -44,7 +44,8 @@ public record LojaDto(
     string Fase, int DiasRestantes,
     string TipoPlano, string ModulosAtivos,
     bool EhTeste,string? AssinaturaStatus,
-    string? AssinaturaCartaoFinal
+    string? AssinaturaCartaoFinal,
+    DateTime? UltimoLoginEm
 );
 
 public record LojaResumoDto(

@@ -22,6 +22,7 @@ public class Usuario
 
     public bool Ativo { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    public DateTime? UltimoLoginEm { get; set; }
 }
 
 // ── Produto ───────────────────────────────────────────────────────
