@@ -1469,9 +1469,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     var faturaExistente = await db.FaturasCartao
                         .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == cursor.Year && f.MesReferencia.Month == cursor.Month);
 
-                    // "financiada" tira a dívida do cartão (virou um pagamento parcelado à parte)
-                    if (faturaExistente?.Status != "pago" && faturaExistente?.Status != "financiada")
-                        usado += totalCiclo - (faturaExistente?.ValorPago ?? 0);
+                    // "financiada": virou pagamento parcelado à parte, não conta mais nesse ciclo.
+                    // "parcial": o restante já foi lançado como compra real no próximo ciclo (com juros),
+                    // então não soma aqui de novo — senão a mesma dívida é contada duas vezes.
+                    if (faturaExistente?.Status != "pago" && faturaExistente?.Status != "financiada" && faturaExistente?.Status != "parcial")
+                        usado += totalCiclo;
                 }
 
                 cursor = cursor.AddMonths(1);
