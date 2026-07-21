@@ -794,7 +794,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             var faturaExistente = await db.FaturasCartao
                 .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
 
-            if (faturaExistente?.Status == "pago") { pagarPago += totalFatura; pagarQtdPago++; }
+            if (faturaExistente?.Status == "pago" || faturaExistente?.Status == "parcial" || faturaExistente?.Status == "financiada")
+            {
+                // Fatura resolvida (paga, parcialmente paga ou financiada em parcelas) — não conta como pendente/vencida
+                pagarPago += totalFatura; pagarQtdPago++;
+            }
             else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFatura; pagarQtdVencido++; }
             else { pagarPendente += totalFatura; pagarQtdPendente++; }
 
