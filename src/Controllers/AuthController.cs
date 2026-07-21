@@ -41,12 +41,24 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
 
     [HttpGet("me")]
     [Authorize]
-    public IActionResult Me()
+    public async Task<IActionResult> Me()
     {
         var id = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var nome = User.FindFirstValue(ClaimTypes.Name);
         var email = User.FindFirstValue(ClaimTypes.Email);
         var role = User.FindFirstValue(ClaimTypes.Role);
+
+        // Atualiza o último acesso também quando a sessão é retomada (não só no login novo)
+        if (Guid.TryParse(id, out var usuarioId))
+        {
+            var usuario = await db.Usuarios.FindAsync(usuarioId);
+            if (usuario != null)
+            {
+                usuario.UltimoLoginEm = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+            }
+        }
+
         return Ok(new { id, nome, email, role });
     }
 
