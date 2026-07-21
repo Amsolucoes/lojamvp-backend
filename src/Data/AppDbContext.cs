@@ -541,6 +541,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             CriadoEm = DateTime.UtcNow,
         });
 
+        // ── Financeiro Puro (sem loja) ─────────────────────────────────────
+        var perfilFinanceiro = Guid.Parse("20000000-0000-0000-0000-000000000007");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilFinanceiro,
+            Nome = "Financeiro Puro",
+            Descricao = "Controle financeiro pessoal ou do seu negócio — sem loja, sem estoque",
+            Icone = "💰",
+            Ativo = true,
+            TipoPlanoAplica = "financeiro",
+            CriadoEm = DateTime.UtcNow,
+        });
+
         // ══════════════ SERVIÇOS PRÉ-DEFINIDOS DOS PERFIS ══════════════
         mb.Entity<ServicoPerfilLoja>().HasData(
             // ── Banho e Tosa (puro) — 21A ──
@@ -593,6 +606,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111104"), Chave = "etiquetas", Nome = "Impressão de etiquetas", Valor = 0, DisponivelParaAtivar = false },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111105"), Chave = "nf", Nome = "Importação de NF", Valor = 29.90m, DisponivelParaAtivar = true }
         );
+
+
     }
 
     private static string ToSnakeCase(string name)

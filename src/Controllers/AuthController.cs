@@ -88,9 +88,21 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         if (await db.Lojas.AnyAsync(l => l.Email.ToLower() == req.Email.ToLower()))
             return Conflict(new { erro = "Este e-mail já está cadastrado." });
 
-        // Conta lojas existentes para a promoção das 10 primeiras
-        var totalLojas = await db.Lojas.CountAsync(l => !l.EhTeste);
-        bool ehPromocional = totalLojas < 10;
+        // Descobre se o perfil escolhido é "financeiro puro" — nesse caso o preço é fixo
+        // e NÃO entra na promoção das 10 primeiras lojas (que é voltada pro plano Loja)
+        string? tipoPlanoDoPerfil = null;
+        if (!string.IsNullOrEmpty(req.PerfilId) && Guid.TryParse(req.PerfilId, out var perfilGuidCheck))
+        {
+            tipoPlanoDoPerfil = await db.PerfisLoja
+                .Where(p => p.Id == perfilGuidCheck)
+                .Select(p => p.TipoPlanoAplica)
+                .FirstOrDefaultAsync();
+        }
+        bool ehFinanceiroPuro = tipoPlanoDoPerfil == "financeiro";
+
+        // Conta lojas existentes para a promoção das 10 primeiras (não conta financeiro puro, que tem preço fixo à parte)
+        var totalLojas = await db.Lojas.CountAsync(l => !l.EhTeste && l.TipoPlano != "financeiro");
+        bool ehPromocional = !ehFinanceiroPuro && totalLojas < 10;
 
         var loja = new Loja
         {
@@ -99,7 +111,7 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             Telefone = req.Telefone,
             CorPrimaria = "#c38228",
             MensalidadeDia = DateTime.UtcNow.Day,
-            MensalidadeValor = ehPromocional ? 89.90m : 119.90m,
+            MensalidadeValor = ehFinanceiroPuro ? 39.90m : (ehPromocional ? 89.90m : 119.90m),
             Promocional = ehPromocional,
             ValorPromocional = ehPromocional ? 89.90m : null,
             ValorPosPromocional = ehPromocional ? 119.90m : null,
