@@ -47,9 +47,10 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         var nome = User.FindFirstValue(ClaimTypes.Name);
         var email = User.FindFirstValue(ClaimTypes.Email);
         var role = User.FindFirstValue(ClaimTypes.Role);
+        var ehAcessoSuporte = User.FindFirstValue("acesso_suporte") == "true";
 
-        // Atualiza o último acesso também quando a sessão é retomada (não só no login novo)
-        if (Guid.TryParse(id, out var usuarioId))
+        // Atualiza o último acesso ao retomar sessão — mas NÃO conta acesso de suporte (superadmin logado como o cliente)
+        if (!ehAcessoSuporte && Guid.TryParse(id, out var usuarioId))
         {
             var usuario = await db.Usuarios.FindAsync(usuarioId);
             if (usuario != null)

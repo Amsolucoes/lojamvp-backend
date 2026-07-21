@@ -293,7 +293,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         if (vinculo is null || vinculo.Usuario is null)
             return NotFound(new { erro = "Esta loja não tem um administrador ativo." });
 
-        var token = tokenService.GerarToken(vinculo.Usuario);
+        var token = tokenService.GerarToken(vinculo.Usuario, ehSuporte: true);
 
         return Ok(new
         {
