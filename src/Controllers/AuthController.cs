@@ -185,6 +185,10 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
                 loja.TipoPlano = perfil.TipoPlanoAplica;
                 if (perfil.TipoPlanoAplica == "servicos" || perfil.TipoPlanoAplica == "loja_modulos")
                     loja.ModulosAtivos = "servicos";
+                else if (perfil.Nome == "Corretora")
+                    loja.ModulosAtivos = "corretora";
+                else if (perfil.Nome.StartsWith("Pilates"))
+                    loja.ModulosAtivos = "turmas";
 
                 await db.SaveChangesAsync();
             }
@@ -239,7 +243,6 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         {
             logger.LogError(ex, "Erro ao enviar aviso de novo cadastro.");
         }
-    }
     }
 
     // ── Trocar senha (usuário logado) ─────────────────────────────

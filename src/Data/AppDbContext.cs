@@ -554,6 +554,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             CriadoEm = DateTime.UtcNow,
         });
 
+        // ── Corretora (funil de vendas, seguradoras/operadoras, apólices) ──
+        var perfilCorretora = Guid.Parse("20000000-0000-0000-0000-000000000008");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilCorretora,
+            Nome = "Corretora",
+            Descricao = "Funil de vendas, operadoras e comissões para corretores de seguro/planos",
+            Icone = "📋",
+            Ativo = true,
+            TipoPlanoAplica = "loja", // participa da mesma promoção do plano Loja
+            CriadoEm = DateTime.UtcNow,
+        });
+
+        // ── Pilates / Turmas (aulas em grupo) ───────────────────────────────
+        var perfilTurmas = Guid.Parse("20000000-0000-0000-0000-000000000009");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilTurmas,
+            Nome = "Pilates / Aulas em grupo",
+            Descricao = "Matrícula fixa, agenda semanal, chamada e controle de faltas",
+            Icone = "🧘",
+            Ativo = true,
+            TipoPlanoAplica = "loja", // participa da mesma promoção do plano Loja
+            CriadoEm = DateTime.UtcNow,
+        });
+
         // ══════════════ SERVIÇOS PRÉ-DEFINIDOS DOS PERFIS ══════════════
         mb.Entity<ServicoPerfilLoja>().HasData(
             // ── Banho e Tosa (puro) — 21A ──
