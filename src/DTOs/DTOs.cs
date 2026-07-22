@@ -10,7 +10,8 @@ public record SignupRequest(
     string NomeResponsavel,
     string Email,
     string Senha,
-    string? Telefone
+    string? Telefone,
+    List<string>? ModulosExtras = null
 );
 
 public record TrocarSenhaRequest(string SenhaAtual, string NovaSenha);

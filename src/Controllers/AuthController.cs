@@ -104,6 +104,27 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         var totalLojas = await db.Lojas.CountAsync(l => !l.EhTeste && l.TipoPlano != "financeiro");
         bool ehPromocional = !ehFinanceiroPuro && totalLojas < 10;
 
+        // Módulos extras escolhidos no cadastro (ex: financeiro, nf, turmas) — só valem
+        // pra quem NÃO é financeiro puro (esse já vem com o próprio módulo financeiro incluso)
+        var chavesModulosValidas = new HashSet<string> { "financeiro", "nf", "turmas" };
+        var modulosExtrasValidos = (req.ModulosExtras ?? new List<string>())
+            .Where(m => chavesModulosValidas.Contains(m))
+            .Distinct()
+            .ToList();
+
+        decimal valorModulosExtras = 0;
+        if (!ehFinanceiroPuro && modulosExtrasValidos.Count > 0)
+        {
+            var precosModulos = await db.ModulosPreco
+                .Where(m => modulosExtrasValidos.Contains(m.Chave) && m.DisponivelParaAtivar)
+                .ToListAsync();
+            valorModulosExtras = precosModulos.Sum(m => m.Valor);
+            // Remove da lista qualquer módulo que não existe/não está disponível, pra não gravar sujeira
+            modulosExtrasValidos = precosModulos.Select(m => m.Chave).ToList();
+        }
+
+        var mensalidadeBase = ehFinanceiroPuro ? 39.90m : (ehPromocional ? 89.90m : 119.90m);
+
         var loja = new Loja
         {
             Nome = req.NomeLoja,
@@ -111,10 +132,10 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             Telefone = req.Telefone,
             CorPrimaria = "#c38228",
             MensalidadeDia = DateTime.UtcNow.Day,
-            MensalidadeValor = ehFinanceiroPuro ? 39.90m : (ehPromocional ? 89.90m : 119.90m),
+            MensalidadeValor = mensalidadeBase + valorModulosExtras,
             Promocional = ehPromocional,
             ValorPromocional = ehPromocional ? 89.90m : null,
-            ValorPosPromocional = ehPromocional ? 119.90m : null,
+            ValorPosPromocional = ehPromocional ? 119.90m + valorModulosExtras : null,
             MesesPromocional = ehPromocional ? 3 : 0,
             Status = StatusLoja.Trial,
             TrialAte = DateTime.UtcNow.AddDays(7),
@@ -183,15 +204,27 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
 
                 // Tipo de plano e módulos conforme o perfil
                 loja.TipoPlano = perfil.TipoPlanoAplica;
+                var modulosDoPerfil = new List<string>();
                 if (perfil.TipoPlanoAplica == "servicos" || perfil.TipoPlanoAplica == "loja_modulos")
-                    loja.ModulosAtivos = "servicos";
+                    modulosDoPerfil.Add("servicos");
                 else if (perfil.Nome == "Corretora")
-                    loja.ModulosAtivos = "corretora";
+                    modulosDoPerfil.Add("corretora");
                 else if (perfil.Nome.StartsWith("Pilates"))
-                    loja.ModulosAtivos = "turmas";
+                    modulosDoPerfil.Add("turmas");
+
+                // Junta com os módulos extras escolhidos no cadastro (ex: Loja + Financeiro + NF),
+                // sem duplicar caso o perfil já traga o mesmo módulo
+                var todosModulos = modulosDoPerfil.Concat(modulosExtrasValidos).Distinct().ToList();
+                loja.ModulosAtivos = string.Join(",", todosModulos);
 
                 await db.SaveChangesAsync();
             }
+        }
+        else if (modulosExtrasValidos.Count > 0)
+        {
+            // Sem perfil escolhido ("Começar do zero"), mas com módulos extras marcados
+            loja.ModulosAtivos = string.Join(",", modulosExtrasValidos);
+            await db.SaveChangesAsync();
         }
 
         // Avisa por e-mail que uma nova loja se cadastrou
