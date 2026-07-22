@@ -11,7 +11,7 @@ namespace LojaApi.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController(AppDbContext db, TokenService tokenService, TenantService tenantService) : ControllerBase
+public class AuthController(AppDbContext db, TokenService tokenService, TenantService tenantService, Resend.IResend resend, ILogger<AuthController> logger) : ControllerBase
 {
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest req)
@@ -190,9 +190,56 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             }
         }
 
+        // Avisa por e-mail que uma nova loja se cadastrou
+        _ = EnviarAvisoNovoCadastroAsync(loja, usuario, req.PerfilId);
+
         // Gera token e já loga
         var token = tokenService.GerarToken(usuario);
         return Ok(new LoginResponse(token, usuario.Nome, usuario.Email, usuario.Role));
+    }
+
+    private async Task EnviarAvisoNovoCadastroAsync(Loja loja, Usuario usuario, string? perfilId)
+    {
+        try
+        {
+            string? nomePerfil = null;
+            if (!string.IsNullOrEmpty(perfilId) && Guid.TryParse(perfilId, out var perfilGuid))
+            {
+                nomePerfil = await db.PerfisLoja
+                    .Where(p => p.Id == perfilGuid)
+                    .Select(p => p.Nome)
+                    .FirstOrDefaultAsync();
+            }
+
+            var html = $@"
+                <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                    <h2 style='color:#c38228'>🎉 Nova loja cadastrada!</h2>
+                    <table style='width:100%;border-collapse:collapse;margin-top:12px'>
+                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Nome da loja</td><td style='padding:6px 10px;border-bottom:1px solid #eee'><strong>{loja.Nome}</strong></td></tr>
+                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Perfil escolhido</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{nomePerfil ?? "Começar do zero"}</td></tr>
+                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Tipo de plano</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{loja.TipoPlano}</td></tr>
+                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Mensalidade</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>R$ {loja.MensalidadeValor:N2}{(loja.Promocional ? " (promocional)" : "")}</td></tr>
+                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Responsável</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{usuario.Nome}</td></tr>
+                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>E-mail</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{loja.Email}</td></tr>
+                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Telefone</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{loja.Telefone ?? "—"}</td></tr>
+                        <tr><td style='padding:6px 10px;color:#888'>Trial até</td><td style='padding:6px 10px'>{loja.TrialAte:dd/MM/yyyy}</td></tr>
+                    </table>
+                </div>";
+
+            var msg = new Resend.EmailMessage
+            {
+                From = "AldevSoftware <financeiro@aldevsoftware.com.br>",
+                Subject = $"🎉 Novo cadastro: {loja.Nome}",
+                HtmlBody = html,
+            };
+            msg.To.Add("andre.ivarras@gmail.com");
+            await resend.EmailSendAsync(msg);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao enviar aviso de novo cadastro.");
+        }
+    }
     }
 
     // ── Trocar senha (usuário logado) ─────────────────────────────
