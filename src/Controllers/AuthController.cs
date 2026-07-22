@@ -196,6 +196,7 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
 
         // Avisa por e-mail que uma nova loja se cadastrou
         _ = EnviarAvisoNovoCadastroAsync(loja, usuario, req.PerfilId);
+        _ = EnviarBoasVindasAsync(loja, usuario);
 
         // Gera token e já loga
         var token = tokenService.GerarToken(usuario);
@@ -242,6 +243,42 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         catch (Exception ex)
         {
             logger.LogError(ex, "Erro ao enviar aviso de novo cadastro.");
+        }
+    }
+
+    private async Task EnviarBoasVindasAsync(Loja loja, Usuario usuario)
+    {
+        try
+        {
+            var html = $@"
+                <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                    <h2 style='color:#c38228'>Bem-vindo(a), {usuario.Nome.Split(' ')[0]}! 🎉</h2>
+                    <p>Sua loja <strong>{loja.Nome}</strong> já está pronta pra usar. Você tem <strong>7 dias grátis</strong> pra testar tudo sem compromisso.</p>
+                    <p style='margin-top:16px'>Alguns pontos de partida:</p>
+                    <ul style='padding-left:20px;line-height:1.8'>
+                        <li>Cadastre seus primeiros produtos ou serviços</li>
+                        <li>Configure suas contas e categorias no Financeiro</li>
+                        <li>Convide sua equipe, se precisar</li>
+                    </ul>
+                    <p style='margin-top:16px'>Tem alguma dúvida de como usar o sistema? Acesse nossa <a href='https://aldevsoftware.com.br/#duvidas' style='color:#c38228'>Central de Dúvidas</a> — tem passo a passo de como cadastrar produto com grade, configurar cartão de crédito e outras coisas do dia a dia.</p>
+                    <p style='margin-top:20px'>
+                        <a href='https://app.aldevsoftware.com.br' style='background:#c38228;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;display:inline-block'>Acessar meu sistema →</a>
+                    </p>
+                    <p style='margin-top:20px;font-size:13px;color:#888'>Qualquer dúvida, é só responder este e-mail ou chamar no WhatsApp.</p>
+                </div>";
+
+            var msg = new Resend.EmailMessage
+            {
+                From = "AldevSoftware <financeiro@aldevsoftware.com.br>",
+                Subject = $"Bem-vindo(a) ao AldevSoftware, {usuario.Nome.Split(' ')[0]}!",
+                HtmlBody = html,
+            };
+            msg.To.Add(loja.Email);
+            await resend.EmailSendAsync(msg);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao enviar e-mail de boas-vindas para {Email}.", loja.Email);
         }
     }
 

@@ -555,6 +555,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         });
 
         // ── Corretora (funil de vendas, seguradoras/operadoras, apólices) ──
+        // TipoPlanoAplica próprio ("corretora"), não "loja" — assim o sistema não libera
+        // Produtos/Caixa/Estoque pra loja que é só corretora. A promoção das 10 primeiras
+        // continua valendo do mesmo jeito (ver AuthController.Signup, independe desse valor).
         var perfilCorretora = Guid.Parse("20000000-0000-0000-0000-000000000008");
         mb.Entity<PerfilLoja>().HasData(new PerfilLoja
         {
@@ -563,7 +566,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             Descricao = "Funil de vendas, operadoras e comissões para corretores de seguro/planos",
             Icone = "📋",
             Ativo = true,
-            TipoPlanoAplica = "loja", // participa da mesma promoção do plano Loja
+            TipoPlanoAplica = "corretora",
             CriadoEm = DateTime.UtcNow,
         });
 
@@ -576,7 +579,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             Descricao = "Matrícula fixa, agenda semanal, chamada e controle de faltas",
             Icone = "🧘",
             Ativo = true,
-            TipoPlanoAplica = "loja", // participa da mesma promoção do plano Loja
+            TipoPlanoAplica = "turmas",
             CriadoEm = DateTime.UtcNow,
         });
 
