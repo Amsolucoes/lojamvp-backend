@@ -106,7 +106,7 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
 
         // Módulos extras escolhidos no cadastro (ex: financeiro, nf, turmas) — só valem
         // pra quem NÃO é financeiro puro (esse já vem com o próprio módulo financeiro incluso)
-        var chavesModulosValidas = new HashSet<string> { "financeiro", "nf", "turmas" };
+        var chavesModulosValidas = new HashSet<string> { "financeiro", "nf", "servicos" };
         var modulosExtrasValidos = (req.ModulosExtras ?? new List<string>())
             .Where(m => chavesModulosValidas.Contains(m))
             .Distinct()
