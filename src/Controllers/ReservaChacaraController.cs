@@ -111,9 +111,9 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
         if (reserva is null) return NotFound();
 
-        if (reserva.Status != "pendente_pagamento")
-            return BadRequest(new { erro = "Só é possível editar reservas ainda pendentes de pagamento." });
-
+        // TODO: quando o Mercado Pago estiver integrado de verdade, reavaliar se
+        // reserva confirmada (já paga) deveria continuar editável livremente aqui,
+        // ou exigir um fluxo à parte (estorno/reajuste de cobrança).
         if (req.DataFim.Date < req.DataInicio.Date)
             return BadRequest(new { erro = "Data final não pode ser antes da data inicial." });
 
@@ -157,9 +157,8 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
         if (reserva is null) return NotFound();
 
-        if (reserva.Status == "confirmada")
-            return BadRequest(new { erro = "Não é possível excluir uma reserva já confirmada. Se necessário, entre em contato com o cliente antes." });
-
+        // TODO: mesma ressalva do Editar — revisar quando o pagamento real (Mercado Pago)
+        // estiver funcionando, pra não apagar reserva paga sem tratar estorno.
         db.Reservas.Remove(reserva);
         await db.SaveChangesAsync();
 
