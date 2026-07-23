@@ -53,6 +53,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
     public DbSet<Reserva> Reservas => Set<Reserva>();
     public DbSet<ConfiguracaoPrecoChacara> ConfiguracoesPrecoChacara => Set<ConfiguracaoPrecoChacara>();
+    public DbSet<FotoChacara> FotosChacara => Set<FotoChacara>();
+    public DbSet<InfoChacara> InfosChacara => Set<InfoChacara>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -269,6 +271,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<ConfiguracaoPrecoChacara>()
             .HasIndex(c => c.LojaId)
+            .IsUnique();
+
+        mb.Entity<FotoChacara>()
+            .HasOne(f => f.Loja).WithMany()
+            .HasForeignKey(f => f.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<FotoChacara>()
+            .HasIndex(f => new { f.LojaId, f.Ordem });
+
+        mb.Entity<InfoChacara>()
+            .HasOne(i => i.Loja).WithMany()
+            .HasForeignKey(i => i.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<InfoChacara>()
+            .HasIndex(i => i.LojaId)
             .IsUnique();
 
         // Snake_case para PostgreSQL
