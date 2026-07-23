@@ -117,6 +117,10 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         if (req.DataFim.Date < req.DataInicio.Date)
             return BadRequest(new { erro = "Data final não pode ser antes da data inicial." });
 
+        var diasSolicitadosEdicao = (int)Math.Round((req.DataFim.Date - req.DataInicio.Date).TotalDays) + 1;
+        if (diasSolicitadosEdicao > 30)
+            return BadRequest(new { erro = "O período máximo por reserva é de 30 dias." });
+
         var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == lojaId)
             ?? new ConfiguracaoPrecoChacara { LojaId = lojaId!.Value };
 
@@ -143,9 +147,16 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         reserva.ClienteNome = req.ClienteNome.Trim();
         reserva.ClienteEmail = req.ClienteEmail.Trim();
         reserva.ClienteTelefone = new string(req.ClienteTelefone.Where(char.IsDigit).ToArray());
+        var eraConfirmada = reserva.Status == "confirmada";
+
         reserva.Valor = resultado.ValorTotal;
 
         await db.SaveChangesAsync();
+
+        if (eraConfirmada)
+        {
+            await notificacao.ReenviarContratoAtualizadoAsync(reserva);
+        }
 
         return Ok(reserva);
     }

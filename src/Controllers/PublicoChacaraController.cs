@@ -41,6 +41,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         if (pessoas < cfg.MinimoPessoas)
             return BadRequest(new { erro = $"O mínimo é de {cfg.MinimoPessoas} pessoas." });
 
+        var diasSolicitados = (int)Math.Round((dataFim.Date - dataInicio.Date).TotalDays) + 1;
+        if (diasSolicitados > 30)
+            return BadRequest(new { erro = "O período máximo por reserva é de 30 dias." });
+
         var ini = DateTime.SpecifyKind(dataInicio.Date, DateTimeKind.Utc).AddHours(12);
         var fim = DateTime.SpecifyKind(dataFim.Date, DateTimeKind.Utc).AddHours(12);
 
@@ -61,6 +65,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
 
         if (req.DataFim.Date < req.DataInicio.Date)
             return BadRequest(new { erro = "Data final não pode ser antes da data inicial." });
+
+        var diasSolicitadosReserva = (int)Math.Round((req.DataFim.Date - req.DataInicio.Date).TotalDays) + 1;
+        if (diasSolicitadosReserva > 30)
+            return BadRequest(new { erro = "O período máximo por reserva é de 30 dias." });
 
         var cfgValidacao = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
             ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
@@ -168,6 +176,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             corPrimaria = loja.CorPrimaria,
             descricao = info?.Descricao ?? "",
             endereco = info?.Endereco ?? "",
+            mapaEmbedUrl = info?.MapaEmbedUrl,
             fotos,
             comodidades,
             comodidadesExtras,

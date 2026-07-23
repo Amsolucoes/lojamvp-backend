@@ -38,7 +38,7 @@ public class InfoChacaraController(AppDbContext db) : ControllerBase
         return Ok(info);
     }
 
-    public record AtualizarInfoRequest(string Descricao, string Endereco, string Comodidades, string? ComodidadesExtras);
+    public record AtualizarInfoRequest(string Descricao, string Endereco, string Comodidades, string? ComodidadesExtras, string? MapaEmbedUrl);
 
     [HttpPut]
     public async Task<IActionResult> Atualizar([FromBody] AtualizarInfoRequest req)
@@ -57,6 +57,7 @@ public class InfoChacaraController(AppDbContext db) : ControllerBase
         info.Endereco = req.Endereco?.Trim() ?? "";
         info.Comodidades = req.Comodidades ?? "";
         info.ComodidadesExtras = string.IsNullOrWhiteSpace(req.ComodidadesExtras) ? null : req.ComodidadesExtras.Trim();
+        info.MapaEmbedUrl = string.IsNullOrWhiteSpace(req.MapaEmbedUrl) ? null : req.MapaEmbedUrl.Trim();
 
         await db.SaveChangesAsync();
         return Ok(info);
