@@ -102,6 +102,76 @@ public class PublicoChacaraController(AppDbContext db) : ControllerBase
             mensagem = "Reserva criada. Prossiga para o pagamento.",
         });
     }
+
+    private static readonly Dictionary<string, string> ComodidadesLabels = new()
+    {
+        ["piscina"] = "Piscina",
+        ["churrasqueira"] = "Churrasqueira",
+        ["wifi"] = "Wi-Fi",
+        ["estacionamento"] = "Estacionamento",
+        ["area_coberta"] = "Área coberta",
+        ["playground"] = "Playground infantil",
+        ["campo_futebol"] = "Campo de futebol",
+        ["salao_festas"] = "Salão de festas",
+        ["gerador"] = "Gerador de energia",
+        ["ar_condicionado"] = "Ar-condicionado",
+    };
+
+    [HttpGet("dados")]
+    public async Task<IActionResult> Dados(string slug)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var modulosAtivos = (loja.ModulosAtivos ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (!modulosAtivos.Contains("chacara_reservas"))
+            return NotFound(new { erro = "Página não encontrada." });
+
+        var info = await db.InfosChacara.FirstOrDefaultAsync(i => i.LojaId == loja.Id);
+        var fotos = await db.FotosChacara
+            .Where(f => f.LojaId == loja.Id)
+            .OrderBy(f => f.Ordem)
+            .Select(f => f.Url)
+            .ToListAsync();
+
+        var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
+            ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
+
+        var comodidadesChaves = (info?.Comodidades ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var comodidades = comodidadesChaves
+            .Where(c => ComodidadesLabels.ContainsKey(c))
+            .Select(c => new { chave = c, label = ComodidadesLabels[c] })
+            .ToList();
+
+        var comodidadesExtras = (info?.ComodidadesExtras ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+
+        return Ok(new
+        {
+            nome = loja.Nome,
+            logoUrl = loja.LogoUrl,
+            corPrimaria = loja.CorPrimaria,
+            descricao = info?.Descricao ?? "",
+            endereco = info?.Endereco ?? "",
+            fotos,
+            comodidades,
+            comodidadesExtras,
+            precificacao = new
+            {
+                cfg.ValorDiariaSemana,
+                cfg.ValorDiariaFimSemana,
+                cfg.ValorDiariaFimSemanaGrande,
+                cfg.ValorPacote2DiasFimSemana,
+                cfg.ValorPacote2DiasFimSemanaGrande,
+                cfg.LimitePessoasPacotePequeno,
+                cfg.ValorTaxaLimpeza,
+                cfg.ValorMultaNaoLimpeza,
+            },
+        });
+    }
 }
 
 public record ReservarPublicoRequest(

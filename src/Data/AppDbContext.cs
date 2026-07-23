@@ -623,6 +623,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             CriadoEm = DateTime.UtcNow,
         });
 
+        var perfilChacara = Guid.Parse("20000000-0000-0000-0000-00000000000a");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilChacara,
+            Nome = "Chácara / Temporada",
+            Descricao = "Reservas com pagamento online, contrato automático e aviso de check-out",
+            Icone = "🏡",
+            Ativo = true,
+            TipoPlanoAplica = "chacara",
+            CriadoEm = DateTime.UtcNow,
+        });
+
         // ══════════════ SERVIÇOS PRÉ-DEFINIDOS DOS PERFIS ══════════════
         mb.Entity<ServicoPerfilLoja>().HasData(
             // ── Banho e Tosa (puro) — 21A ──
