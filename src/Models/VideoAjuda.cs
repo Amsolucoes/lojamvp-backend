@@ -9,7 +9,7 @@ public class VideoAjuda
     public string Titulo { get; set; } = "";
     [Required, MaxLength(50)]
     public string Categoria { get; set; } = ""; // Produtos, Caixa, Estoque, Financeiro, etc.
-    [Required, MaxLength(20)]
+    [Required, MaxLength(30)]
     public string YoutubeId { get; set; } = "";
     public int Ordem { get; set; } = 0;
     public bool Ativo { get; set; } = true;
