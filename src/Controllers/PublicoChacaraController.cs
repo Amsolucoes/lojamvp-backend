@@ -44,7 +44,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var ini = DateTime.SpecifyKind(dataInicio.Date, DateTimeKind.Utc).AddHours(12);
         var fim = DateTime.SpecifyKind(dataFim.Date, DateTimeKind.Utc).AddHours(12);
 
-        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, pessoas, cfg);
+        var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == loja.Id).ToListAsync();
+
+        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, pessoas, cfg, periodosEspeciais);
         return Ok(resultado);
     }
 
@@ -81,7 +83,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
             ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
 
-        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg);
+        var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == loja.Id).ToListAsync();
+
+        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, periodosEspeciais);
 
         var reserva = new Reserva
         {

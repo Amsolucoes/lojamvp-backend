@@ -6,7 +6,7 @@ public static class CalculadoraPrecoChacara
 {
     public record ResultadoCalculo(decimal ValorEstadia, decimal ValorTaxaLimpeza, decimal ValorTotal, List<string> Detalhamento);
 
-    public static ResultadoCalculo Calcular(DateTime dataInicio, DateTime dataFim, int pessoas, ConfiguracaoPrecoChacara cfg)
+    public static ResultadoCalculo Calcular(DateTime dataInicio, DateTime dataFim, int pessoas, ConfiguracaoPrecoChacara cfg, List<PeriodoEspecialChacara>? periodosEspeciais = null)
     {
         var dias = new List<DateTime>();
         for (var d = dataInicio.Date; d <= dataFim.Date; d = d.AddDays(1))
@@ -15,15 +15,35 @@ public static class CalculadoraPrecoChacara
         bool grande = pessoas > cfg.LimitePessoasPacotePequeno;
         decimal total = 0;
         var detalhamento = new List<string>();
+        periodosEspeciais ??= new List<PeriodoEspecialChacara>();
+
+        // Encontra, para um dia específico, o período especial que o contém (se houver)
+        PeriodoEspecialChacara? PeriodoDoDia(DateTime dia) =>
+            periodosEspeciais.FirstOrDefault(p => dia >= p.DataInicio.Date && dia <= p.DataFim.Date);
 
         int i = 0;
         while (i < dias.Count)
         {
             var atual = dias[i];
+            var periodoEspecial = PeriodoDoDia(atual);
+
+            if (periodoEspecial != null)
+            {
+                // Dia dentro de período especial: valor proporcional (valor total do período / dias do período)
+                var diasDoPeriodo = (int)Math.Round((periodoEspecial.DataFim.Date - periodoEspecial.DataInicio.Date).TotalDays) + 1;
+                var valorProporcional = Math.Round(periodoEspecial.ValorTotal / diasDoPeriodo, 2);
+                total += valorProporcional;
+                detalhamento.Add($"{atual:dd/MM} ({periodoEspecial.Nome}): {valorProporcional:C}");
+                i += 1;
+                continue;
+            }
+
             bool temProximo = i + 1 < dias.Count;
             var proximo = temProximo ? dias[i + 1] : default;
 
-            bool ehParFimSemana = temProximo && EhParFimSemana(atual, proximo);
+            // Só forma par de fim de semana se o próximo dia também NÃO for período especial
+            bool proximoEhEspecial = temProximo && PeriodoDoDia(proximo) != null;
+            bool ehParFimSemana = temProximo && !proximoEhEspecial && EhParFimSemana(atual, proximo);
 
             if (ehParFimSemana)
             {

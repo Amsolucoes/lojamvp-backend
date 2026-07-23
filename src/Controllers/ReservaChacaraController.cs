@@ -54,6 +54,54 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(new { reserva.Id, reserva.Status });
     }
 
+    public record CriarReservaManualRequest(
+        DateTime DataInicio, DateTime DataFim, int Pessoas,
+        string ClienteNome, string? ClienteEmail, string? ClienteTelefone,
+        decimal Valor
+    );
+
+    [HttpPost]
+    public async Task<IActionResult> CriarManual([FromBody] CriarReservaManualRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        if (string.IsNullOrWhiteSpace(req.ClienteNome))
+            return BadRequest(new { erro = "Informe o nome do cliente." });
+
+        if (req.DataFim.Date < req.DataInicio.Date)
+            return BadRequest(new { erro = "Data final não pode ser antes da data inicial." });
+
+        var ini = DateTime.SpecifyKind(req.DataInicio.Date, DateTimeKind.Utc).AddHours(12);
+        var fim = DateTime.SpecifyKind(req.DataFim.Date, DateTimeKind.Utc).AddHours(12);
+
+        var conflita = await db.Reservas.AnyAsync(r =>
+            r.LojaId == lojaId &&
+            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > DateTime.UtcNow)) &&
+            r.DataInicio <= fim && r.DataFim >= ini);
+
+        if (conflita)
+            return Conflict(new { erro = "Essas datas conflitam com outra reserva existente." });
+
+        var reserva = new Reserva
+        {
+            LojaId = lojaId.Value,
+            DataInicio = ini,
+            DataFim = fim,
+            Pessoas = req.Pessoas,
+            ClienteNome = req.ClienteNome.Trim(),
+            ClienteEmail = req.ClienteEmail?.Trim() ?? "",
+            ClienteTelefone = new string((req.ClienteTelefone ?? "").Where(char.IsDigit).ToArray()),
+            Valor = req.Valor,
+            Status = "confirmada", // já fechado por fora, entra direto como confirmada, sem notificação
+        };
+
+        db.Reservas.Add(reserva);
+        await db.SaveChangesAsync();
+
+        return Ok(reserva);
+    }
+
     public record EditarReservaRequest(DateTime DataInicio, DateTime DataFim, int Pessoas, string ClienteNome, string ClienteEmail, string ClienteTelefone);
 
     [HttpPut("{id:int}")]

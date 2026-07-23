@@ -55,6 +55,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ConfiguracaoPrecoChacara> ConfiguracoesPrecoChacara => Set<ConfiguracaoPrecoChacara>();
     public DbSet<FotoChacara> FotosChacara => Set<FotoChacara>();
     public DbSet<InfoChacara> InfosChacara => Set<InfoChacara>();
+    public DbSet<PeriodoEspecialChacara> PeriodosEspeciaisChacara => Set<PeriodoEspecialChacara>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -287,6 +288,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<InfoChacara>()
             .HasIndex(i => i.LojaId)
             .IsUnique();
+
+        mb.Entity<PeriodoEspecialChacara>()
+            .HasOne(p => p.Loja).WithMany()
+            .HasForeignKey(p => p.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<PeriodoEspecialChacara>()
+            .HasIndex(p => new { p.LojaId, p.DataInicio, p.DataFim });
+
+        mb.Entity<PeriodoEspecialChacara>()
+            .Property(p => p.ValorTotal)
+            .HasColumnType("decimal(10,2)");
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
