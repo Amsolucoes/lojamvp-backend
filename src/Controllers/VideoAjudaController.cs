@@ -99,7 +99,7 @@ public class VideoAjudaController(AppDbContext db) : ControllerBase
         return Ok(new { mensagem = "Vídeo excluído." });
     }
 
-    // Aceita tanto o ID puro quanto um link colado (youtube.com/watch?v=X ou youtu.be/X)
+    // Aceita ID puro, link "watch?v=", "youtu.be/" ou "shorts/"
     private static string ExtrairYoutubeId(string entrada)
     {
         if (!entrada.Contains("youtube.com") && !entrada.Contains("youtu.be"))
@@ -108,11 +108,25 @@ public class VideoAjudaController(AppDbContext db) : ControllerBase
         try
         {
             var uri = new Uri(entrada);
+
             if (entrada.Contains("youtu.be"))
                 return uri.AbsolutePath.Trim('/');
 
-            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-            return query["v"] ?? entrada;
+            if (entrada.Contains("/shorts/"))
+            {
+                var partes = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                return partes.Length > 0 ? partes[^1] : entrada;
+            }
+
+            var queryParams = uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var par in queryParams)
+            {
+                var kv = par.Split('=', 2);
+                if (kv.Length == 2 && kv[0] == "v")
+                    return kv[1];
+            }
+
+            return entrada;
         }
         catch
         {
