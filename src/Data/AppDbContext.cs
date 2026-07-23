@@ -50,6 +50,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Apolice> Apolices => Set<Apolice>();
     public DbSet<NfProdutoMapeamento> NfProdutoMapeamentos => Set<NfProdutoMapeamento>();
     public DbSet<NfImportada> NfsImportadas => Set<NfImportada>();
+    public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Índices únicos
