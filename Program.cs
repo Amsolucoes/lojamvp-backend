@@ -46,6 +46,7 @@ internal class Program
         builder.Services.AddScoped<TurmasService>();
         builder.Services.AddScoped<AlertaEmailService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
+        builder.Services.AddScoped<ReservaChacaraNotificacaoService>();
 
         // ── Controllers + Swagger ─────────────────────────────────────────
         builder.Services.AddControllers();
@@ -88,6 +89,8 @@ internal class Program
         {
             o.ApiToken = Environment.GetEnvironmentVariable("RESEND_APITOKEN") ?? "";
         });
+
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
         var app = builder.Build();
 

@@ -230,6 +230,32 @@ public class LojaController(AppDbContext db) : ControllerBase
         return slug.Trim('-');
     }
 
+    public record DefinirSlugRequest(string Slug);
+
+    [HttpPatch("slug")]
+    public async Task<IActionResult> DefinirSlug([FromBody] DefinirSlugRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return NotFound();
+
+        var loja = await db.Lojas.FindAsync(lojaId.Value);
+        if (loja is null) return NotFound();
+
+        var slug = GerarSlug(req.Slug);
+        if (slug.Length < 3)
+            return BadRequest(new { erro = "O link deve ter ao menos 3 caracteres válidos." });
+
+        var emUso = await db.Lojas.AnyAsync(l => l.Slug == slug && l.Id != loja.Id);
+        if (emUso)
+            return Conflict(new { erro = "Este link já está em uso. Escolha outro." });
+
+        loja.Slug = slug;
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.Slug });
+    }
+
     public record PausaAgendamentoRequest(bool Ativar, DateTime? PausaAte, string? Mensagem);
 
 }
