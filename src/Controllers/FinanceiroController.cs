@@ -1137,11 +1137,34 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .FirstOrDefaultAsync(f => f.CartaoCreditoId == id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
 
         // Parcelas do financiamento que caem NESTE mês (independente de qual fatura originou o parcelamento)
-        var parcelasFinanciamento = await db.LancamentosFinanceiros
+        var parcelasFinanciamentoRaw = await db.LancamentosFinanceiros
             .Where(l => l.CartaoOrigemId == id && l.Vencimento.Year == ano && l.Vencimento.Month == mes)
             .OrderBy(l => l.NumeroParcela)
-            .Select(l => new { l.Id, l.Descricao, l.Valor, l.Vencimento, l.Status, l.NumeroParcela, l.TotalParcelas })
             .ToListAsync();
+
+        var faturasOrigemIds = parcelasFinanciamentoRaw.Where(l => l.FaturaCartaoId.HasValue).Select(l => l.FaturaCartaoId!.Value).Distinct().ToList();
+        var faturasOrigem = await db.FaturasCartao.Where(f => faturasOrigemIds.Contains(f.Id)).ToListAsync();
+
+        var parcelasFinanciamento = parcelasFinanciamentoRaw.Select(l =>
+        {
+            var faturaOrigem = l.FaturaCartaoId.HasValue ? faturasOrigem.FirstOrDefault(f => f.Id == l.FaturaCartaoId.Value) : null;
+            return new
+            {
+                l.Id,
+                l.Descricao,
+                l.Valor,
+                l.Vencimento,
+                l.Status,
+                l.NumeroParcela,
+                l.TotalParcelas,
+                l.ContaBancariaId,
+                l.CategoriaId,
+                l.Observacao,
+                l.Modo,
+                mesOrigemFatura = faturaOrigem != null ? (int?)faturaOrigem.MesReferencia.Month : null,
+                anoOrigemFatura = faturaOrigem != null ? (int?)faturaOrigem.MesReferencia.Year : null,
+            };
+        }).ToList();
 
         var total = itens.Sum(i => i.Valor) + parcelasFinanciamento.Sum(p => p.Valor);
 
