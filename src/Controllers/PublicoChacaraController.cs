@@ -10,7 +10,7 @@ namespace LojaApi.Controllers;
 [ApiController]
 [Route("api/publico/{slug}/chacara")]
 [AllowAnonymous]
-public class PublicoChacaraController(AppDbContext db) : ControllerBase
+public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.ReservaChacaraNotificacaoService notificacao) : ControllerBase
 {
     [HttpGet("disponibilidade")]
     public async Task<IActionResult> Disponibilidade(string slug, [FromQuery] DateTime dataInicio, [FromQuery] DateTime dataFim)
@@ -93,6 +93,8 @@ public class PublicoChacaraController(AppDbContext db) : ControllerBase
 
         db.Reservas.Add(reserva);
         await db.SaveChangesAsync();
+
+        await notificacao.NotificarPendenteAsync(reserva);
 
         return Ok(new
         {

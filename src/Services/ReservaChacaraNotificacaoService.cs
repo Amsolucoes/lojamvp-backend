@@ -103,4 +103,43 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
             }
         }
     }
+
+    public async Task NotificarPendenteAsync(Reserva reserva)
+    {
+        var loja = await db.Lojas.FindAsync(reserva.LojaId);
+        if (loja is null || string.IsNullOrWhiteSpace(loja.Email)) return;
+
+        try
+        {
+            var html = $@"
+                <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                    <h2 style='color:#c38228'>Nova reserva pendente — {loja.Nome}</h2>
+                    <p><strong>{reserva.ClienteNome}</strong> criou uma reserva e está indo para o pagamento.</p>
+                    <table style='width:100%;border-collapse:collapse;margin-top:12px'>
+                        <tr><td style='padding:6px 10px'>Período</td><td style='padding:6px 10px;text-align:right'>{reserva.DataInicio:dd/MM/yyyy} — {reserva.DataFim:dd/MM/yyyy}</td></tr>
+                        <tr><td style='padding:6px 10px'>Pessoas</td><td style='padding:6px 10px;text-align:right'>{reserva.Pessoas}</td></tr>
+                        <tr><td style='padding:6px 10px'>Telefone</td><td style='padding:6px 10px;text-align:right'>{reserva.ClienteTelefone}</td></tr>
+                        <tr><td style='padding:6px 10px'>Valor</td><td style='padding:6px 10px;text-align:right'><strong>R$ {reserva.Valor:N2}</strong></td></tr>
+                    </table>
+                    <p style='margin-top:16px;font-size:13px;color:#888'>
+                        Esta reserva expira em {reserva.ExpiraEm:HH:mm} se o pagamento não for concluído.
+                        Se o cliente pagar por fora (Pix direto), você pode confirmar manualmente no sistema.
+                    </p>
+                </div>";
+
+            var msg = new EmailMessage
+            {
+                From = "AldevSoftware <reservas@aldevsoftware.com.br>",
+                Subject = $"⏳ Nova reserva pendente — {reserva.ClienteNome} ({reserva.DataInicio:dd/MM})",
+                HtmlBody = html,
+            };
+            msg.To.Add(loja.Email);
+            await resend.EmailSendAsync(msg);
+            logger.LogInformation("E-mail de reserva pendente enviado ao dono da loja {LojaId}.", loja.Id);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao enviar e-mail de reserva pendente pro dono da loja {LojaId}.", loja.Id);
+        }
+    }
 }
