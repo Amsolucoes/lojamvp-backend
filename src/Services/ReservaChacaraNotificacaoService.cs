@@ -82,13 +82,16 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
                     From = "AldevSoftware <reservas@aldevsoftware.com.br>",
                     Subject = $"Reserva confirmada — {loja.Nome}",
                     HtmlBody = htmlCliente,
+                    Attachments = new List<EmailAttachment>
+                    {
+                        new EmailAttachment
+                        {
+                            Filename = $"contrato-reserva-{reserva.Id}.pdf",
+                            Content = pdfBytes,
+                        },
+                    },
                 };
                 msgCliente.To.Add(reserva.ClienteEmail);
-                msgCliente.Attachments.Add(new EmailAttachment
-                {
-                    Filename = $"contrato-reserva-{reserva.Id}.pdf",
-                    Content = pdfBytes,
-                });
 
                 await resend.EmailSendAsync(msgCliente);
 
