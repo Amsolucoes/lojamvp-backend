@@ -45,6 +45,7 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
         decimal ValorPacote2DiasFimSemana,
         decimal ValorPacote2DiasFimSemanaGrande,
         int LimitePessoasPacotePequeno,
+        int MinimoPessoas,
         decimal ValorTaxaLimpeza,
         decimal ValorMultaNaoLimpeza
     );
@@ -68,6 +69,7 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
         cfg.ValorPacote2DiasFimSemana = req.ValorPacote2DiasFimSemana;
         cfg.ValorPacote2DiasFimSemanaGrande = req.ValorPacote2DiasFimSemanaGrande;
         cfg.LimitePessoasPacotePequeno = req.LimitePessoasPacotePequeno;
+        cfg.MinimoPessoas = req.MinimoPessoas;
         cfg.ValorTaxaLimpeza = req.ValorTaxaLimpeza;
         cfg.ValorMultaNaoLimpeza = req.ValorMultaNaoLimpeza;
 

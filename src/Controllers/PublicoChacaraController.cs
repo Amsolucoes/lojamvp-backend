@@ -38,6 +38,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
             ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
 
+        if (pessoas < cfg.MinimoPessoas)
+            return BadRequest(new { erro = $"O mínimo é de {cfg.MinimoPessoas} pessoas." });
+
         var ini = DateTime.SpecifyKind(dataInicio.Date, DateTimeKind.Utc).AddHours(12);
         var fim = DateTime.SpecifyKind(dataFim.Date, DateTimeKind.Utc).AddHours(12);
 
@@ -57,8 +60,11 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         if (req.DataFim.Date < req.DataInicio.Date)
             return BadRequest(new { erro = "Data final não pode ser antes da data inicial." });
 
-        if (req.Pessoas <= 0)
-            return BadRequest(new { erro = "Informe a quantidade de pessoas." });
+        var cfgValidacao = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
+            ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
+
+        if (req.Pessoas < cfgValidacao.MinimoPessoas)
+            return BadRequest(new { erro = $"O mínimo é de {cfgValidacao.MinimoPessoas} pessoas." });
 
         var ini = DateTime.SpecifyKind(req.DataInicio.Date, DateTimeKind.Utc).AddHours(12);
         var fim = DateTime.SpecifyKind(req.DataFim.Date, DateTimeKind.Utc).AddHours(12);

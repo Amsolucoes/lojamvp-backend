@@ -14,6 +14,7 @@ public class ConfiguracaoPrecoChacara
     public decimal ValorPacote2DiasFimSemanaGrande { get; set; } = 1000m; // sex+sab ou sab+dom, 50-100 pessoas
 
     public int LimitePessoasPacotePequeno { get; set; } = 50; // acima disso usa os valores "Grande"
+    public int MinimoPessoas { get; set; } = 3;               // reserva não pode ser feita com menos que isso
     public decimal ValorTaxaLimpeza { get; set; } = 250m;     // cobrada junto se pessoas > este limite
     public decimal ValorMultaNaoLimpeza { get; set; } = 250m; // só informativo, avisado no checkout
 

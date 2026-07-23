@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using LojaApi.Data;
+using LojaApi.src.Models;
+using LojaApi.src.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using LojaApi.Data;
-using LojaApi.src.Services;
 
 namespace LojaApi.src.Controllers;
 
@@ -51,5 +52,69 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         await notificacao.NotificarConfirmacaoAsync(reserva);
 
         return Ok(new { reserva.Id, reserva.Status });
+    }
+
+    public record EditarReservaRequest(DateTime DataInicio, DateTime DataFim, int Pessoas, string ClienteNome, string ClienteEmail, string ClienteTelefone);
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Editar(int id, [FromBody] EditarReservaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (reserva.Status != "pendente_pagamento")
+            return BadRequest(new { erro = "Só é possível editar reservas ainda pendentes de pagamento." });
+
+        if (req.DataFim.Date < req.DataInicio.Date)
+            return BadRequest(new { erro = "Data final não pode ser antes da data inicial." });
+
+        var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == lojaId)
+            ?? new ConfiguracaoPrecoChacara { LojaId = lojaId!.Value };
+
+        if (req.Pessoas < cfg.MinimoPessoas)
+            return BadRequest(new { erro = $"O mínimo é de {cfg.MinimoPessoas} pessoas." });
+
+        var ini = DateTime.SpecifyKind(req.DataInicio.Date, DateTimeKind.Utc).AddHours(12);
+        var fim = DateTime.SpecifyKind(req.DataFim.Date, DateTimeKind.Utc).AddHours(12);
+
+        // Revalida disponibilidade, excluindo a própria reserva da checagem
+        var conflita = await db.Reservas.AnyAsync(r =>
+            r.LojaId == lojaId && r.Id != id &&
+            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > DateTime.UtcNow)) &&
+            r.DataInicio <= fim && r.DataFim >= ini);
+
+        if (conflita)
+            return Conflict(new { erro = "Essas datas conflitam com outra reserva existente." });
+
+        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg);
+
+        reserva.DataInicio = ini;
+        reserva.DataFim = fim;
+        reserva.Pessoas = req.Pessoas;
+        reserva.ClienteNome = req.ClienteNome.Trim();
+        reserva.ClienteEmail = req.ClienteEmail.Trim();
+        reserva.ClienteTelefone = new string(req.ClienteTelefone.Where(char.IsDigit).ToArray());
+        reserva.Valor = resultado.ValorTotal;
+
+        await db.SaveChangesAsync();
+
+        return Ok(reserva);
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Excluir(int id)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (reserva.Status == "confirmada")
+            return BadRequest(new { erro = "Não é possível excluir uma reserva já confirmada. Se necessário, entre em contato com o cliente antes." });
+
+        db.Reservas.Remove(reserva);
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Reserva excluída." });
     }
 }
