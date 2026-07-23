@@ -175,6 +175,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
                 cfg.ValorPacote2DiasFimSemana,
                 cfg.ValorPacote2DiasFimSemanaGrande,
                 cfg.LimitePessoasPacotePequeno,
+                cfg.MinimoPessoas,
                 cfg.ValorTaxaLimpeza,
                 cfg.ValorMultaNaoLimpeza,
             },
