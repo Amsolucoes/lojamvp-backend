@@ -51,6 +51,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NfProdutoMapeamento> NfProdutoMapeamentos => Set<NfProdutoMapeamento>();
     public DbSet<NfImportada> NfsImportadas => Set<NfImportada>();
     public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
+    public DbSet<Reserva> Reservas => Set<Reserva>();
+
     protected override void OnModelCreating(ModelBuilder mb)
     {
         // Índices únicos
@@ -248,6 +250,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<NfImportada>()
             .HasIndex(n => new { n.LojaId, n.ChaveAcesso })
             .IsUnique();
+
+        mb.Entity<Reserva>()
+            .HasOne(r => r.Loja).WithMany()
+            .HasForeignKey(r => r.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<Reserva>()
+            .HasIndex(r => new { r.LojaId, r.DataInicio, r.DataFim });
+
+        mb.Entity<Reserva>()
+            .Property(r => r.Valor)
+            .HasColumnType("decimal(10,2)");
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
