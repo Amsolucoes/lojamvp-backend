@@ -52,6 +52,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NfImportada> NfsImportadas => Set<NfImportada>();
     public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
     public DbSet<Reserva> Reservas => Set<Reserva>();
+    public DbSet<ConfiguracaoPrecoChacara> ConfiguracoesPrecoChacara => Set<ConfiguracaoPrecoChacara>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -261,6 +262,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<Reserva>()
             .Property(r => r.Valor)
             .HasColumnType("decimal(10,2)");
+
+        mb.Entity<ConfiguracaoPrecoChacara>()
+            .HasOne(c => c.Loja).WithMany()
+            .HasForeignKey(c => c.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ConfiguracaoPrecoChacara>()
+            .HasIndex(c => c.LojaId)
+            .IsUnique();
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
