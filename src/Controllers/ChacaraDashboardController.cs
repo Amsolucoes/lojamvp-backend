@@ -53,16 +53,21 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
 
             int diasOcupados = 0;
             decimal receita = 0;
+            decimal pagoMes = 0;
+            decimal pendenteMes = 0;
             foreach (var r in reservasDoMes)
             {
                 var inicioInterv = r.DataInicio > primeiroDia ? r.DataInicio : primeiroDia;
                 var fimInterv = r.DataFim < ultimoDia ? r.DataFim : ultimoDia;
                 var diasNesseMes = (int)Math.Round((fimInterv - inicioInterv).TotalDays) + 1;
                 var totalDiasReserva = (int)Math.Round((r.DataFim - r.DataInicio).TotalDays) + 1;
+                var proporcao = totalDiasReserva > 0 ? (decimal)diasNesseMes / totalDiasReserva : 0;
 
                 diasOcupados += diasNesseMes;
-                // Receita alocada proporcionalmente quando a reserva atravessa a virada do mês
-                receita += totalDiasReserva > 0 ? r.Valor * diasNesseMes / totalDiasReserva : 0;
+                // Receita, pago e pendente alocados proporcionalmente quando a reserva atravessa a virada do mês
+                receita += r.Valor * proporcao;
+                pagoMes += r.ValorPago * proporcao;
+                pendenteMes += (r.Valor - r.ValorPago) * proporcao;
             }
 
             var percentualOcupado = diasNoMes > 0 ? Math.Round((decimal)diasOcupados / diasNoMes * 100, 1) : 0;
@@ -77,6 +82,8 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
                 percentualOcupado,
                 percentualLivre = Math.Round(100 - percentualOcupado, 1),
                 receita,
+                pago = pagoMes,
+                pendente = pendenteMes,
             });
         }
 
