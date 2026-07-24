@@ -17,6 +17,7 @@ public class ConfiguracaoPrecoChacara
     public int MinimoPessoas { get; set; } = 3;               // reserva não pode ser feita com menos que isso
     public decimal ValorTaxaLimpeza { get; set; } = 250m;     // cobrada junto se pessoas > este limite
     public decimal ValorMultaNaoLimpeza { get; set; } = 250m; // só informativo, avisado no checkout
+    public decimal PercentualEntradaMinimo { get; set; } = 50m; // sugestão de % mínimo de entrada, não é travado no backend
 
     public Loja? Loja { get; set; }
 }

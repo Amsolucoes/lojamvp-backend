@@ -18,7 +18,7 @@ public class Reserva
     public string? ClienteDocumento { get; set; } // CPF, usado no contrato
 
     public decimal Valor { get; set; }
-
+    public decimal ValorPago { get; set; } = 0;
     public string Status { get; set; } = "pendente_pagamento";
     // valores: pendente_pagamento | confirmada | cancelada | expirada
 

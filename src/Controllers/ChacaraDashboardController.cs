@@ -37,7 +37,7 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
             .Where(r => r.DataFim >= agora)
             .OrderBy(r => r.DataInicio)
             .Take(10)
-            .Select(r => new { r.Id, r.ClienteNome, r.DataInicio, r.DataFim, r.Pessoas, r.Valor })
+            .Select(r => new { r.Id, r.ClienteNome, r.DataInicio, r.DataFim, r.Pessoas, r.Valor, r.ValorPago, saldoPendente = r.Valor - r.ValorPago })
             .ToList();
 
         var noPeriodo = confirmadas

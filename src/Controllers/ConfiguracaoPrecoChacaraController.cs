@@ -47,7 +47,8 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
         int LimitePessoasPacotePequeno,
         int MinimoPessoas,
         decimal ValorTaxaLimpeza,
-        decimal ValorMultaNaoLimpeza
+        decimal ValorMultaNaoLimpeza,
+        decimal PercentualEntradaMinimo
     );
 
     [HttpPut]
@@ -72,6 +73,7 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
         cfg.MinimoPessoas = req.MinimoPessoas;
         cfg.ValorTaxaLimpeza = req.ValorTaxaLimpeza;
         cfg.ValorMultaNaoLimpeza = req.ValorMultaNaoLimpeza;
+        cfg.PercentualEntradaMinimo = req.PercentualEntradaMinimo;
 
         await db.SaveChangesAsync();
         return Ok(cfg);

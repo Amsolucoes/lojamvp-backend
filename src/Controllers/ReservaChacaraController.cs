@@ -36,8 +36,10 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(lista);
     }
 
+    public record ConfirmarComPagamentoRequest(decimal? ValorPago);
+
     [HttpPatch("{id:int}/confirmar")]
-    public async Task<IActionResult> Confirmar(int id)
+    public async Task<IActionResult> Confirmar(int id, [FromBody] ConfirmarComPagamentoRequest? req)
     {
         var lojaId = await GetLojaId();
         var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
@@ -46,18 +48,41 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         if (reserva.Status == "confirmada")
             return BadRequest(new { erro = "Esta reserva já está confirmada." });
 
+        // Sem valor informado, assume pagamento integral (compatibilidade com o fluxo antigo)
+        reserva.ValorPago = req?.ValorPago ?? reserva.Valor;
         reserva.Status = "confirmada";
         await db.SaveChangesAsync();
 
         await notificacao.NotificarConfirmacaoAsync(reserva);
 
-        return Ok(new { reserva.Id, reserva.Status });
+        return Ok(new { reserva.Id, reserva.Status, reserva.ValorPago, saldoPendente = reserva.Valor - reserva.ValorPago });
+    }
+
+    public record RegistrarPagamentoRequest(decimal Valor);
+
+    [HttpPatch("{id:int}/registrar-pagamento")]
+    public async Task<IActionResult> RegistrarPagamento(int id, [FromBody] RegistrarPagamentoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (reserva.Status != "confirmada")
+            return BadRequest(new { erro = "Só é possível registrar pagamento adicional em reservas já confirmadas." });
+
+        if (req.Valor <= 0)
+            return BadRequest(new { erro = "Informe um valor de pagamento maior que zero." });
+
+        reserva.ValorPago = Math.Min(reserva.Valor, reserva.ValorPago + req.Valor);
+        await db.SaveChangesAsync();
+
+        return Ok(new { reserva.Id, reserva.ValorPago, saldoPendente = reserva.Valor - reserva.ValorPago, quitada = reserva.ValorPago >= reserva.Valor });
     }
 
     public record CriarReservaManualRequest(
         DateTime DataInicio, DateTime DataFim, int Pessoas,
         string ClienteNome, string? ClienteEmail, string? ClienteTelefone,
-        decimal Valor
+        decimal Valor, decimal? ValorPago
     );
 
     [HttpPost]
@@ -93,6 +118,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
             ClienteEmail = req.ClienteEmail?.Trim() ?? "",
             ClienteTelefone = new string((req.ClienteTelefone ?? "").Where(char.IsDigit).ToArray()),
             Valor = req.Valor,
+            ValorPago = req.ValorPago ?? req.Valor, // sem informar, assume que já foi pago integralmente
             Status = "confirmada", // já fechado por fora, entra direto como confirmada, sem notificação
         };
 
