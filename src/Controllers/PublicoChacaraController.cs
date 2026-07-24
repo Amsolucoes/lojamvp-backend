@@ -104,6 +104,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             ClienteNome = req.ClienteNome.Trim(),
             ClienteEmail = req.ClienteEmail.Trim(),
             ClienteTelefone = new string(req.ClienteTelefone.Where(char.IsDigit).ToArray()),
+            ClienteDocumento = string.IsNullOrWhiteSpace(req.ClienteDocumento) ? null : req.ClienteDocumento.Trim(),
+            ClienteCep = string.IsNullOrWhiteSpace(req.ClienteCep) ? null : req.ClienteCep.Trim(),
+            ClienteEndereco = string.IsNullOrWhiteSpace(req.ClienteEndereco) ? null : req.ClienteEndereco.Trim(),
             Valor = resultado.ValorTotal,
             Status = "pendente_pagamento",
             ExpiraEm = DateTime.UtcNow.AddMinutes(15),
@@ -202,5 +205,8 @@ public record ReservarPublicoRequest(
     int Pessoas,
     string ClienteNome,
     string ClienteEmail,
-    string ClienteTelefone
+    string ClienteTelefone,
+    string? ClienteDocumento,
+    string? ClienteCep,
+    string? ClienteEndereco
 );

@@ -16,6 +16,9 @@ public class Reserva
     public string ClienteEmail { get; set; } = string.Empty;
     public string ClienteTelefone { get; set; } = string.Empty;
     public string? ClienteDocumento { get; set; } // CPF, usado no contrato
+    public string? ClienteCep { get; set; }
+    public string? ClienteEndereco { get; set; }
+    public DateTime? DataConfirmacao { get; set; } // quando a reserva virou "confirmada" — usado no contrato como data da entrada
 
     public decimal Valor { get; set; }
     public decimal ValorPago { get; set; } = 0;

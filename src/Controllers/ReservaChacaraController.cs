@@ -51,6 +51,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         // Sem valor informado, assume pagamento integral (compatibilidade com o fluxo antigo)
         reserva.ValorPago = req?.ValorPago ?? reserva.Valor;
         reserva.Status = "confirmada";
+        reserva.DataConfirmacao = DateTime.UtcNow;
         await db.SaveChangesAsync();
 
         await notificacao.NotificarConfirmacaoAsync(reserva);
@@ -120,6 +121,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
             Valor = req.Valor,
             ValorPago = req.ValorPago ?? req.Valor, // sem informar, assume que já foi pago integralmente
             Status = "confirmada", // já fechado por fora, entra direto como confirmada, sem notificação
+            DataConfirmacao = DateTime.UtcNow,
         };
 
         db.Reservas.Add(reserva);
@@ -128,7 +130,10 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(reserva);
     }
 
-    public record EditarReservaRequest(DateTime DataInicio, DateTime DataFim, int Pessoas, string ClienteNome, string ClienteEmail, string ClienteTelefone);
+    public record EditarReservaRequest(
+            DateTime DataInicio, DateTime DataFim, int Pessoas, string ClienteNome, string ClienteEmail, string ClienteTelefone,
+            string? ClienteDocumento, string? ClienteCep, string? ClienteEndereco
+        );
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Editar(int id, [FromBody] EditarReservaRequest req)
@@ -173,9 +178,12 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         reserva.ClienteNome = req.ClienteNome.Trim();
         reserva.ClienteEmail = req.ClienteEmail.Trim();
         reserva.ClienteTelefone = new string(req.ClienteTelefone.Where(char.IsDigit).ToArray());
-        var eraConfirmada = reserva.Status == "confirmada";
-
+        reserva.ClienteDocumento = string.IsNullOrWhiteSpace(req.ClienteDocumento) ? reserva.ClienteDocumento : req.ClienteDocumento.Trim();
+        reserva.ClienteCep = string.IsNullOrWhiteSpace(req.ClienteCep) ? reserva.ClienteCep : req.ClienteCep.Trim();
+        reserva.ClienteEndereco = string.IsNullOrWhiteSpace(req.ClienteEndereco) ? reserva.ClienteEndereco : req.ClienteEndereco.Trim();
         reserva.Valor = resultado.ValorTotal;
+
+        var eraConfirmada = reserva.Status == "confirmada";
 
         await db.SaveChangesAsync();
 
