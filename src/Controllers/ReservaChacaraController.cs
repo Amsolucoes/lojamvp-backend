@@ -170,7 +170,9 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         if (conflita)
             return Conflict(new { erro = "Essas datas conflitam com outra reserva existente." });
 
-        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg);
+        var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == lojaId).ToListAsync();
+
+        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, periodosEspeciais);
 
         reserva.DataInicio = ini;
         reserva.DataFim = fim;
