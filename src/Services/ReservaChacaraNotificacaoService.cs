@@ -16,7 +16,18 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == reserva.LojaId)
             ?? new ConfiguracaoPrecoChacara { LojaId = reserva.LojaId };
 
-        // 1) E-mail pro dono da loja
+        // 1) Gera o contrato em PDF primeiro — usado nos dois e-mails abaixo
+        byte[]? pdfBytes = null;
+        try
+        {
+            pdfBytes = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao gerar contrato PDF da reserva {ReservaId}.", reserva.Id);
+        }
+
+        // 2) E-mail pro dono da loja, com o contrato anexado (se foi gerado com sucesso)
         if (!string.IsNullOrWhiteSpace(loja.Email))
         {
             try
@@ -40,6 +51,19 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
                     HtmlBody = htmlDono,
                 };
                 msgDono.To.Add(loja.Email);
+
+                if (pdfBytes != null)
+                {
+                    msgDono.Attachments = new List<EmailAttachment>
+                    {
+                        new EmailAttachment
+                        {
+                            Filename = $"contrato-reserva-{reserva.Id}.pdf",
+                            Content = pdfBytes,
+                        },
+                    };
+                }
+
                 await resend.EmailSendAsync(msgDono);
                 logger.LogInformation("E-mail de confirmação enviado ao dono da loja {LojaId}.", loja.Id);
             }
@@ -49,17 +73,7 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
             }
         }
 
-        // 2) Gera o contrato em PDF
-        byte[] pdfBytes;
-        try
-        {
-            pdfBytes = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Erro ao gerar contrato PDF da reserva {ReservaId}.", reserva.Id);
-            return;
-        }
+        if (pdfBytes is null) return; // sem PDF gerado, não dá pra mandar o do cliente com anexo
 
         // 3) E-mail pro cliente, com contrato anexado
         if (!string.IsNullOrWhiteSpace(reserva.ClienteEmail))
@@ -92,7 +106,6 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
                     },
                 };
                 msgCliente.To.Add(reserva.ClienteEmail);
-
                 await resend.EmailSendAsync(msgCliente);
 
                 reserva.ContratoEnviadoEm = DateTime.UtcNow;
