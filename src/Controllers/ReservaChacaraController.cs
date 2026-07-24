@@ -209,4 +209,21 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
 
         return Ok(new { mensagem = "Reserva excluída." });
     }
+
+    [HttpPost("{id:int}/enviar-contrato")]
+    public async Task<IActionResult> EnviarContrato(int id)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(reserva.ClienteEmail))
+            return BadRequest(new { erro = "Esta reserva não tem e-mail de cliente cadastrado." });
+
+        var enviado = await notificacao.EnviarContratoManualAsync(reserva);
+        if (!enviado)
+            return StatusCode(500, new { erro = "Não foi possível enviar o contrato. Confira os logs do servidor." });
+
+        return Ok(new { mensagem = "Contrato enviado com sucesso." });
+    }
 }

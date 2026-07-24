@@ -208,4 +208,68 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
             logger.LogError(ex, "Erro ao reenviar contrato atualizado pro cliente da reserva {ReservaId}.", reserva.Id);
         }
     }
+
+    public async Task<bool> EnviarContratoManualAsync(Reserva reserva)
+    {
+        if (string.IsNullOrWhiteSpace(reserva.ClienteEmail)) return false;
+
+        var loja = await db.Lojas.FindAsync(reserva.LojaId);
+        if (loja is null) return false;
+
+        var info = await db.InfosChacara.FirstOrDefaultAsync(i => i.LojaId == reserva.LojaId);
+        var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == reserva.LojaId)
+            ?? new ConfiguracaoPrecoChacara { LojaId = reserva.LojaId };
+
+        byte[] pdfBytes;
+        try
+        {
+            pdfBytes = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao gerar contrato PDF (envio manual) da reserva {ReservaId}.", reserva.Id);
+            return false;
+        }
+
+        try
+        {
+            var html = $@"
+                <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                    <h2 style='color:#2f7d4f'>Contrato da sua reserva</h2>
+                    <p>Olá, {reserva.ClienteNome}! Segue em anexo o contrato de locação referente à sua reserva na {loja.Nome}.</p>
+                    <table style='width:100%;border-collapse:collapse;margin-top:12px'>
+                        <tr><td style='padding:6px 10px'>Período</td><td style='padding:6px 10px;text-align:right'>{reserva.DataInicio:dd/MM/yyyy} — {reserva.DataFim:dd/MM/yyyy}</td></tr>
+                        <tr><td style='padding:6px 10px'>Valor total</td><td style='padding:6px 10px;text-align:right'><strong>R$ {reserva.Valor:N2}</strong></td></tr>
+                    </table>
+                </div>";
+
+            var msg = new EmailMessage
+            {
+                From = "AldevSoftware <reservas@aldevsoftware.com.br>",
+                Subject = $"Contrato — {loja.Nome}",
+                HtmlBody = html,
+                Attachments = new List<EmailAttachment>
+                {
+                    new EmailAttachment
+                    {
+                        Filename = $"contrato-reserva-{reserva.Id}.pdf",
+                        Content = pdfBytes,
+                    },
+                },
+            };
+            msg.To.Add(reserva.ClienteEmail);
+            await resend.EmailSendAsync(msg);
+
+            reserva.ContratoEnviadoEm = DateTime.UtcNow;
+            await db.SaveChangesAsync();
+
+            logger.LogInformation("Contrato enviado manualmente ao cliente da reserva {ReservaId}.", reserva.Id);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao enviar contrato manualmente pro cliente da reserva {ReservaId}.", reserva.Id);
+            return false;
+        }
+    }
 }
