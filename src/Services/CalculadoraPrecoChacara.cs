@@ -8,6 +8,23 @@ public static class CalculadoraPrecoChacara
 
     public static ResultadoCalculo Calcular(DateTime dataInicio, DateTime dataFim, int pessoas, ConfiguracaoPrecoChacara cfg, List<PeriodoEspecialChacara>? periodosEspeciais = null)
     {
+        periodosEspeciais ??= new List<PeriodoEspecialChacara>();
+
+        // Match exato: se o período pedido bate certinho com um período especial cadastrado,
+        // usa o valor do pacote inteiro direto — evita ambiguidade quando existem pacotes
+        // sobrepostos (ex: "Ano Novo 2 dias", "3 dias", "4 dias" todos começando no mesmo dia).
+        var matchExato = periodosEspeciais.FirstOrDefault(p =>
+            p.DataInicio.Date == dataInicio.Date && p.DataFim.Date == dataFim.Date);
+
+        if (matchExato != null)
+        {
+            var taxaLimpezaExata = pessoas > cfg.LimitePessoasPacotePequeno ? cfg.ValorTaxaLimpeza : 0;
+            var detalhamentoExato = new List<string> { $"{matchExato.Nome} (pacote fechado): {matchExato.ValorTotal:C}" };
+            if (taxaLimpezaExata > 0)
+                detalhamentoExato.Add($"Taxa de limpeza (mais de {cfg.LimitePessoasPacotePequeno} pessoas): {taxaLimpezaExata:C}");
+            return new ResultadoCalculo(matchExato.ValorTotal, taxaLimpezaExata, matchExato.ValorTotal + taxaLimpezaExata, detalhamentoExato);
+        }
+
         var dias = new List<DateTime>();
         for (var d = dataInicio.Date; d <= dataFim.Date; d = d.AddDays(1))
             dias.Add(d);
@@ -15,11 +32,14 @@ public static class CalculadoraPrecoChacara
         bool grande = pessoas > cfg.LimitePessoasPacotePequeno;
         decimal total = 0;
         var detalhamento = new List<string>();
-        periodosEspeciais ??= new List<PeriodoEspecialChacara>();
 
-        // Encontra, para um dia específico, o período especial que o contém (se houver)
+        // Encontra, para um dia específico, o período especial MAIS ESPECÍFICO que o contém
+        // (o de menor duração — evita que um pacote maior sobreponha um menor)
         PeriodoEspecialChacara? PeriodoDoDia(DateTime dia) =>
-            periodosEspeciais.FirstOrDefault(p => dia >= p.DataInicio.Date && dia <= p.DataFim.Date);
+            periodosEspeciais
+                .Where(p => dia >= p.DataInicio.Date && dia <= p.DataFim.Date)
+                .OrderBy(p => (p.DataFim.Date - p.DataInicio.Date).TotalDays)
+                .FirstOrDefault();
 
         int i = 0;
         while (i < dias.Count)
