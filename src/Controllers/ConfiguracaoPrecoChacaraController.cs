@@ -39,13 +39,8 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
     }
 
     public record AtualizarConfigRequest(
-        decimal ValorDiariaSemana,
-        decimal ValorDiariaFimSemana,
-        decimal ValorDiariaFimSemanaGrande,
-        decimal ValorPacote2DiasFimSemana,
-        decimal ValorPacote2DiasFimSemanaGrande,
-        int LimitePessoasPacotePequeno,
         int MinimoPessoas,
+        int LimitePessoasParaTaxaLimpeza,
         decimal ValorTaxaLimpeza,
         decimal ValorMultaNaoLimpeza,
         decimal PercentualEntradaMinimo
@@ -64,13 +59,8 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
             db.ConfiguracoesPrecoChacara.Add(cfg);
         }
 
-        cfg.ValorDiariaSemana = req.ValorDiariaSemana;
-        cfg.ValorDiariaFimSemana = req.ValorDiariaFimSemana;
-        cfg.ValorDiariaFimSemanaGrande = req.ValorDiariaFimSemanaGrande;
-        cfg.ValorPacote2DiasFimSemana = req.ValorPacote2DiasFimSemana;
-        cfg.ValorPacote2DiasFimSemanaGrande = req.ValorPacote2DiasFimSemanaGrande;
-        cfg.LimitePessoasPacotePequeno = req.LimitePessoasPacotePequeno;
         cfg.MinimoPessoas = req.MinimoPessoas;
+        cfg.LimitePessoasParaTaxaLimpeza = req.LimitePessoasParaTaxaLimpeza;
         cfg.ValorTaxaLimpeza = req.ValorTaxaLimpeza;
         cfg.ValorMultaNaoLimpeza = req.ValorMultaNaoLimpeza;
         cfg.PercentualEntradaMinimo = req.PercentualEntradaMinimo;

@@ -58,6 +58,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
             ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
 
+        var faixas = await db.FaixasPrecoChacara.Where(f => f.LojaId == loja.Id).ToListAsync();
+        if (faixas.Count == 0)
+            return BadRequest(new { erro = "Esta chácara ainda não configurou os valores de reserva." });
+
         if (pessoas < cfg.MinimoPessoas)
             return BadRequest(new { erro = $"O mínimo é de {cfg.MinimoPessoas} pessoas." });
 
@@ -70,7 +74,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
 
         var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == loja.Id).ToListAsync();
 
-        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, pessoas, cfg, periodosEspeciais);
+        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, pessoas, cfg, faixas, periodosEspeciais);
         return Ok(resultado);
     }
 
@@ -111,9 +115,13 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
             ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
 
+        var faixas = await db.FaixasPrecoChacara.Where(f => f.LojaId == loja.Id).ToListAsync();
+        if (faixas.Count == 0)
+            return BadRequest(new { erro = "Esta chácara ainda não configurou os valores de reserva." });
+
         var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == loja.Id).ToListAsync();
 
-        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, periodosEspeciais);
+        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
 
         var reserva = new Reserva
         {
@@ -205,13 +213,8 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             comodidadesExtras,
             precificacao = new
             {
-                cfg.ValorDiariaSemana,
-                cfg.ValorDiariaFimSemana,
-                cfg.ValorDiariaFimSemanaGrande,
-                cfg.ValorPacote2DiasFimSemana,
-                cfg.ValorPacote2DiasFimSemanaGrande,
-                cfg.LimitePessoasPacotePequeno,
                 cfg.MinimoPessoas,
+                cfg.LimitePessoasParaTaxaLimpeza,
                 cfg.ValorTaxaLimpeza,
                 cfg.ValorMultaNaoLimpeza,
             },

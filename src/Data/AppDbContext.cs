@@ -53,6 +53,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
     public DbSet<Reserva> Reservas => Set<Reserva>();
     public DbSet<ConfiguracaoPrecoChacara> ConfiguracoesPrecoChacara => Set<ConfiguracaoPrecoChacara>();
+    public DbSet<FaixaPrecoChacara> FaixasPrecoChacara => Set<FaixaPrecoChacara>();
     public DbSet<FotoChacara> FotosChacara => Set<FotoChacara>();
     public DbSet<InfoChacara> InfosChacara => Set<InfoChacara>();
     public DbSet<PeriodoEspecialChacara> PeriodosEspeciaisChacara => Set<PeriodoEspecialChacara>();
@@ -273,6 +274,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<ConfiguracaoPrecoChacara>()
             .HasIndex(c => c.LojaId)
             .IsUnique();
+
+        mb.Entity<FaixaPrecoChacara>()
+            .HasOne(f => f.Loja).WithMany()
+            .HasForeignKey(f => f.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<FaixaPrecoChacara>()
+            .HasIndex(f => new { f.LojaId, f.PessoasAte });
+
+        mb.Entity<FaixaPrecoChacara>()
+            .Property(f => f.ValorDiariaSemana).HasColumnType("decimal(10,2)");
+        mb.Entity<FaixaPrecoChacara>()
+            .Property(f => f.ValorDiariaFimSemana).HasColumnType("decimal(10,2)");
+        mb.Entity<FaixaPrecoChacara>()
+            .Property(f => f.ValorPacote2DiasFimSemana).HasColumnType("decimal(10,2)");
 
         mb.Entity<FotoChacara>()
             .HasOne(f => f.Loja).WithMany()
