@@ -32,7 +32,26 @@ public class PeriodoEspecialChacaraController(AppDbContext db) : ControllerBase
             .OrderBy(p => p.DataInicio)
             .ToListAsync();
 
-        return Ok(lista);
+        var confirmadas = await db.Reservas
+            .Where(r => r.LojaId == lojaId && r.Status == "confirmada")
+            .Select(r => new { r.DataInicio, r.DataFim })
+            .ToListAsync();
+
+        var resultado = lista.Select(p => new
+        {
+            p.Id,
+            p.Nome,
+            p.DataInicio,
+            p.DataFim,
+            p.ValorTotal,
+            // Confirmado: existe reserva confirmada com as MESMAS datas deste período (foi essa opção que o cliente escolheu)
+            confirmado = confirmadas.Any(r => r.DataInicio.Date == p.DataInicio.Date && r.DataFim.Date == p.DataFim.Date),
+            // Ocupado: existe reserva confirmada que se sobrepõe às datas deste período (mesmo que não seja exatamente igual —
+            // ex: cliente reservou "3 dias" e isso ocupa parte do intervalo do "2 dias" e do "4 dias")
+            ocupado = confirmadas.Any(r => r.DataInicio <= p.DataFim && r.DataFim >= p.DataInicio),
+        });
+
+        return Ok(resultado);
     }
 
     public record SalvarPeriodoRequest(string Nome, DateTime DataInicio, DateTime DataFim, decimal ValorTotal);
