@@ -29,6 +29,26 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         return Ok(new { disponivel = !conflita });
     }
 
+    [HttpGet("datas-ocupadas")]
+    public async Task<IActionResult> DatasOcupadas(string slug, [FromQuery] int meses = 3)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var agora = DateTime.UtcNow;
+        var limite = agora.AddMonths(meses);
+
+        var ocupadas = await db.Reservas
+            .Where(r => r.LojaId == loja.Id &&
+                (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > agora)) &&
+                r.DataFim >= agora && r.DataInicio <= limite)
+            .OrderBy(r => r.DataInicio)
+            .Select(r => new { r.DataInicio, r.DataFim })
+            .ToListAsync();
+
+        return Ok(ocupadas);
+    }
+
     [HttpGet("valor")]
     public async Task<IActionResult> Valor(string slug, [FromQuery] DateTime dataInicio, [FromQuery] DateTime dataFim, [FromQuery] int pessoas)
     {
