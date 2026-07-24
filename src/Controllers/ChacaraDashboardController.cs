@@ -41,7 +41,18 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
         var meses = new List<object>();
         var mesBase = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        for (int i = 0; i < mesesAFrente; i++)
+        // Garante que a janela sempre cubra a reserva confirmada mais distante no futuro,
+        // mesmo que isso ultrapasse os "mesesAFrente" pedidos (ex: reserva de Ano Novo
+        // que atravessa a virada do ano, feita com bastante antecedência).
+        var totalMeses = mesesAFrente;
+        if (confirmadas.Count > 0)
+        {
+            var maxDataFim = confirmadas.Max(r => r.DataFim);
+            var mesesNecessarios = (maxDataFim.Year - mesBase.Year) * 12 + (maxDataFim.Month - mesBase.Month) + 1;
+            totalMeses = Math.Max(totalMeses, Math.Min(mesesNecessarios, 24)); // limite de segurança: 24 meses
+        }
+
+        for (int i = 0; i < totalMeses; i++)
         {
             var primeiroDia = mesBase.AddMonths(i);
             var ultimoDia = primeiroDia.AddMonths(1).AddDays(-1);
