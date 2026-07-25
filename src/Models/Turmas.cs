@@ -1,4 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using LojaApi.Models;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace LojaApi.src.Models;
 
@@ -75,14 +77,70 @@ public class InscricaoSessao
 }
 
 // ── Profissional que atende os alunos nas sessões ───────────────────
+// ── Profissional que atende os alunos nas sessões (Turmas) ou clientes (Serviços/Barbearia) ──
 public class Profissional
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid LojaId { get; set; }
-
     [Required, MaxLength(100)]
     public string Nome { get; set; } = "";
-
     public bool Ativo { get; set; } = true;
+    // Comissão padrão (%), usada quando não há exceção específica por serviço
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? ComissaoPadraoPercentual { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+    // Navegação
+    public ICollection<ComissaoServicoProfissional> ComissoesPorServico { get; set; } = [];
+}
+
+// ── Exceção de comissão: percentual diferente pra um serviço específico ──
+public class ComissaoServicoProfissional
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+    public Guid ProfissionalId { get; set; }
+    public Profissional? Profissional { get; set; }
+    public Guid ServicoId { get; set; }
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal ComissaoPercentual { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Lançamento de comissão gerado ao concluir um atendimento ────────
+public class ComissaoFuncionario
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+    public Guid ProfissionalId { get; set; }
+    public Profissional? Profissional { get; set; }
+    public Guid AgendamentoId { get; set; }
+    public Agendamento? Agendamento { get; set; }
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal ValorServico { get; set; } // preço do atendimento no momento da conclusão
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal ComissaoPercentual { get; set; } // percentual aplicado (registrado, caso mude depois)
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal ValorComissao { get; set; }
+    [MaxLength(20)]
+    public string Status { get; set; } = "pendente"; // pendente | pago
+    public Guid? FechamentoId { get; set; } // agrupa comissões pagas juntas num fechamento
+    public DateTime? PagoEm { get; set; }
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
+// ── Fechamento de comissão: agrupa e paga várias comissões de um período ──
+public class FechamentoComissao
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+    public Guid ProfissionalId { get; set; }
+    public Profissional? Profissional { get; set; }
+    public DateTime PeriodoInicio { get; set; }
+    public DateTime PeriodoFim { get; set; }
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal ValorTotal { get; set; }
+    public int QtdAtendimentos { get; set; }
+    public DateTime PagoEm { get; set; } = DateTime.UtcNow;
+    // Vínculo opcional com o Financeiro (lançamento "a pagar" gerado, se a loja tiver módulo Financeiro)
+    public Guid? LancamentoFinanceiroId { get; set; }
 }

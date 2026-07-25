@@ -57,6 +57,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<FotoChacara> FotosChacara => Set<FotoChacara>();
     public DbSet<InfoChacara> InfosChacara => Set<InfoChacara>();
     public DbSet<PeriodoEspecialChacara> PeriodosEspeciaisChacara => Set<PeriodoEspecialChacara>();
+    public DbSet<ComissaoServicoProfissional> ComissoesServicoProfissional => Set<ComissaoServicoProfissional>();
+    public DbSet<ComissaoFuncionario> ComissoesFuncionario => Set<ComissaoFuncionario>();
+    public DbSet<FechamentoComissao> FechamentosComissao => Set<FechamentoComissao>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -314,6 +317,26 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<PeriodoEspecialChacara>()
             .Property(p => p.ValorTotal)
             .HasColumnType("decimal(10,2)");
+
+        mb.Entity<ComissaoServicoProfissional>()
+            .HasIndex(c => new { c.ProfissionalId, c.ServicoId })
+            .IsUnique();
+
+        mb.Entity<ComissaoServicoProfissional>()
+            .HasOne(c => c.Profissional).WithMany(p => p.ComissoesPorServico)
+            .HasForeignKey(c => c.ProfissionalId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ComissaoFuncionario>()
+            .HasOne(c => c.Profissional).WithMany()
+            .HasForeignKey(c => c.ProfissionalId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<ComissaoFuncionario>()
+            .HasOne(c => c.Agendamento).WithMany()
+            .HasForeignKey(c => c.AgendamentoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<FechamentoComissao>()
+            .HasOne(f => f.Profissional).WithMany()
+            .HasForeignKey(f => f.ProfissionalId).OnDelete(DeleteBehavior.Restrict);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())

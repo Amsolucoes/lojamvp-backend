@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using LojaApi.Data;
+using LojaApi.Models;
+using LojaApi.src.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using LojaApi.Data;
-using LojaApi.Models;
 
 namespace LojaApi.Controllers;
 
@@ -142,6 +143,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
             DuracaoMin = req.DuracaoMin > 0 ? req.DuracaoMin : servico.DuracaoMin,
             Status = "agendado",
             Observacao = req.Observacao,
+            ProfissionalId = req.ProfissionalId,
         };
         db.Agendamentos.Add(ag);
         await db.SaveChangesAsync();
@@ -159,6 +161,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
             ag.Status,
             ag.Pago,
             ag.Observacao,
+            ag.ProfissionalId,
         });
     }
 
@@ -188,6 +191,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         ag.DataHora = req.DataHora;
         ag.DuracaoMin = req.DuracaoMin > 0 ? req.DuracaoMin : servico.DuracaoMin;
         ag.Observacao = req.Observacao;
+        ag.ProfissionalId = req.ProfissionalId;
         await db.SaveChangesAsync();
 
         return Ok(new
@@ -221,8 +225,44 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         if (req.Status == "cancelado" && ag.Pago)
             return BadRequest(new { erro = "Não é possível cancelar: este agendamento já foi pago. Para estornar, faça o processo pelo caixa/vendas." });
 
+        var statusAnterior = ag.Status;
         ag.Status = req.Status;
         await db.SaveChangesAsync();
+
+        // Gera a comissão do profissional quando o atendimento é concluído
+        // (só na primeira vez que vira "concluido", pra não duplicar se reabrir/reconcluir)
+        if (req.Status == "concluido" && statusAnterior != "concluido" && ag.ProfissionalId.HasValue)
+        {
+            var jaTemComissao = await db.ComissoesFuncionario.AnyAsync(c => c.AgendamentoId == ag.Id);
+            if (!jaTemComissao)
+            {
+                var profissional = await db.Profissionais.FindAsync(ag.ProfissionalId.Value);
+                if (profissional != null)
+                {
+                    // Prioridade: comissão específica do serviço > comissão padrão do profissional
+                    var comissaoServico = await db.ComissoesServicoProfissional
+                        .FirstOrDefaultAsync(c => c.ProfissionalId == profissional.Id && c.ServicoId == ag.ServicoId);
+
+                    var percentual = comissaoServico?.ComissaoPercentual ?? profissional.ComissaoPadraoPercentual;
+
+                    if (percentual.HasValue && percentual.Value > 0)
+                    {
+                        var valorComissao = Math.Round(ag.Preco * (percentual.Value / 100m), 2);
+                        db.ComissoesFuncionario.Add(new ComissaoFuncionario
+                        {
+                            LojaId = lojaId!.Value,
+                            ProfissionalId = profissional.Id,
+                            AgendamentoId = ag.Id,
+                            ValorServico = ag.Preco,
+                            ComissaoPercentual = percentual.Value,
+                            ValorComissao = valorComissao,
+                        });
+                        await db.SaveChangesAsync();
+                    }
+                }
+            }
+        }
+
         return Ok(new { ag.Id, ag.Status });
     }
 
@@ -294,7 +334,8 @@ public record SalvarAgendamentoRequest(
     decimal Preco,
     DateTime DataHora,
     int DuracaoMin,
-    string? Observacao
+    string? Observacao,
+    Guid? ProfissionalId = null
 );
 
 public record StatusAgendamentoRequest(string Status);

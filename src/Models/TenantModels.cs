@@ -1,3 +1,4 @@
+using LojaApi.src.Models;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -214,9 +215,10 @@ public class Agendamento
 
     public Guid ServicoId { get; set; }
     public Servico? Servico { get; set; }
-
     public Guid? ClienteId { get; set; }
     public Cliente? Cliente { get; set; }
+    public Guid? ProfissionalId { get; set; }
+    public Profissional? Profissional { get; set; }
 
     [MaxLength(150)]
     public string NomeServico { get; set; } = "";   // snapshot
