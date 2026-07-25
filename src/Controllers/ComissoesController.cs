@@ -112,7 +112,7 @@ public class ComissoesController(AppDbContext db) : ControllerBase
             LojaId = lojaId.Value,
             ProfissionalId = profissional.Id,
             PeriodoInicio = inicio,
-            PeriodoFim = req.PeriodoFim.Date,
+            PeriodoFim = DateTime.SpecifyKind(req.PeriodoFim.Date, DateTimeKind.Utc),
             ValorTotal = valorTotal,
             QtdAtendimentos = comissoesPendentes.Count,
         };
