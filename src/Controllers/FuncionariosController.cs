@@ -37,6 +37,7 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
                 p.Nome,
                 p.Ativo,
                 p.ComissaoPadraoPercentual,
+                p.DiaPagamentoPadrao,
                 comissoesPorServico = p.ComissoesPorServico.Select(c => new { c.Id, c.ServicoId, c.ComissaoPercentual }),
             })
             .ToListAsync();
@@ -44,7 +45,7 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
         return Ok(lista);
     }
 
-    public record SalvarProfissionalRequest(string Nome, decimal? ComissaoPadraoPercentual, bool Ativo);
+    public record SalvarProfissionalRequest(string Nome, decimal? ComissaoPadraoPercentual, bool Ativo, int? DiaPagamentoPadrao = null);
 
     [HttpPost]
     [Authorize(Roles = "admin,superadmin")]
@@ -61,6 +62,7 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
             LojaId = lojaId.Value,
             Nome = req.Nome.Trim(),
             ComissaoPadraoPercentual = req.ComissaoPadraoPercentual,
+            DiaPagamentoPadrao = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao : null,
             Ativo = req.Ativo,
         };
         db.Profissionais.Add(profissional);
@@ -79,6 +81,7 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
 
         profissional.Nome = req.Nome.Trim();
         profissional.ComissaoPadraoPercentual = req.ComissaoPadraoPercentual;
+        profissional.DiaPagamentoPadrao = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao : null;
         profissional.Ativo = req.Ativo;
         await db.SaveChangesAsync();
 

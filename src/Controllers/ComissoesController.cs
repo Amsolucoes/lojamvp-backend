@@ -1,9 +1,10 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using LojaApi.Data;
+using LojaApi.Models;
+using LojaApi.src.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using LojaApi.Data;
-using LojaApi.src.Models;
 
 namespace LojaApi.src.Controllers;
 
@@ -82,7 +83,7 @@ public class ComissoesController(AppDbContext db) : ControllerBase
     }
 
     // ── Fechar e pagar as comissões pendentes de um profissional num período ──
-    public record FecharComissaoRequest(Guid ProfissionalId, DateTime PeriodoInicio, DateTime PeriodoFim);
+    public record FecharComissaoRequest(Guid ProfissionalId, DateTime PeriodoInicio, DateTime PeriodoFim, Guid? ContaBancariaId, DateTime? Vencimento);
 
     [HttpPost("fechar")]
     [Authorize(Roles = "admin,superadmin")]
@@ -124,6 +125,32 @@ public class ComissoesController(AppDbContext db) : ControllerBase
             c.Status = "pago";
             c.PagoEm = DateTime.UtcNow;
             c.FechamentoId = fechamento.Id;
+        }
+
+        // Integração opcional com o Financeiro: só cria a conta a pagar se veio conta bancária escolhida
+        if (req.ContaBancariaId.HasValue)
+        {
+            var categoriaId = await ObterOuCriarCategoriaComissaoAsync(lojaId.Value);
+            var vencimento = req.Vencimento.HasValue
+                ? DateTime.SpecifyKind(req.Vencimento.Value.Date, DateTimeKind.Utc).AddHours(12)
+                : DateTime.SpecifyKind(req.PeriodoFim.Date, DateTimeKind.Utc).AddDays(5).AddHours(12);
+
+            var lancamento = new LancamentoFinanceiro
+            {
+                LojaId = lojaId.Value,
+                ContaBancariaId = req.ContaBancariaId.Value,
+                Tipo = "pagar",
+                Modo = "avulsa",
+                Descricao = $"Comissão — {profissional.Nome} ({req.PeriodoInicio:dd/MM} a {req.PeriodoFim:dd/MM})",
+                CategoriaId = categoriaId,
+                Valor = valorTotal,
+                Vencimento = vencimento,
+                Status = "pendente",
+            };
+            db.LancamentosFinanceiros.Add(lancamento);
+            await db.SaveChangesAsync();
+
+            fechamento.LancamentoFinanceiroId = lancamento.Id;
         }
 
         await db.SaveChangesAsync();
@@ -175,6 +202,18 @@ public class ComissoesController(AppDbContext db) : ControllerBase
         var fechamento = await db.FechamentosComissao.FirstOrDefaultAsync(f => f.Id == id && f.LojaId == lojaId);
         if (fechamento is null) return NotFound();
 
+        if (fechamento.LancamentoFinanceiroId.HasValue)
+        {
+            var lancamento = await db.LancamentosFinanceiros.FindAsync(fechamento.LancamentoFinanceiroId.Value);
+            if (lancamento != null)
+            {
+                if (lancamento.Status == "pago")
+                    return BadRequest(new { erro = "Essa comissão já foi paga no Financeiro. Estorne o lançamento lá antes de desfazer o fechamento." });
+
+                db.LancamentosFinanceiros.Remove(lancamento);
+            }
+        }
+
         var comissoes = await db.ComissoesFuncionario.Where(c => c.FechamentoId == id).ToListAsync();
         foreach (var c in comissoes)
         {
@@ -187,5 +226,23 @@ public class ComissoesController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { mensagem = "Fechamento desfeito. As comissões voltaram para pendente." });
+    }
+
+    private async Task<Guid> ObterOuCriarCategoriaComissaoAsync(Guid lojaId)
+    {
+        var categoria = await db.CategoriasFinanceiras
+            .FirstOrDefaultAsync(c => c.LojaId == lojaId && c.Nome == "Comissões de Funcionários");
+        if (categoria != null) return categoria.Id;
+
+        categoria = new CategoriaFinanceira
+        {
+            LojaId = lojaId,
+            Nome = "Comissões de Funcionários",
+            Tipo = "pagar",
+            Icone = "👤",
+        };
+        db.CategoriasFinanceiras.Add(categoria);
+        await db.SaveChangesAsync();
+        return categoria.Id;
     }
 }

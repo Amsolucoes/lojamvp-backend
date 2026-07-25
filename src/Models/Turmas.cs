@@ -76,7 +76,6 @@ public class InscricaoSessao
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
-// ── Profissional que atende os alunos nas sessões ───────────────────
 // ── Profissional que atende os alunos nas sessões (Turmas) ou clientes (Serviços/Barbearia) ──
 public class Profissional
 {
@@ -88,6 +87,7 @@ public class Profissional
     // Comissão padrão (%), usada quando não há exceção específica por serviço
     [Column(TypeName = "decimal(5,2)")]
     public decimal? ComissaoPadraoPercentual { get; set; }
+    public int? DiaPagamentoPadrao { get; set; } // dia do mês sugerido pra pagar a comissão (ex: 5)
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     // Navegação
     public ICollection<ComissaoServicoProfissional> ComissoesPorServico { get; set; } = [];
