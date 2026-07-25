@@ -168,4 +168,20 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         return Ok(new { mensagem = "Exceção removida — volta a usar a comissão padrão do profissional." });
     }
+
+    // ── Lista simplificada (id + nome), usada em seletores de outras telas ──
+    [HttpGet("ativos")]
+    public async Task<IActionResult> ListarAtivos()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.Profissionais
+            .Where(p => p.LojaId == lojaId && p.Ativo)
+            .OrderBy(p => p.Nome)
+            .Select(p => new { p.Id, p.Nome })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
 }
