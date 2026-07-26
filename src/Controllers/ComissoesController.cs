@@ -45,6 +45,7 @@ public class ComissoesController(AppDbContext db) : ControllerBase
             {
                 profissionalId = pid,
                 profissionalNome = prof?.Nome ?? "—",
+                diaPagamentoPadrao = prof?.DiaPagamentoPadrao,
                 qtdAtendimentos = doProfissional.Count,
                 valorTotal = doProfissional.Sum(c => c.ValorComissao),
             };
