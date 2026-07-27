@@ -131,9 +131,9 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
     }
 
     public record EditarReservaRequest(
-            DateTime DataInicio, DateTime DataFim, int Pessoas, string ClienteNome, string ClienteEmail, string ClienteTelefone,
-            string? ClienteDocumento, string? ClienteCep, string? ClienteEndereco
-        );
+        DateTime DataInicio, DateTime DataFim, int Pessoas, string ClienteNome, string ClienteEmail, string ClienteTelefone,
+        string? ClienteDocumento, string? ClienteCep, string? ClienteEndereco, decimal? ValorManual
+    );
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Editar(int id, [FromBody] EditarReservaRequest req)
@@ -170,13 +170,23 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         if (conflita)
             return Conflict(new { erro = "Essas datas conflitam com outra reserva existente." });
 
-        var faixas = await db.FaixasPrecoChacara.Where(f => f.LojaId == lojaId).ToListAsync();
-        if (faixas.Count == 0)
-            return BadRequest(new { erro = "Esta chácara ainda não configurou os valores de reserva." });
+        decimal valorFinal;
+        if (req.ValorManual.HasValue)
+        {
+            // Valor sobrescrito manualmente (ex: desconto combinado com o cliente) — não recalcula pela regra de preço
+            valorFinal = req.ValorManual.Value;
+        }
+        else
+        {
+            var faixas = await db.FaixasPrecoChacara.Where(f => f.LojaId == lojaId).ToListAsync();
+            if (faixas.Count == 0)
+                return BadRequest(new { erro = "Esta chácara ainda não configurou os valores de reserva." });
 
-        var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == lojaId).ToListAsync();
+            var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == lojaId).ToListAsync();
 
-        var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
+            var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
+            valorFinal = resultado.ValorTotal;
+        }
 
         reserva.DataInicio = ini;
         reserva.DataFim = fim;
@@ -187,7 +197,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         reserva.ClienteDocumento = string.IsNullOrWhiteSpace(req.ClienteDocumento) ? reserva.ClienteDocumento : req.ClienteDocumento.Trim();
         reserva.ClienteCep = string.IsNullOrWhiteSpace(req.ClienteCep) ? reserva.ClienteCep : req.ClienteCep.Trim();
         reserva.ClienteEndereco = string.IsNullOrWhiteSpace(req.ClienteEndereco) ? reserva.ClienteEndereco : req.ClienteEndereco.Trim();
-        reserva.Valor = resultado.ValorTotal;
+        reserva.Valor = valorFinal;
 
         var eraConfirmada = reserva.Status == "confirmada";
 
