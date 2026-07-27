@@ -59,6 +59,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
                 a.Status,
                 a.Pago,
                 a.Observacao,
+                a.ProfissionalId,
                 NomeProfissional = a.Profissional != null ? a.Profissional.Nome : null,
             })
             .ToListAsync();
