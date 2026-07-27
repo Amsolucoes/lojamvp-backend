@@ -87,7 +87,26 @@ public class Profissional
     // Comissão padrão (%), usada quando não há exceção específica por serviço
     [Column(TypeName = "decimal(5,2)")]
     public decimal? ComissaoPadraoPercentual { get; set; }
-    public int? DiaPagamentoPadrao { get; set; } // dia do mês sugerido pra pagar a comissão (ex: 5)
+    public int? DiaPagamentoPadrao { get; set; } // dia do mês sugerido pra pagar comissão ou salário (ex: 5)
+
+    [MaxLength(20)]
+    public string TipoRemuneracao { get; set; } = "comissao"; // comissao | salario_fixo
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? SalarioFixo { get; set; }
+
+    [MaxLength(20)]
+    public string? Telefone { get; set; }
+
+    [MaxLength(9)]
+    public string? Cep { get; set; }
+
+    [MaxLength(200)]
+    public string? Endereco { get; set; }
+
+    // Vínculo com o lançamento fixo gerado no Financeiro, se TipoRemuneracao = salario_fixo
+    public Guid? LancamentoFixoId { get; set; }
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     // Navegação
     public ICollection<ComissaoServicoProfissional> ComissoesPorServico { get; set; } = [];

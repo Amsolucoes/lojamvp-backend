@@ -1,16 +1,18 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using LojaApi.Data;
+using LojaApi.Models;
+using LojaApi.Services;
+using LojaApi.src.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using LojaApi.Data;
-using LojaApi.src.Models;
 
 namespace LojaApi.src.Controllers;
 
 [ApiController]
 [Route("api/funcionarios")]
 [Authorize]
-public class FuncionariosController(AppDbContext db) : ControllerBase
+public class FuncionariosController(AppDbContext db, FinanceiroService financeiroService) : ControllerBase
 {
     private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -18,6 +20,24 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
     {
         var vinculo = await db.UsuariosLoja.FirstOrDefaultAsync(ul => ul.UsuarioId == UsuarioId && ul.Ativo);
         return vinculo?.LojaId;
+    }
+
+    private async Task<Guid> ObterOuCriarCategoriaSalarioAsync(Guid lojaId)
+    {
+        var categoria = await db.CategoriasFinanceiras
+            .FirstOrDefaultAsync(c => c.LojaId == lojaId && c.Nome == "Salários de Funcionários");
+        if (categoria != null) return categoria.Id;
+
+        categoria = new CategoriaFinanceira
+        {
+            LojaId = lojaId,
+            Nome = "Salários de Funcionários",
+            Tipo = "pagar",
+            Icone = "💰",
+        };
+        db.CategoriasFinanceiras.Add(categoria);
+        await db.SaveChangesAsync();
+        return categoria.Id;
     }
 
     // ── Listar profissionais (com comissão padrão e exceções) ──────
@@ -38,6 +58,11 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
                 p.Ativo,
                 p.ComissaoPadraoPercentual,
                 p.DiaPagamentoPadrao,
+                p.TipoRemuneracao,
+                p.SalarioFixo,
+                p.Telefone,
+                p.Cep,
+                p.Endereco,
                 comissoesPorServico = p.ComissoesPorServico.Select(c => new { c.Id, c.ServicoId, c.ComissaoPercentual }),
             })
             .ToListAsync();
@@ -45,7 +70,18 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
         return Ok(lista);
     }
 
-    public record SalvarProfissionalRequest(string Nome, decimal? ComissaoPadraoPercentual, bool Ativo, int? DiaPagamentoPadrao = null);
+    public record SalvarProfissionalRequest(
+        string Nome,
+        decimal? ComissaoPadraoPercentual,
+        bool Ativo,
+        int? DiaPagamentoPadrao = null,
+        string TipoRemuneracao = "comissao",
+        decimal? SalarioFixo = null,
+        Guid? ContaBancariaId = null,
+        string? Telefone = null,
+        string? Cep = null,
+        string? Endereco = null
+    );
 
     [HttpPost]
     [Authorize(Roles = "admin,superadmin")]
@@ -57,18 +93,63 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
         if (string.IsNullOrWhiteSpace(req.Nome))
             return BadRequest(new { erro = "Nome é obrigatório." });
 
+        if (req.TipoRemuneracao == "salario_fixo" && (!req.SalarioFixo.HasValue || req.SalarioFixo <= 0))
+            return BadRequest(new { erro = "Informe o valor do salário fixo." });
+
         var profissional = new Profissional
         {
             LojaId = lojaId.Value,
             Nome = req.Nome.Trim(),
-            ComissaoPadraoPercentual = req.ComissaoPadraoPercentual,
+            ComissaoPadraoPercentual = req.TipoRemuneracao == "comissao" ? req.ComissaoPadraoPercentual : null,
             DiaPagamentoPadrao = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao : null,
             Ativo = req.Ativo,
+            TipoRemuneracao = req.TipoRemuneracao,
+            SalarioFixo = req.TipoRemuneracao == "salario_fixo" ? req.SalarioFixo : null,
+            Telefone = req.Telefone,
+            Cep = req.Cep,
+            Endereco = req.Endereco,
         };
         db.Profissionais.Add(profissional);
         await db.SaveChangesAsync();
 
-        return Ok(new { profissional.Id, profissional.Nome, profissional.Ativo, profissional.ComissaoPadraoPercentual });
+        if (req.TipoRemuneracao == "salario_fixo" && req.ContaBancariaId.HasValue)
+        {
+            var categoriaId = await ObterOuCriarCategoriaSalarioAsync(lojaId.Value);
+            var fixo = new LancamentoFixo
+            {
+                LojaId = lojaId.Value,
+                ContaBancariaId = req.ContaBancariaId.Value,
+                Tipo = "pagar",
+                Descricao = $"Salário — {profissional.Nome}",
+                CategoriaId = categoriaId,
+                Valor = req.SalarioFixo!.Value,
+                DiaVencimento = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao.Value : 5,
+            };
+            db.LancamentosFixos.Add(fixo);
+            await db.SaveChangesAsync();
+
+            var agora = DateTime.UtcNow;
+            var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
+            await db.SaveChangesAsync();
+
+            profissional.LancamentoFixoId = fixo.Id;
+            await db.SaveChangesAsync();
+        }
+
+        return Ok(new
+        {
+            profissional.Id,
+            profissional.Nome,
+            profissional.Ativo,
+            profissional.ComissaoPadraoPercentual,
+            profissional.DiaPagamentoPadrao,
+            profissional.TipoRemuneracao,
+            profissional.SalarioFixo,
+            profissional.Telefone,
+            profissional.Cep,
+            profissional.Endereco,
+        });
     }
 
     [HttpPut("{id:guid}")]
@@ -79,13 +160,86 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
         var profissional = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == id && p.LojaId == lojaId);
         if (profissional is null) return NotFound();
 
+        if (req.TipoRemuneracao == "salario_fixo" && (!req.SalarioFixo.HasValue || req.SalarioFixo <= 0))
+            return BadRequest(new { erro = "Informe o valor do salário fixo." });
+
+        var tipoAnterior = profissional.TipoRemuneracao;
+
         profissional.Nome = req.Nome.Trim();
-        profissional.ComissaoPadraoPercentual = req.ComissaoPadraoPercentual;
+        profissional.ComissaoPadraoPercentual = req.TipoRemuneracao == "comissao" ? req.ComissaoPadraoPercentual : null;
         profissional.DiaPagamentoPadrao = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao : null;
         profissional.Ativo = req.Ativo;
+        profissional.TipoRemuneracao = req.TipoRemuneracao;
+        profissional.SalarioFixo = req.TipoRemuneracao == "salario_fixo" ? req.SalarioFixo : null;
+        profissional.Telefone = req.Telefone;
+        profissional.Cep = req.Cep;
+        profissional.Endereco = req.Endereco;
+
+        // Saiu do salário fixo — desativa o lançamento fixo antigo, se existir
+        if (tipoAnterior == "salario_fixo" && req.TipoRemuneracao != "salario_fixo" && profissional.LancamentoFixoId.HasValue)
+        {
+            var fixoAntigo = await db.LancamentosFixos.FindAsync(profissional.LancamentoFixoId.Value);
+            if (fixoAntigo != null) fixoAntigo.Ativa = false;
+            profissional.LancamentoFixoId = null;
+        }
+        // Continua ou entrou em salário fixo — cria ou atualiza o lançamento fixo
+        else if (req.TipoRemuneracao == "salario_fixo" && req.ContaBancariaId.HasValue)
+        {
+            if (profissional.LancamentoFixoId.HasValue)
+            {
+                var fixo = await db.LancamentosFixos.FindAsync(profissional.LancamentoFixoId.Value);
+                if (fixo != null)
+                {
+                    fixo.ContaBancariaId = req.ContaBancariaId.Value;
+                    fixo.Valor = req.SalarioFixo!.Value;
+                    fixo.DiaVencimento = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao.Value : fixo.DiaVencimento;
+                    fixo.Ativa = true;
+
+                    await financeiroService.LimparFuturosAsync(fixo.Id);
+                    var agora = DateTime.UtcNow;
+                    var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                    await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
+                }
+            }
+            else
+            {
+                var categoriaId = await ObterOuCriarCategoriaSalarioAsync(lojaId!.Value);
+                var fixo = new LancamentoFixo
+                {
+                    LojaId = lojaId.Value,
+                    ContaBancariaId = req.ContaBancariaId.Value,
+                    Tipo = "pagar",
+                    Descricao = $"Salário — {profissional.Nome}",
+                    CategoriaId = categoriaId,
+                    Valor = req.SalarioFixo!.Value,
+                    DiaVencimento = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao.Value : 5,
+                };
+                db.LancamentosFixos.Add(fixo);
+                await db.SaveChangesAsync();
+
+                var agora = DateTime.UtcNow;
+                var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
+
+                profissional.LancamentoFixoId = fixo.Id;
+            }
+        }
+
         await db.SaveChangesAsync();
 
-        return Ok(new { profissional.Id, profissional.Nome, profissional.Ativo, profissional.ComissaoPadraoPercentual });
+        return Ok(new
+        {
+            profissional.Id,
+            profissional.Nome,
+            profissional.Ativo,
+            profissional.ComissaoPadraoPercentual,
+            profissional.DiaPagamentoPadrao,
+            profissional.TipoRemuneracao,
+            profissional.SalarioFixo,
+            profissional.Telefone,
+            profissional.Cep,
+            profissional.Endereco,
+        });
     }
 
     [HttpPatch("{id:guid}/ativo")]
@@ -97,6 +251,13 @@ public class FuncionariosController(AppDbContext db) : ControllerBase
         if (profissional is null) return NotFound();
 
         profissional.Ativo = !profissional.Ativo;
+
+        if (profissional.LancamentoFixoId.HasValue)
+        {
+            var fixo = await db.LancamentosFixos.FindAsync(profissional.LancamentoFixoId.Value);
+            if (fixo != null) fixo.Ativa = profissional.Ativo;
+        }
+
         await db.SaveChangesAsync();
         return Ok(new { profissional.Id, profissional.Ativo });
     }
