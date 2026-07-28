@@ -18,7 +18,7 @@ public class CategoriasVideoAjudaController(AppDbContext db) : ControllerBase
         var lista = await db.CategoriasVideoAjuda
             .Where(c => c.Ativa)
             .OrderBy(c => c.Ordem).ThenBy(c => c.Nome)
-            .Select(c => new { c.Id, c.Nome, c.Ordem })
+            .Select(c => new { c.Id, c.Nome, c.Ordem, c.ModulosRelacionados })
             .ToListAsync();
 
         return Ok(lista);
@@ -34,7 +34,7 @@ public class CategoriasVideoAjudaController(AppDbContext db) : ControllerBase
         return Ok(lista);
     }
 
-    public record SalvarCategoriaRequest(string Nome, int Ordem, bool Ativa);
+    public record SalvarCategoriaRequest(string Nome, int Ordem, bool Ativa, string? ModulosRelacionados = null);
 
     [HttpPost]
     [Authorize(Roles = "superadmin")]
@@ -52,6 +52,7 @@ public class CategoriasVideoAjudaController(AppDbContext db) : ControllerBase
             Nome = req.Nome.Trim(),
             Ordem = req.Ordem,
             Ativa = req.Ativa,
+            ModulosRelacionados = req.ModulosRelacionados,
         };
         db.CategoriasVideoAjuda.Add(categoria);
         await db.SaveChangesAsync();
@@ -71,6 +72,7 @@ public class CategoriasVideoAjudaController(AppDbContext db) : ControllerBase
         categoria.Nome = req.Nome.Trim();
         categoria.Ordem = req.Ordem;
         categoria.Ativa = req.Ativa;
+        categoria.ModulosRelacionados = req.ModulosRelacionados;
         await db.SaveChangesAsync();
 
         // Mantém os vídeos já cadastrados apontando pro nome novo da categoria
