@@ -51,6 +51,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NfProdutoMapeamento> NfProdutoMapeamentos => Set<NfProdutoMapeamento>();
     public DbSet<NfImportada> NfsImportadas => Set<NfImportada>();
     public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
+    public DbSet<CategoriaVideoAjuda> CategoriasVideoAjuda => Set<CategoriaVideoAjuda>();
     public DbSet<Reserva> Reservas => Set<Reserva>();
     public DbSet<ConfiguracaoPrecoChacara> ConfiguracoesPrecoChacara => Set<ConfiguracaoPrecoChacara>();
     public DbSet<FaixaPrecoChacara> FaixasPrecoChacara => Set<FaixaPrecoChacara>();
