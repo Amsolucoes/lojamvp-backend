@@ -75,7 +75,7 @@ public class CorretoraController(AppDbContext db) : ControllerBase
         if (lojaId is null) return Ok(Array.Empty<object>());
 
         var lista = await db.Oportunidades
-            .Where(o => o.LojaId == lojaId && o.Etapa != "perdido")
+            .Where(o => o.LojaId == lojaId)
             .Include(o => o.Seguradora)
             .Join(db.Clientes, o => o.ClienteId, c => c.Id, (o, c) => new
             {
