@@ -18,7 +18,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     public record AlterarTrialRequest(DateTime TrialAte);
-    public record ProjecaoMensalDto(Guid Id, string Nome, decimal MensalidadeValor, int MensalidadeDia, DateTime? ProximoVencimento);
+    public record ProjecaoMensalDto(Guid Id, string Nome, decimal MensalidadeValor, int MensalidadeDia, DateTime? ProximoVencimento, string Status);
 
     // ── Dashboard ─────────────────────────────────────────────────
     [HttpGet("dashboard")]
@@ -42,11 +42,13 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
             .Select(p => ToDto(p))
             .ToListAsync();
 
-        // Projeção detalhada: lojas ativas e o que cada uma deve pagar mensalmente
+        // Projeção detalhada: lojas ativas OU em trial (real, não teste) — receita confirmada + esperada
         var lojasAtivas = lojas.Where(l => l.Status == StatusLoja.Ativo).ToList();
-        var projecaoMensal = lojasAtivas
-            .OrderByDescending(l => l.MensalidadeValor)
-            .Select(l => new ProjecaoMensalDto(l.Id, l.Nome, l.MensalidadeValor, l.MensalidadeDia, l.ProximoVencimento))
+        var lojasProjecao = lojas.Where(l => l.Status == StatusLoja.Ativo || l.Status == StatusLoja.Trial).ToList();
+        var projecaoMensal = lojasProjecao
+            .OrderByDescending(l => l.Status == StatusLoja.Ativo) // ativas primeiro
+            .ThenByDescending(l => l.MensalidadeValor)
+            .Select(l => new ProjecaoMensalDto(l.Id, l.Nome, l.MensalidadeValor, l.MensalidadeDia, l.ProximoVencimento, l.Status.ToString()))
             .ToList();
 
         return Ok(new DashboardAdminDto(
