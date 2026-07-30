@@ -18,6 +18,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
     public record AlterarTrialRequest(DateTime TrialAte);
+    public record ProjecaoMensalDto(Guid Id, string Nome, decimal MensalidadeValor, int MensalidadeDia, DateTime? ProximoVencimento);
 
     // ── Dashboard ─────────────────────────────────────────────────
     [HttpGet("dashboard")]
@@ -41,16 +42,24 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
             .Select(p => ToDto(p))
             .ToListAsync();
 
+        // Projeção detalhada: lojas ativas e o que cada uma deve pagar mensalmente
+        var lojasAtivas = lojas.Where(l => l.Status == StatusLoja.Ativo).ToList();
+        var projecaoMensal = lojasAtivas
+            .OrderByDescending(l => l.MensalidadeValor)
+            .Select(l => new ProjecaoMensalDto(l.Id, l.Nome, l.MensalidadeValor, l.MensalidadeDia, l.ProximoVencimento))
+            .ToList();
+
         return Ok(new DashboardAdminDto(
-            TotalLojas:        lojas.Count,
-            LojasAtivas:       lojas.Count(l => l.Status == StatusLoja.Ativo),
-            LojasTrial:        lojas.Count(l => l.Status == StatusLoja.Trial),
-            LojasBloqueadas:   lojas.Count(l => l.Status == StatusLoja.Bloqueado),
-            LojasEmAtraso:     atrasadas.Count,
-            ReceitaMensal:     lojas.Where(l => l.Status == StatusLoja.Ativo).Sum(l => l.MensalidadeValor),
-            ReceitaTotal:      lojas.SelectMany(l => l.Pagamentos).Where(p => p.Status == "pago").Sum(p => p.Valor),
-            LojasAtrasadas:    atrasadas,
-            UltimosPagamentos: ultimosPagamentos
+            TotalLojas: lojas.Count,
+            LojasAtivas: lojas.Count(l => l.Status == StatusLoja.Ativo),
+            LojasTrial: lojas.Count(l => l.Status == StatusLoja.Trial),
+            LojasBloqueadas: lojas.Count(l => l.Status == StatusLoja.Bloqueado),
+            LojasEmAtraso: atrasadas.Count,
+            ReceitaMensal: lojasAtivas.Sum(l => l.MensalidadeValor),
+            ReceitaTotal: lojas.SelectMany(l => l.Pagamentos).Where(p => p.Status == "pago").Sum(p => p.Valor),
+            LojasAtrasadas: atrasadas,
+            UltimosPagamentos: ultimosPagamentos,
+            ProjecaoMensal: projecaoMensal
         ));
     }
 
