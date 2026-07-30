@@ -1,3 +1,5 @@
+using static LojaApi.Controllers.AdminController;
+
 namespace LojaApi.DTOs;
 
 // ── Loja ──────────────────────────────────────────────────────────
@@ -137,7 +139,8 @@ public record DashboardAdminDto(
     decimal ReceitaMensal,
     decimal ReceitaTotal,
     List<LojaResumoDto> LojasAtrasadas,
-    List<PagamentoDto> UltimosPagamentos
+    List<PagamentoDto> UltimosPagamentos,
+    List<ProjecaoMensalDto> ProjecaoMensal
 );
 
 // ── Dashboard cliente ─────────────────────────────────────────────
