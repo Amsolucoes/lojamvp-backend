@@ -142,6 +142,12 @@ public class Venda
 
     public DateTime CriadaEm { get; set; } = DateTime.UtcNow;
 
+    public Guid? OrigemVendaId { get; set; }
+    public OrigemVenda? OrigemVenda { get; set; }
+
+    [MaxLength(50)]
+    public string? OrigemNome { get; set; } // snapshot — não quebra se a origem for excluída depois
+
     // Navegação
     public ICollection<ItemVenda> Itens { get; set; } = [];
 }

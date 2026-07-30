@@ -65,6 +65,19 @@ public class VendasController(AppDbContext db) : ControllerBase
         if (!req.Itens.Any())
             return BadRequest(new { erro = "A venda deve ter ao menos um item." });
 
+        DateTime? dataVendaFinal = null;
+        if (req.DataVenda.HasValue)
+        {
+            var hoje = DateTime.UtcNow.Date;
+            if (req.DataVenda.Value.Date > hoje)
+                return BadRequest(new { erro = "A data da venda não pode ser no futuro." });
+
+            // Usa a hora atual no dia escolhido, pra manter ordenação sensata dentro do próprio dia
+            var agora = DateTime.UtcNow;
+            dataVendaFinal = DateTime.SpecifyKind(req.DataVenda.Value.Date, DateTimeKind.Utc)
+                .Add(agora.TimeOfDay);
+        }
+
         // ── Validação (só itens de produto validam estoque) ────────────
         foreach (var item in req.Itens)
         {
@@ -98,6 +111,13 @@ public class VendasController(AppDbContext db) : ControllerBase
 
         // ── Cria venda ────────────────────────────────────────────────
         decimal total = req.Itens.Sum(i => i.Quantidade * i.PrecoUnitario);
+        string? origemNome = null;
+        if (req.OrigemVendaId.HasValue)
+        {
+            var origem = await db.OrigensVenda.FirstOrDefaultAsync(o => o.Id == req.OrigemVendaId.Value && o.LojaId == lojaId);
+            origemNome = origem?.Nome;
+        }
+
         var venda = new Venda
         {
             ClienteId = req.ClienteId,
@@ -108,7 +128,10 @@ public class VendasController(AppDbContext db) : ControllerBase
             FormasPagamento = req.FormasPagamento,
             Troco = req.Troco,
             LojaId = lojaId,
+            OrigemVendaId = req.OrigemVendaId,
+            OrigemNome = origemNome,
         };
+        if (dataVendaFinal.HasValue) venda.CriadaEm = dataVendaFinal.Value;
         db.Vendas.Add(venda);
 
         // ── Itens ─────────────────────────────────────────────────────

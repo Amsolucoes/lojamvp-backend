@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Cliente> Clientes => Set<Cliente>();
     public DbSet<Venda> Vendas => Set<Venda>();
     public DbSet<ItemVenda> ItensVenda => Set<ItemVenda>();
+    public DbSet<OrigemVenda> OrigensVenda => Set<OrigemVenda>();
     public DbSet<MovimentoEstoque> Movimentos => Set<MovimentoEstoque>();
     public DbSet<Loja> Lojas => Set<Loja>();
     public DbSet<UsuarioLoja> UsuariosLoja => Set<UsuarioLoja>();
@@ -258,7 +259,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<NfImportada>()
             .HasIndex(n => new { n.LojaId, n.ChaveAcesso })
-            .IsUnique();
+            .IsUnique()
+            .HasDatabaseName("ix_nfs_importadas_chave_acesso")
+            .HasFilter("NOT desfeita");
 
         mb.Entity<Reserva>()
             .HasOne(r => r.Loja).WithMany()

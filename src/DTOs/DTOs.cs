@@ -82,7 +82,9 @@ public record CriarVendaRequest(
     string FormaPagamento,
     string? FormasPagamento,
     decimal? Troco,
-    decimal? CreditoUsado
+    decimal? CreditoUsado,
+    DateTime? DataVenda,
+    Guid? OrigemVendaId
 );
 
 public record ItemVendaDto(
