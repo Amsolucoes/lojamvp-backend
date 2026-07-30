@@ -100,7 +100,8 @@ public record VendaDto(
     string FormaPagamento, string? FormasPagamento,
     decimal? Troco,
     DateTime CriadaEm,
-    List<ItemVendaDto> Itens
+    List<ItemVendaDto> Itens,
+    string? OrigemNome
 );
 
 // ── Estoque ───────────────────────────────────────────────────────

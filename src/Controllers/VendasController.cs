@@ -251,6 +251,7 @@ public class VendasController(AppDbContext db) : ControllerBase
             i.Id, i.ProdutoId, i.NomeProduto,
             i.Quantidade, i.PrecoUnitario, i.Subtotal,
             i.ServicoId
-        )).ToList()
+        )).ToList(),
+        v.OrigemNome
     );
 }
