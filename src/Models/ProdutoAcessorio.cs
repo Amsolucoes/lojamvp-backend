@@ -83,6 +83,8 @@ public class PedidoAcessorio
     [MaxLength(20)]
     public string Status { get; set; } = "aguardando_pagamento"; // aguardando_pagamento | pago | enviado | entregue | cancelado
 
+    public DateTime? ExpiraEm { get; set; } // se não pagar até aqui, libera o estoque de volta automaticamente
+
     [MaxLength(50)]
     public string? CodigoRastreio { get; set; }
 
