@@ -180,12 +180,19 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         {
             var faixas = await db.FaixasPrecoChacara.Where(f => f.LojaId == lojaId).ToListAsync();
             if (faixas.Count == 0)
-                return BadRequest(new { erro = "Esta chácara ainda não configurou os valores de reserva." });
+                return BadRequest(new { erro = "Esta chácara ainda não configurou os valores de reserva. Cadastre as faixas de preço antes de editar esta reserva." });
 
             var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == lojaId).ToListAsync();
 
-            var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
-            valorFinal = resultado.ValorTotal;
+            try
+            {
+                var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
+                valorFinal = resultado.ValorTotal;
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { erro = ex.Message });
+            }
         }
 
         reserva.DataInicio = ini;
@@ -203,12 +210,22 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
 
         await db.SaveChangesAsync();
 
+        var avisoNotificacao = (string?)null;
         if (eraConfirmada)
         {
-            await notificacao.ReenviarContratoAtualizadoAsync(reserva);
+            try
+            {
+                await notificacao.ReenviarContratoAtualizadoAsync(reserva);
+            }
+            catch (Exception)
+            {
+                // A edição já foi salva com sucesso — uma falha no reenvio do contrato
+                // não deve derrubar a resposta nem fazer parecer que os dados não salvaram.
+                avisoNotificacao = "Reserva atualizada, mas houve um problema ao reenviar o contrato por e-mail. Você pode reenviar manualmente.";
+            }
         }
 
-        return Ok(reserva);
+        return Ok(new { reserva, aviso = avisoNotificacao });
     }
 
     [HttpDelete("{id:int}")]
