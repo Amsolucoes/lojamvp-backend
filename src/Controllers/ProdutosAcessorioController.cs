@@ -27,6 +27,31 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
         ["MT"] = 25m,
     };
     private const decimal FRETE_PADRAO = 35m; // demais estados
+    private static readonly TimeSpan PRAZO_PAGAMENTO = TimeSpan.FromMinutes(30);
+
+    // Libera de volta o estoque de pedidos que passaram do prazo sem pagar.
+    // Chamado nos endpoints públicos, evitando precisar de um job em segundo plano.
+    private async Task LiberarPedidosExpiradosAsync()
+    {
+        var agora = DateTime.UtcNow;
+        var expirados = await db.PedidosAcessorio
+            .Include(p => p.Itens)
+            .Where(p => p.Status == "aguardando_pagamento" && p.ExpiraEm != null && p.ExpiraEm < agora)
+            .ToListAsync();
+
+        if (expirados.Count == 0) return;
+
+        foreach (var pedido in expirados)
+        {
+            pedido.Status = "cancelado";
+            foreach (var item in pedido.Itens)
+            {
+                var produto = await db.ProdutosAcessorio.FindAsync(item.ProdutoId);
+                if (produto != null) produto.Estoque += item.Quantidade;
+            }
+        }
+        await db.SaveChangesAsync();
+    }
 
     [HttpGet("frete")]
     [AllowAnonymous]
@@ -48,6 +73,8 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
     [AllowAnonymous]
     public async Task<IActionResult> CriarPedido([FromBody] CriarPedidoRequest req)
     {
+        await LiberarPedidosExpiradosAsync();
+
         if (req.Itens.Count == 0)
             return BadRequest(new { erro = "O pedido precisa ter ao menos um item." });
 
@@ -67,6 +94,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
             Bairro = req.Bairro,
             Cidade = req.Cidade.Trim(),
             Uf = req.Uf.Trim().ToUpper(),
+            ExpiraEm = DateTime.UtcNow.Add(PRAZO_PAGAMENTO),
         };
 
         decimal subtotal = 0;
@@ -153,6 +181,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
                 pedido.Status = "pago";
                 pedido.PagoEm = DateTime.UtcNow;
                 pedido.MpStatus = statusAtual;
+                pedido.ExpiraEm = null;
                 await db.SaveChangesAsync();
             }
         }
@@ -198,6 +227,8 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
     [AllowAnonymous]
     public async Task<IActionResult> Listar([FromQuery] string? categoria)
     {
+        await LiberarPedidosExpiradosAsync();
+
         var q = db.ProdutosAcessorio.Where(p => p.Ativo);
         if (!string.IsNullOrEmpty(categoria)) q = q.Where(p => p.Categoria == categoria);
 
@@ -222,6 +253,8 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
     [AllowAnonymous]
     public async Task<IActionResult> Buscar(Guid id)
     {
+        await LiberarPedidosExpiradosAsync();
+
         var p = await db.ProdutosAcessorio.FirstOrDefaultAsync(x => x.Id == id && x.Ativo);
         if (p is null) return NotFound();
 
