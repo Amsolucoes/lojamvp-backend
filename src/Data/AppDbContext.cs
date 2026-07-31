@@ -62,6 +62,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ComissaoServicoProfissional> ComissoesServicoProfissional => Set<ComissaoServicoProfissional>();
     public DbSet<ComissaoFuncionario> ComissoesFuncionario => Set<ComissaoFuncionario>();
     public DbSet<FechamentoComissao> FechamentosComissao => Set<FechamentoComissao>();
+    public DbSet<ProdutoAcessorio> ProdutosAcessorio => Set<ProdutoAcessorio>();
+    public DbSet<PedidoAcessorio> PedidosAcessorio => Set<PedidoAcessorio>();
+    public DbSet<ItemPedidoAcessorio> ItensPedidoAcessorio => Set<ItemPedidoAcessorio>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -341,6 +344,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<FechamentoComissao>()
             .HasOne(f => f.Profissional).WithMany()
             .HasForeignKey(f => f.ProfissionalId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<ItemPedidoAcessorio>()
+            .HasOne(i => i.Pedido).WithMany(p => p.Itens)
+            .HasForeignKey(i => i.PedidoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ItemPedidoAcessorio>()
+            .HasOne(i => i.Produto).WithMany()
+            .HasForeignKey(i => i.ProdutoId).OnDelete(DeleteBehavior.Restrict);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
