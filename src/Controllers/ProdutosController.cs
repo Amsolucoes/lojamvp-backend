@@ -160,7 +160,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
             .OrderBy(v => v.Tamanho).ThenBy(v => v.Cor)
             .Select(v => new ProdutoVariacaoDto(
                 v.Id, v.Tamanho, v.Cor, v.OutroCampo,
-                v.Estoque, v.EstoqueMinimo, v.Ativo))
+                v.CodigoBarras, v.Estoque, v.EstoqueMinimo, v.Ativo))
             .ToListAsync();
 
         return Ok(variacoes);
@@ -174,12 +174,22 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         var produto = await db.Produtos.FindAsync(id);
         if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
 
+        if (!string.IsNullOrWhiteSpace(req.CodigoBarras))
+        {
+            var jaExiste = await db.ProdutoVariacoes
+                .Include(v => v.Produto)
+                .AnyAsync(v => v.CodigoBarras == req.CodigoBarras && v.Produto!.LojaId == lojaId);
+            if (jaExiste)
+                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outra variação da sua loja." });
+        }
+
         var variacao = new ProdutoVariacao
         {
             ProdutoId = id,
             Tamanho = req.Tamanho,
             Cor = req.Cor,
             OutroCampo = req.OutroCampo,
+            CodigoBarras = string.IsNullOrWhiteSpace(req.CodigoBarras) ? null : req.CodigoBarras,
             Estoque = req.Estoque,
             EstoqueMinimo = req.EstoqueMinimo,
         };
@@ -188,7 +198,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
 
         return Ok(new ProdutoVariacaoDto(
             variacao.Id, variacao.Tamanho, variacao.Cor,
-            variacao.OutroCampo, variacao.Estoque,
+            variacao.OutroCampo, variacao.CodigoBarras, variacao.Estoque,
             variacao.EstoqueMinimo, variacao.Ativo));
     }
 
@@ -196,13 +206,24 @@ public class ProdutosController(AppDbContext db) : ControllerBase
     [Authorize(Roles = "admin,superadmin")]
     public async Task<IActionResult> AtualizarVariacao(Guid id, Guid varId, [FromBody] SalvarVariacaoRequest req)
     {
+        var lojaId = await GetLojaId();
         var variacao = await db.ProdutoVariacoes
             .FirstOrDefaultAsync(v => v.Id == varId && v.ProdutoId == id);
         if (variacao is null) return NotFound();
 
+        if (!string.IsNullOrWhiteSpace(req.CodigoBarras) && req.CodigoBarras != variacao.CodigoBarras)
+        {
+            var jaExiste = await db.ProdutoVariacoes
+                .Include(v => v.Produto)
+                .AnyAsync(v => v.CodigoBarras == req.CodigoBarras && v.Produto!.LojaId == lojaId && v.Id != varId);
+            if (jaExiste)
+                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outra variação da sua loja." });
+        }
+
         variacao.Tamanho = req.Tamanho;
         variacao.Cor = req.Cor;
         variacao.OutroCampo = req.OutroCampo;
+        variacao.CodigoBarras = string.IsNullOrWhiteSpace(req.CodigoBarras) ? null : req.CodigoBarras;
         variacao.Estoque = req.Estoque;
         variacao.EstoqueMinimo = req.EstoqueMinimo;
         variacao.AtualizadoEm = DateTime.UtcNow;
@@ -210,7 +231,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
         return Ok(new ProdutoVariacaoDto(
             variacao.Id, variacao.Tamanho, variacao.Cor,
-            variacao.OutroCampo, variacao.Estoque,
+            variacao.OutroCampo, variacao.CodigoBarras, variacao.Estoque,
             variacao.EstoqueMinimo, variacao.Ativo));
     }
 
@@ -239,7 +260,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         p.CriadoEm, p.AtualizadoEm,
         p.TipoVenda, p.UnidadeMedida,
         p.Variacoes.Where(v => v.Ativo).Select(v => new ProdutoVariacaoDto(
-            v.Id, v.Tamanho, v.Cor, v.OutroCampo,
+            v.Id, v.Tamanho, v.Cor, v.OutroCampo, v.CodigoBarras,
             v.Estoque, v.EstoqueMinimo, v.Ativo)).ToList()
         );
 }

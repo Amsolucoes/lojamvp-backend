@@ -154,14 +154,14 @@ public record CampoExtraLojaDto(
 // ── Variações ─────────────────────────────────────────────────────
 public record ProdutoVariacaoDto(
     Guid Id, string? Tamanho, string? Cor,
-    string? OutroCampo, int Estoque,
-    int EstoqueMinimo, bool Ativo
+    string? OutroCampo, string? CodigoBarras, 
+    int Estoque,int EstoqueMinimo, bool Ativo
 );
 
 public record SalvarVariacaoRequest(
     string? Tamanho, string? Cor,
-    string? OutroCampo, int Estoque,
-    int EstoqueMinimo
+    string? OutroCampo, string? CodigoBarras,
+    int Estoque, int EstoqueMinimo
 );
 
 public record AjusteVariacaoRequest(

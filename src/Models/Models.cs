@@ -347,6 +347,9 @@ public class ProdutoVariacao
     [MaxLength(100)]
     public string? OutroCampo { get; set; } // para campos extras futuros
 
+    [MaxLength(50)]
+    public string? CodigoBarras { get; set; } // opcional — só quando a variação tem EAN próprio do fornecedor
+
     public int Estoque { get; set; } = 0;
     public int EstoqueMinimo { get; set; } = 1;
     public bool Ativo { get; set; } = true;
