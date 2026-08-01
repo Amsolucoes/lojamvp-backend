@@ -195,6 +195,13 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
             }
         }
 
+        // Guarda os valores "antes" pra comparar depois — só reenvia contrato se algo
+        // que realmente aparece nele mudou (não precisa notificar por corrigir telefone/e-mail, etc.)
+        var dataInicioAntes = reserva.DataInicio;
+        var dataFimAntes = reserva.DataFim;
+        var pessoasAntes = reserva.Pessoas;
+        var valorAntes = reserva.Valor;
+
         reserva.DataInicio = ini;
         reserva.DataFim = fim;
         reserva.Pessoas = req.Pessoas;
@@ -207,11 +214,15 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         reserva.Valor = valorFinal;
 
         var eraConfirmada = reserva.Status == "confirmada";
+        var mudouTermosDoContrato = dataInicioAntes != reserva.DataInicio
+            || dataFimAntes != reserva.DataFim
+            || pessoasAntes != reserva.Pessoas
+            || valorAntes != reserva.Valor;
 
         await db.SaveChangesAsync();
 
         var avisoNotificacao = (string?)null;
-        if (eraConfirmada)
+        if (eraConfirmada && mudouTermosDoContrato)
         {
             try
             {
