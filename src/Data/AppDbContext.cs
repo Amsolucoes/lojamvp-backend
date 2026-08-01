@@ -65,6 +65,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ProdutoAcessorio> ProdutosAcessorio => Set<ProdutoAcessorio>();
     public DbSet<PedidoAcessorio> PedidosAcessorio => Set<PedidoAcessorio>();
     public DbSet<ItemPedidoAcessorio> ItensPedidoAcessorio => Set<ItemPedidoAcessorio>();
+    public DbSet<MovimentoCaixa> MovimentosCaixa => Set<MovimentoCaixa>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -352,6 +353,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<ItemPedidoAcessorio>()
             .HasOne(i => i.Produto).WithMany()
             .HasForeignKey(i => i.ProdutoId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<MovimentoCaixa>()
+            .HasOne(m => m.Loja).WithMany()
+            .HasForeignKey(m => m.LojaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<MovimentoCaixa>()
+            .HasOne(m => m.OrigemVenda).WithMany()
+            .HasForeignKey(m => m.OrigemVendaId).OnDelete(DeleteBehavior.SetNull);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
