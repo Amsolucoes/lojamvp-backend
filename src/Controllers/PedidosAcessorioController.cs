@@ -371,6 +371,15 @@ public class PedidosAcessorioController(AppDbContext db, MercadoPagoService mpSe
         pedido.ExpiraEm = null; // já não precisa mais do prazo, seja pago ou cancelado
 
         await db.SaveChangesAsync();
-        return Ok(pedido);
+
+        return Ok(new
+        {
+            pedido.Id,
+            pedido.ClienteNome,
+            pedido.Status,
+            pedido.CodigoRastreio,
+            pedido.PagoEm,
+            pedido.EnviadoEm,
+        });
     }
 }
