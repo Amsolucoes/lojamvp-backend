@@ -165,6 +165,114 @@ public class PedidosAcessorioController(AppDbContext db, MercadoPagoService mpSe
         });
     }
 
+    // ── Criar pedido + processar pagamento com cartão (via Payment Brick) ──
+    public record CriarPedidoCartaoRequest(
+        string ClienteNome, string ClienteEmail, string ClienteTelefone, string? ClienteCpfCnpj,
+        string Cep, string Endereco, string? Numero, string? Complemento, string? Bairro, string Cidade, string Uf,
+        List<ItemPedidoRequest> Itens,
+        string Token, string PaymentMethodId, int Installments, string IssuerId
+    );
+
+    [HttpPost("pedidos/cartao")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CriarPedidoCartao([FromBody] CriarPedidoCartaoRequest req)
+    {
+        await LiberarPedidosExpiradosAsync();
+
+        if (req.Itens.Count == 0)
+            return BadRequest(new { erro = "O pedido precisa ter ao menos um item." });
+
+        if (string.IsNullOrWhiteSpace(req.ClienteCpfCnpj))
+            return BadRequest(new { erro = "CPF é obrigatório." });
+
+        var pedido = new PedidoAcessorio
+        {
+            ClienteNome = req.ClienteNome.Trim(),
+            ClienteEmail = req.ClienteEmail.Trim(),
+            ClienteTelefone = req.ClienteTelefone.Trim(),
+            ClienteCpfCnpj = req.ClienteCpfCnpj?.Trim(),
+            Cep = req.Cep.Trim(),
+            Endereco = req.Endereco.Trim(),
+            Numero = req.Numero,
+            Complemento = req.Complemento,
+            Bairro = req.Bairro,
+            Cidade = req.Cidade.Trim(),
+            Uf = req.Uf.Trim().ToUpper(),
+            ExpiraEm = DateTime.UtcNow.Add(PRAZO_PAGAMENTO),
+        };
+
+        decimal subtotal = 0;
+        foreach (var item in req.Itens)
+        {
+            var produto = await db.ProdutosAcessorio.FirstOrDefaultAsync(p => p.Id == item.ProdutoId && p.Ativo);
+            if (produto is null) return BadRequest(new { erro = "Produto não encontrado." });
+            if (produto.Estoque < item.Quantidade)
+                return BadRequest(new { erro = $"Estoque insuficiente para '{produto.Nome}'. Disponível: {produto.Estoque}." });
+
+            var precoUnitario = produto.PrecoPromocional ?? produto.Preco;
+            var itemSubtotal = precoUnitario * item.Quantidade;
+            subtotal += itemSubtotal;
+
+            pedido.Itens.Add(new ItemPedidoAcessorio
+            {
+                ProdutoId = produto.Id,
+                NomeProduto = produto.Nome,
+                Quantidade = item.Quantidade,
+                PrecoUnitario = precoUnitario,
+                Subtotal = itemSubtotal,
+            });
+
+            produto.Estoque -= item.Quantidade;
+        }
+
+        var valorFrete = FRETE_POR_UF.TryGetValue(pedido.Uf, out var vf) ? vf : FRETE_PADRAO;
+        pedido.Subtotal = subtotal;
+        pedido.ValorFrete = valorFrete;
+        pedido.Total = subtotal + valorFrete;
+
+        db.PedidosAcessorio.Add(pedido);
+        await db.SaveChangesAsync();
+
+        var resultado = await mpService.CriarCartao(
+            valor: pedido.Total,
+            descricao: $"Pedido AlDevSoftware #{pedido.Id.ToString()[..8]}",
+            cardToken: req.Token,
+            parcelas: req.Installments,
+            emailPagador: pedido.ClienteEmail,
+            cpfPagador: pedido.ClienteCpfCnpj!,
+            nomePagador: pedido.ClienteNome,
+            pagamentoId: pedido.Id
+        );
+
+        if (!resultado.Sucesso || resultado.Status == "rejected")
+        {
+            // Desfaz a reserva de estoque se o pagamento falhar/for recusado
+            foreach (var item in pedido.Itens)
+            {
+                var produto = await db.ProdutosAcessorio.FindAsync(item.ProdutoId);
+                if (produto != null) produto.Estoque += item.Quantidade;
+            }
+            db.PedidosAcessorio.Remove(pedido);
+            await db.SaveChangesAsync();
+            return BadRequest(new { erro = resultado.Erro ?? "Pagamento recusado pela operadora do cartão. Confira os dados e tente novamente." });
+        }
+
+        pedido.MpPaymentId = resultado.MpPaymentId;
+        pedido.MpStatus = resultado.Status;
+
+        // Cartão costuma aprovar na hora — já marca como pago se vier "approved"
+        if (resultado.Status == "approved")
+        {
+            pedido.Status = "pago";
+            pedido.PagoEm = DateTime.UtcNow;
+            pedido.ExpiraEm = null;
+        }
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { pedido.Id, pedido.Status, pedido.Total });
+    }
+
     // ── Cliente consulta status do pagamento (polling na tela de checkout) ──
     [HttpGet("pedidos/{id:guid}/status")]
     [AllowAnonymous]
@@ -207,16 +315,28 @@ public class PedidosAcessorioController(AppDbContext db, MercadoPagoService mpSe
     [Authorize(Roles = "superadmin")]
     public async Task<IActionResult> AtualizarStatusPedido(Guid id, [FromBody] AtualizarStatusPedidoRequest req)
     {
-        var pedido = await db.PedidosAcessorio.FindAsync(id);
+        var pedido = await db.PedidosAcessorio.Include(p => p.Itens).FirstOrDefaultAsync(p => p.Id == id);
         if (pedido is null) return NotFound();
 
         var statusValidos = new[] { "aguardando_pagamento", "pago", "enviado", "entregue", "cancelado" };
         if (!statusValidos.Contains(req.Status))
             return BadRequest(new { erro = "Status inválido." });
 
+        // Ao cancelar (e ele ainda não estava cancelado), devolve o estoque na hora —
+        // sem isso, ficaria preso até a expiração automática de 30min.
+        if (req.Status == "cancelado" && pedido.Status != "cancelado")
+        {
+            foreach (var item in pedido.Itens)
+            {
+                var produto = await db.ProdutosAcessorio.FindAsync(item.ProdutoId);
+                if (produto != null) produto.Estoque += item.Quantidade;
+            }
+        }
+
         pedido.Status = req.Status;
         if (req.CodigoRastreio != null) pedido.CodigoRastreio = req.CodigoRastreio;
         if (req.Status == "enviado") pedido.EnviadoEm = DateTime.UtcNow;
+        pedido.ExpiraEm = null; // já não precisa mais do prazo, seja pago ou cancelado
 
         await db.SaveChangesAsync();
         return Ok(pedido);
