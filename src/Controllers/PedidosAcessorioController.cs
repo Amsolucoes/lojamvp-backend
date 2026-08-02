@@ -302,10 +302,42 @@ public class PedidosAcessorioController(AppDbContext db, MercadoPagoService mpSe
     [Authorize(Roles = "superadmin")]
     public async Task<IActionResult> ListarPedidos([FromQuery] string? status)
     {
-        var q = db.PedidosAcessorio.Include(p => p.Itens).AsQueryable();
+        var q = db.PedidosAcessorio.AsQueryable();
         if (!string.IsNullOrEmpty(status)) q = q.Where(p => p.Status == status);
 
-        var lista = await q.OrderByDescending(p => p.CriadoEm).ToListAsync();
+        var lista = await q.OrderByDescending(p => p.CriadoEm)
+            .Select(p => new
+            {
+                p.Id,
+                p.ClienteNome,
+                p.ClienteEmail,
+                p.ClienteTelefone,
+                p.ClienteCpfCnpj,
+                p.Cep,
+                p.Endereco,
+                p.Numero,
+                p.Complemento,
+                p.Bairro,
+                p.Cidade,
+                p.Uf,
+                p.Subtotal,
+                p.ValorFrete,
+                p.Total,
+                p.Status,
+                p.CodigoRastreio,
+                p.CriadoEm,
+                p.PagoEm,
+                p.EnviadoEm,
+                Itens = p.Itens.Select(i => new
+                {
+                    i.NomeProduto,
+                    i.Quantidade,
+                    i.PrecoUnitario,
+                    i.Subtotal,
+                }),
+            })
+            .ToListAsync();
+
         return Ok(lista);
     }
 
