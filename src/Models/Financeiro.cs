@@ -240,6 +240,29 @@ public class CartaoLancamentoFixo
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 
+// ── Adiantamento de fatura — pode ter vários por fatura ────────────
+public class PagamentoAntecipadoFatura
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid LojaId { get; set; }
+
+    public Guid FaturaCartaoId { get; set; }
+    public FaturaCartao? FaturaCartao { get; set; }
+
+    public Guid ContaBancariaId { get; set; }
+    public ContaBancaria? ContaBancaria { get; set; }
+
+    [Column(TypeName = "decimal(12,2)")]
+    public decimal Valor { get; set; }
+
+    public DateTime Data { get; set; }
+
+    [MaxLength(200)]
+    public string? Observacao { get; set; }
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+}
+
 // ── Fatura do cartão (agregado do ciclo, calculado) ────────────────
 public class FaturaCartao
 {

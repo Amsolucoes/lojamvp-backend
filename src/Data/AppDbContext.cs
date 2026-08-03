@@ -39,6 +39,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CartaoCredito> CartoesCredito => Set<CartaoCredito>();
     public DbSet<LancamentoCartao> LancamentosCartao => Set<LancamentoCartao>();
     public DbSet<FaturaCartao> FaturasCartao => Set<FaturaCartao>();
+    public DbSet<PagamentoAntecipadoFatura> PagamentosAntecipadosFatura => Set<PagamentoAntecipadoFatura>();
     public DbSet<CartaoLancamentoFixo> CartaoLancamentosFixos => Set<CartaoLancamentoFixo>();
     public DbSet<Turma> Turmas => Set<Turma>();
     public DbSet<MatriculaTurma> MatriculasTurma => Set<MatriculaTurma>();
@@ -228,6 +229,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<FaturaCartao>()
             .HasOne(f => f.ContaBancaria).WithMany()
             .HasForeignKey(f => f.ContaBancariaId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<PagamentoAntecipadoFatura>()
+           .HasOne(p => p.FaturaCartao).WithMany()
+           .HasForeignKey(p => p.FaturaCartaoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<PagamentoAntecipadoFatura>()
+            .HasOne(p => p.ContaBancaria).WithMany()
+            .HasForeignKey(p => p.ContaBancariaId).OnDelete(DeleteBehavior.Restrict);
 
         mb.Entity<CartaoLancamentoFixo>()
             .HasOne(c => c.CartaoCredito).WithMany()

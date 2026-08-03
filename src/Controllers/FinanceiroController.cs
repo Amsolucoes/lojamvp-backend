@@ -154,7 +154,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(f => (f.ContaBancariaId ?? f.CartaoCredito!.ContaBancariaId) == contaId && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada"))
             .SumAsync(f => (decimal?)f.ValorPago) ?? 0;
 
-        return conta.SaldoInicial + recebidos - pagos - faturasCartaoPagas + entradasAjuste - saidasAjuste + diferencasAjuste;
+        var antecipadosPagos = await db.PagamentosAntecipadosFatura
+            .Where(p => p.ContaBancariaId == contaId)
+            .SumAsync(p => (decimal?)p.Valor) ?? 0;
+
+        return conta.SaldoInicial + recebidos - pagos - faturasCartaoPagas - antecipadosPagos + entradasAjuste - saidasAjuste + diferencasAjuste;
     }
 
     // ══════════════════ LANÇAMENTOS ══════════════════
@@ -637,12 +641,18 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 }
                 else
                 {
+                    var totalAntecipadoLinha = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
+                        .Where(p => p.FaturaCartaoId == faturaExistente.Id)
+                        .SumAsync(p => (decimal?)p.Valor) ?? 0;
+                    var totalRestanteLinha = total - totalAntecipadoLinha;
+                    if (totalRestanteLinha <= 0) continue;
+
                     linhasCartao.Add(new
                     {
                         id = cartao.Id,
-                        descricao = $"Fatura {cartao.Nome}",
+                        descricao = $"Fatura {cartao.Nome}" + (totalAntecipadoLinha > 0 ? $" (já antecipado {totalAntecipadoLinha:C})" : ""),
                         categoriaNome = (string?)null,
-                        valor = total,
+                        valor = totalRestanteLinha,
                         vencimento = vencimentoFatura,
                         status = faturaExistente?.Status ?? "pendente",
                         pagoEm = faturaExistente?.PagoEm,
@@ -794,15 +804,24 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             var faturaExistente = await db.FaturasCartao
                 .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
 
+            var totalAntecipadoResumo = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
+                .Where(p => p.FaturaCartaoId == faturaExistente.Id)
+                .SumAsync(p => (decimal?)p.Valor) ?? 0;
+            var totalFaturaRestante = totalFatura - totalAntecipadoResumo;
+
             if (faturaExistente?.Status == "pago" || faturaExistente?.Status == "parcial" || faturaExistente?.Status == "financiada")
             {
                 // Fatura resolvida (paga, parcialmente paga ou financiada em parcelas) — não conta como pendente/vencida
+                pagarPago += totalFaturaRestante; pagarQtdPago++;
+            }
+            else if (totalFaturaRestante <= 0)
+            {
                 pagarPago += totalFatura; pagarQtdPago++;
             }
-            else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFatura; pagarQtdVencido++; }
-            else { pagarPendente += totalFatura; pagarQtdPendente++; }
+            else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFaturaRestante; pagarQtdVencido++; }
+            else { pagarPendente += totalFaturaRestante; pagarQtdPendente++; }
 
-            detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = totalFatura, status = faturaExistente?.Status ?? "pendente" });
+            detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = totalFaturaRestante > 0 ? totalFaturaRestante : totalFatura, status = totalFaturaRestante <= 0 ? "pago" : (faturaExistente?.Status ?? "pendente") });
         }
 
         var totalLancamentosPagar = pagarPago + pagarPendente + pagarVencido - detalheCartoesPagar.Sum(c => (decimal)((dynamic)c).valor);
@@ -1168,19 +1187,103 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var total = itens.Sum(i => i.Valor) + parcelasFinanciamento.Sum(p => p.Valor);
 
+        var faturaIdAtual = faturaExistente?.Id ?? Guid.Empty;
+        var antecipados = await db.PagamentosAntecipadosFatura
+            .Where(p => p.FaturaCartaoId == faturaIdAtual)
+            .OrderBy(p => p.Data)
+            .Select(p => new { p.Id, p.Valor, p.Data, p.ContaBancariaId, p.Observacao })
+            .ToListAsync();
+        var totalAntecipado = antecipados.Sum(a => a.Valor);
+
         return Ok(new
         {
             vencimento,
             total,
+            totalAntecipado,
+            restante = total - totalAntecipado,
             status = faturaExistente?.Status ?? "pendente",
             pagoEm = faturaExistente?.PagoEm,
             valorEntrada = faturaExistente?.Status == "financiada" ? faturaExistente.ValorPago : (decimal?)null,
             itens,
             parcelasFinanciamento,
+            antecipados,
         });
     }
 
     public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela, Guid? ContaBancariaId = null);
+    public record AntecipadoFaturaRequest(decimal Valor, DateTime Data, Guid ContaBancariaId, string? Observacao);
+
+    [HttpPost("cartoes/{id:guid}/fatura/antecipado")]
+    public async Task<IActionResult> AdicionarAntecipadoFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] AntecipadoFaturaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (cartao is null) return NotFound();
+
+        if (req.Valor <= 0) return BadRequest(new { erro = "Valor deve ser maior que zero." });
+        if (req.Data.Date > DateTime.UtcNow.Date) return BadRequest(new { erro = "A data não pode ser no futuro." });
+
+        var contaValida = await db.ContasBancarias.AnyAsync(c => c.Id == req.ContaBancariaId && c.LojaId == lojaId);
+        if (!contaValida) return BadRequest(new { erro = "Conta bancária inválida." });
+
+        var vencimento = CalcularVencimentoFatura(cartao, ano, mes);
+        var mesReferencia = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var (inicio, fim) = CicloDaFatura(cartao, vencimento);
+
+        var total = await db.LancamentosCartao
+            .Where(l => l.CartaoCreditoId == id && l.DataCompra.Date >= inicio.Date && l.DataCompra.Date <= fim.Date)
+            .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+        var fatura = await db.FaturasCartao
+            .FirstOrDefaultAsync(f => f.CartaoCreditoId == id && f.MesReferencia == mesReferencia);
+
+        if (fatura is null)
+        {
+            fatura = new FaturaCartao
+            {
+                LojaId = lojaId!.Value,
+                CartaoCreditoId = id,
+                MesReferencia = mesReferencia,
+                Vencimento = vencimento,
+                Total = total,
+            };
+            db.FaturasCartao.Add(fatura);
+            await db.SaveChangesAsync();
+        }
+
+        var jaAntecipado = await db.PagamentosAntecipadosFatura
+            .Where(p => p.FaturaCartaoId == fatura.Id)
+            .SumAsync(p => (decimal?)p.Valor) ?? 0;
+
+        if (jaAntecipado + req.Valor > total)
+            return BadRequest(new { erro = "O valor adiantado não pode ultrapassar o total da fatura." });
+
+        db.PagamentosAntecipadosFatura.Add(new PagamentoAntecipadoFatura
+        {
+            LojaId = lojaId!.Value,
+            FaturaCartaoId = fatura.Id,
+            ContaBancariaId = req.ContaBancariaId,
+            Valor = req.Valor,
+            Data = DateTime.SpecifyKind(req.Data.Date, DateTimeKind.Utc).AddHours(12),
+            Observacao = req.Observacao,
+        });
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Pagamento antecipado registrado." });
+    }
+
+    [HttpDelete("cartoes/fatura/antecipado/{id:guid}")]
+    public async Task<IActionResult> ExcluirAntecipadoFatura(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var antecipado = await db.PagamentosAntecipadosFatura
+            .FirstOrDefaultAsync(p => p.Id == id && p.LojaId == lojaId);
+        if (antecipado is null) return NotFound();
+
+        db.PagamentosAntecipadosFatura.Remove(antecipado);
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Pagamento antecipado excluído." });
+    }
 
     [HttpPost("cartoes/{id:guid}/fatura/pagamento")]
     public async Task<IActionResult> PagarFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] PagarFaturaRequest req)
@@ -1214,6 +1317,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
         fatura.Total = total;
 
+        var totalAntecipado = await db.PagamentosAntecipadosFatura
+            .Where(p => p.FaturaCartaoId == fatura.Id)
+            .SumAsync(p => (decimal?)p.Valor) ?? 0;
+        var totalDevido = total - totalAntecipado;
+
         if (req.Modo != "desfazer" && req.ContaBancariaId.HasValue)
         {
             var contaEscolhidaValida = await db.ContasBancarias.AnyAsync(c => c.Id == req.ContaBancariaId.Value && c.LojaId == lojaId);
@@ -1241,17 +1349,17 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
             case "total":
                 fatura.Status = "pago";
-                fatura.ValorPago = total;
+                fatura.ValorPago = totalDevido;
                 fatura.PagoEm = DateTime.UtcNow;
                 break;
 
             case "parcial":
                 {
                     var pago = req.ValorPago ?? 0;
-                    if (pago <= 0 || pago >= total)
-                        return BadRequest(new { erro = "Valor parcial deve ser maior que zero e menor que o total da fatura." });
+                    if (pago <= 0 || pago >= totalDevido)
+                        return BadRequest(new { erro = "Valor parcial deve ser maior que zero e menor que o total (já descontado o que foi antecipado)." });
 
-                    var restante = total - pago;
+                    var restante = totalDevido - pago;
                     var comJuros = restante * (1 + (cartao.TaxaJurosMensal / 100m));
 
                     // Lança o saldo devedor + juros como um item na PRÓXIMA fatura
@@ -1281,10 +1389,10 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         return BadRequest(new { erro = "Escolha entre 2 e 24 parcelas." });
 
                     var entrada = req.ValorEntrada ?? 0;
-                    if (entrada < 0 || entrada >= total)
-                        return BadRequest(new { erro = "O valor de entrada deve ser maior ou igual a zero e menor que o total da fatura." });
+                    if (entrada < 0 || entrada >= totalDevido)
+                        return BadRequest(new { erro = "O valor de entrada deve ser maior ou igual a zero e menor que o total (já descontado o que foi antecipado)." });
 
-                    var valorFinanciar = total - entrada;
+                    var valorFinanciar = totalDevido - entrada;
                     var comJuros = valorFinanciar * (1 + (cartao.TaxaJurosMensal / 100m) * parcelas);
                     var valorParcela = Math.Round(comJuros / parcelas, 2);
                     var grupoId = Guid.NewGuid();
