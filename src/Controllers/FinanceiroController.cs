@@ -674,6 +674,23 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
     // ══════════════════ CATEGORIAS ══════════════════
 
+    [HttpGet("lancamentos/descricoes")]
+    public async Task<IActionResult> ListarDescricoesRecentes([FromQuery] string tipo)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<string>());
+
+        var descricoes = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.Tipo == tipo)
+            .OrderByDescending(l => l.CriadoEm)
+            .Select(l => l.Descricao)
+            .Distinct()
+            .Take(50)
+            .ToListAsync();
+
+        return Ok(descricoes);
+    }
+
     [HttpGet("categorias")]
     public async Task<IActionResult> ListarCategorias([FromQuery] string? tipo)
     {
@@ -690,6 +707,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         return Ok(lista);
     }
+
+
 
     [HttpPost("categorias")]
     public async Task<IActionResult> CriarCategoria([FromBody] SalvarCategoriaFinanceiraRequest req)
