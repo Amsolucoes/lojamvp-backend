@@ -1612,7 +1612,12 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     // "parcial": o restante já foi lançado como compra real no próximo ciclo (com juros),
                     // então não soma aqui de novo — senão a mesma dívida é contada duas vezes.
                     if (faturaExistente?.Status != "pago" && faturaExistente?.Status != "financiada" && faturaExistente?.Status != "parcial")
-                        usado += totalCiclo;
+                    {
+                        var totalAntecipadoCiclo = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
+                            .Where(p => p.FaturaCartaoId == faturaExistente.Id)
+                            .SumAsync(p => (decimal?)p.Valor) ?? 0;
+                        usado += totalCiclo - totalAntecipadoCiclo;
+                    }
                 }
 
                 cursor = cursor.AddMonths(1);
