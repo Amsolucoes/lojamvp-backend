@@ -151,7 +151,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var faturasCartaoPagas = await db.FaturasCartao
             .Include(f => f.CartaoCredito)
-            .Where(f => f.CartaoCredito!.ContaBancariaId == contaId && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada"))
+            .Where(f => (f.ContaBancariaId ?? f.CartaoCredito!.ContaBancariaId) == contaId && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada"))
             .SumAsync(f => (decimal?)f.ValorPago) ?? 0;
 
         return conta.SaldoInicial + recebidos - pagos - faturasCartaoPagas + entradasAjuste - saidasAjuste + diferencasAjuste;
@@ -1180,7 +1180,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         });
     }
 
-    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela);
+    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela, Guid? ContaBancariaId = null);
 
     [HttpPost("cartoes/{id:guid}/fatura/pagamento")]
     public async Task<IActionResult> PagarFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] PagarFaturaRequest req)
@@ -1214,9 +1214,17 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
         fatura.Total = total;
 
+        if (req.Modo != "desfazer" && req.ContaBancariaId.HasValue)
+        {
+            var contaEscolhidaValida = await db.ContasBancarias.AnyAsync(c => c.Id == req.ContaBancariaId.Value && c.LojaId == lojaId);
+            if (!contaEscolhidaValida) return BadRequest(new { erro = "Conta bancária inválida." });
+            fatura.ContaBancariaId = req.ContaBancariaId.Value;
+        }
+
         switch (req.Modo)
         {
             case "desfazer":
+                fatura.ContaBancariaId = null;
                 // Se era um financiamento, remove todas as parcelas geradas (só as ainda não pagas, por segurança)
                 if (fatura.Status == "financiada")
                 {

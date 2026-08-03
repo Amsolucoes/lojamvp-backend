@@ -225,6 +225,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(f => f.CartaoCredito).WithMany()
             .HasForeignKey(f => f.CartaoCreditoId).OnDelete(DeleteBehavior.Cascade);
 
+        mb.Entity<FaturaCartao>()
+            .HasOne(f => f.ContaBancaria).WithMany()
+            .HasForeignKey(f => f.ContaBancariaId).OnDelete(DeleteBehavior.SetNull);
+
         mb.Entity<CartaoLancamentoFixo>()
             .HasOne(c => c.CartaoCredito).WithMany()
             .HasForeignKey(c => c.CartaoCreditoId).OnDelete(DeleteBehavior.Cascade);

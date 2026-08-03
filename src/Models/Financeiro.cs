@@ -252,6 +252,9 @@ public class FaturaCartao
     public DateTime MesReferencia { get; set; } // primeiro dia do mês de vencimento
     public DateTime Vencimento { get; set; }
 
+    public Guid? ContaBancariaId { get; set; }
+    public ContaBancaria? ContaBancaria { get; set; }
+
     [Column(TypeName = "decimal(12,2)")]
     public decimal Total { get; set; }
 
