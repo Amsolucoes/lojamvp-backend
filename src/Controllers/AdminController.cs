@@ -511,7 +511,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     }
 
     // ── Enviar comunicado por e-mail para lojas (novidades, avisos, etc.) ─
-    public record EnviarComunicadoRequest(List<Guid>? LojaIds, bool TodasLojas, string Assunto, string CorpoHtml);
+    public record EnviarComunicadoRequest(List<Guid>? LojaIds, bool TodasLojas, string Assunto, string CorpoHtml, List<string>? EmailsExtras = null);
 
     [HttpPost("comunicados/enviar")]
     public async Task<IActionResult> EnviarComunicado([FromBody] EnviarComunicadoRequest req)
@@ -519,10 +519,11 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         if (string.IsNullOrWhiteSpace(req.Assunto) || string.IsNullOrWhiteSpace(req.CorpoHtml))
             return BadRequest(new { erro = "Preencha assunto e mensagem." });
 
-        if (!req.TodasLojas && (req.LojaIds is null || req.LojaIds.Count == 0))
-            return BadRequest(new { erro = "Selecione ao menos uma loja, ou marque \"Todas as lojas\"." });
+        var temExtras = req.EmailsExtras != null && req.EmailsExtras.Count > 0;
+        if (!req.TodasLojas && (req.LojaIds is null || req.LojaIds.Count == 0) && !temExtras)
+            return BadRequest(new { erro = "Selecione ao menos uma loja, informe um e-mail extra, ou marque \"Todas as lojas\"." });
 
-        var resultado = await comunicadoEmailService.EnviarAsync(req.LojaIds, req.TodasLojas, req.Assunto, req.CorpoHtml);
+        var resultado = await comunicadoEmailService.EnviarAsync(req.LojaIds, req.TodasLojas, req.Assunto, req.CorpoHtml, req.EmailsExtras);
 
         return Ok(new
         {
