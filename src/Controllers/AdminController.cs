@@ -13,7 +13,7 @@ namespace LojaApi.Controllers;
 [Route("api/admin")]
 [Authorize(Roles = "superadmin")]
 public class AdminController(AppDbContext db, TenantService tenantService, TokenService tokenService,
-    MercadoPagoService mpService) : ControllerBase
+    MercadoPagoService mpService, ComunicadoEmailService comunicadoEmailService) : ControllerBase
 {
     private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -508,6 +508,29 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     {
         await tenantService.VerificarStatusAsync();
         return Ok(new { mensagem = "Verificação de bloqueios executada." });
+    }
+
+    // ── Enviar comunicado por e-mail para lojas (novidades, avisos, etc.) ─
+    public record EnviarComunicadoRequest(List<Guid>? LojaIds, bool TodasLojas, string Assunto, string CorpoHtml);
+
+    [HttpPost("comunicados/enviar")]
+    public async Task<IActionResult> EnviarComunicado([FromBody] EnviarComunicadoRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Assunto) || string.IsNullOrWhiteSpace(req.CorpoHtml))
+            return BadRequest(new { erro = "Preencha assunto e mensagem." });
+
+        if (!req.TodasLojas && (req.LojaIds is null || req.LojaIds.Count == 0))
+            return BadRequest(new { erro = "Selecione ao menos uma loja, ou marque \"Todas as lojas\"." });
+
+        var resultado = await comunicadoEmailService.EnviarAsync(req.LojaIds, req.TodasLojas, req.Assunto, req.CorpoHtml);
+
+        return Ok(new
+        {
+            mensagem = $"{resultado.TotalEnviados} e-mail(s) enviado(s)." + (resultado.TotalFalhas > 0 ? $" {resultado.TotalFalhas} falharam." : ""),
+            resultado.TotalEnviados,
+            resultado.TotalFalhas,
+            resultado.Falhas,
+        });
     }
 
     [HttpPatch("lojas/{id:guid}/trial")]

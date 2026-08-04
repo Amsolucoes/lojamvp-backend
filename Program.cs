@@ -45,6 +45,7 @@ internal class Program
         builder.Services.AddScoped<FinanceiroService>();
         builder.Services.AddScoped<TurmasService>();
         builder.Services.AddScoped<AlertaEmailService>();
+        builder.Services.AddScoped<ComunicadoEmailService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
         builder.Services.AddScoped<ReservaChacaraNotificacaoService>();
 
