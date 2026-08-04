@@ -37,8 +37,10 @@ public class MovimentosCaixaController(AppDbContext db) : ControllerBase
                 m.Tipo,
                 m.Valor,
                 m.Data,
+                m.OrigemVendaId,
                 m.OrigemNome,
                 m.Observacao,
+                m.ContaBancariaId,
                 m.CriadoEm,
             })
             .ToListAsync();
