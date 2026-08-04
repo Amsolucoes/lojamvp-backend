@@ -6,7 +6,7 @@ namespace LojaApi.Services;
 
 public class ComunicadoEmailService(AppDbContext db, IResend resend, ILogger<ComunicadoEmailService> logger)
 {
-    public record ResultadoEnvio(int TotalEnviados, int TotalFalhas, List<string> Falhas);
+    public record ResultadoEnvio(int TotalEnviados, int TotalFalhas, List<string> Falhas, List<string> Sucessos);
 
     public async Task<ResultadoEnvio> EnviarAsync(List<Guid>? lojaIds, bool todasLojas, string assunto, string corpoHtml, List<string>? emailsExtras = null)
     {
@@ -20,6 +20,7 @@ public class ComunicadoEmailService(AppDbContext db, IResend resend, ILogger<Com
 
         var enviados = 0;
         var falhas = new List<string>();
+        var sucessos = new List<string>();
 
         foreach (var loja in lojas)
         {
@@ -52,6 +53,7 @@ public class ComunicadoEmailService(AppDbContext db, IResend resend, ILogger<Com
                 msg.To.Add(loja.Email);
                 await resend.EmailSendAsync(msg);
                 enviados++;
+                sucessos.Add(loja.Email);
             }
             catch (Exception ex)
             {
@@ -91,6 +93,7 @@ public class ComunicadoEmailService(AppDbContext db, IResend resend, ILogger<Com
                     msg.To.Add(email.Trim());
                     await resend.EmailSendAsync(msg);
                     enviados++;
+                    sucessos.Add(email.Trim());
                 }
                 catch (Exception ex)
                 {
@@ -100,6 +103,18 @@ public class ComunicadoEmailService(AppDbContext db, IResend resend, ILogger<Com
             }
         }
 
-        return new ResultadoEnvio(enviados, falhas.Count, falhas);
+        db.ComunicadosEnviados.Add(new Models.ComunicadoEnviado
+        {
+            Assunto = assunto,
+            CorpoHtml = corpoHtml,
+            TodasLojas = todasLojas,
+            TotalEnviados = enviados,
+            TotalFalhas = falhas.Count,
+            DestinatariosSucesso = string.Join(",", sucessos),
+            DestinatariosFalha = string.Join(",", falhas),
+        });
+        await db.SaveChangesAsync();
+
+        return new ResultadoEnvio(enviados, falhas.Count, falhas, sucessos);
     }
 }

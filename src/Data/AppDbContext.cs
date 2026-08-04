@@ -67,6 +67,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PedidoAcessorio> PedidosAcessorio => Set<PedidoAcessorio>();
     public DbSet<ItemPedidoAcessorio> ItensPedidoAcessorio => Set<ItemPedidoAcessorio>();
     public DbSet<MovimentoCaixa> MovimentosCaixa => Set<MovimentoCaixa>();
+    public DbSet<ComunicadoEnviado> ComunicadosEnviados => Set<ComunicadoEnviado>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {

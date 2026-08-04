@@ -513,6 +513,28 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     // ── Enviar comunicado por e-mail para lojas (novidades, avisos, etc.) ─
     public record EnviarComunicadoRequest(List<Guid>? LojaIds, bool TodasLojas, string Assunto, string CorpoHtml, List<string>? EmailsExtras = null);
 
+    [HttpGet("comunicados")]
+    public async Task<IActionResult> ListarComunicados()
+    {
+        var lista = await db.ComunicadosEnviados
+            .OrderByDescending(c => c.EnviadoEm)
+            .Select(c => new
+            {
+                c.Id,
+                c.Assunto,
+                c.CorpoHtml,
+                c.TodasLojas,
+                c.TotalEnviados,
+                c.TotalFalhas,
+                DestinatariosSucesso = c.DestinatariosSucesso.Split(',', StringSplitOptions.RemoveEmptyEntries),
+                DestinatariosFalha = c.DestinatariosFalha.Split(',', StringSplitOptions.RemoveEmptyEntries),
+                c.EnviadoEm,
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
     [HttpPost("comunicados/enviar")]
     public async Task<IActionResult> EnviarComunicado([FromBody] EnviarComunicadoRequest req)
     {
