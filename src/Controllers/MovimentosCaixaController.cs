@@ -27,8 +27,16 @@ public class MovimentosCaixaController(AppDbContext db) : ControllerBase
         if (lojaId is null) return Ok(Array.Empty<object>());
 
         var q = db.MovimentosCaixa.Where(m => m.LojaId == lojaId);
-        if (de.HasValue) q = q.Where(m => m.Data >= de.Value.Date);
-        if (ate.HasValue) q = q.Where(m => m.Data <= ate.Value.Date.AddDays(1));
+        if (de.HasValue)
+        {
+            var deUtc = DateTime.SpecifyKind(de.Value.Date, DateTimeKind.Utc);
+            q = q.Where(m => m.Data >= deUtc);
+        }
+        if (ate.HasValue)
+        {
+            var ateUtc = DateTime.SpecifyKind(ate.Value.Date, DateTimeKind.Utc).AddDays(1);
+            q = q.Where(m => m.Data <= ateUtc);
+        }
 
         var lista = await q.OrderByDescending(m => m.Data).ThenByDescending(m => m.CriadoEm)
             .Select(m => new
