@@ -59,6 +59,22 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(new { reserva.Id, reserva.Status, reserva.ValorPago, saldoPendente = reserva.Valor - reserva.ValorPago });
     }
 
+    [HttpPatch("{id:int}/manter-negociacao")]
+    public async Task<IActionResult> ManterNegociacao(int id)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (reserva.Status != "pendente_pagamento")
+            return BadRequest(new { erro = "Só é possível fazer isso em reservas pendentes de pagamento." });
+
+        reserva.ExpiraEm = null; // não expira mais sozinha — só sai se você cancelar/excluir
+        await db.SaveChangesAsync();
+
+        return Ok(new { reserva.Id, reserva.ExpiraEm });
+    }
+
     public record RegistrarPagamentoRequest(decimal Valor);
 
     [HttpPatch("{id:int}/registrar-pagamento")]
@@ -103,7 +119,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
 
         var conflita = await db.Reservas.AnyAsync(r =>
             r.LojaId == lojaId &&
-            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > DateTime.UtcNow)) &&
+            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > DateTime.UtcNow))) &&
             r.DataInicio <= fim && r.DataFim >= ini);
 
         if (conflita)

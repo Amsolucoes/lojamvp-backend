@@ -23,7 +23,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
 
         var conflita = await db.Reservas.AnyAsync(r =>
             r.LojaId == loja.Id &&
-            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > DateTime.UtcNow)) &&
+            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > DateTime.UtcNow))) &&
             r.DataInicio <= fim && r.DataFim >= ini);
 
         return Ok(new { disponivel = !conflita });
@@ -40,7 +40,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
 
         var ocupadas = await db.Reservas
             .Where(r => r.LojaId == loja.Id &&
-                (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > agora)) &&
+                (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > agora))) &&
                 r.DataFim >= agora && r.DataInicio <= limite)
             .OrderBy(r => r.DataInicio)
             .Select(r => new { r.DataInicio, r.DataFim })
@@ -106,7 +106,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         // Revalida disponibilidade (evita corrida entre duas pessoas reservando ao mesmo tempo)
         var conflita = await db.Reservas.AnyAsync(r =>
             r.LojaId == loja.Id &&
-            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > DateTime.UtcNow)) &&
+            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > DateTime.UtcNow))) &&
             r.DataInicio <= fim && r.DataFim >= ini);
 
         if (conflita)
