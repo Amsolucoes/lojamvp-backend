@@ -33,6 +33,7 @@ public class ProdutoAcessorio
     public decimal? PesoKg { get; set; } // usado no cálculo de frete real, quando implementado
 
     public bool Ativo { get; set; } = true;
+    public bool Destaque { get; set; } = false; // marca manual como "Mais vendido" na vitrine
     public int Ordem { get; set; } = 0;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;

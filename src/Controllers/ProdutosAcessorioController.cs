@@ -324,6 +324,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
         var q = db.ProdutosAcessorio.Where(p => p.Ativo);
         if (!string.IsNullOrEmpty(categoria)) q = q.Where(p => p.Categoria == categoria);
 
+        var limiteNovo = DateTime.UtcNow.AddDays(-14);
         var lista = await q.OrderBy(p => p.Ordem).ThenBy(p => p.Nome)
             .Select(p => new
             {
@@ -335,6 +336,8 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
                 p.Categoria,
                 p.ImagensUrls,
                 disponivel = p.Estoque > 0,
+                destaque = p.Destaque,
+                novo = p.CriadoEm >= limiteNovo,
             })
             .ToListAsync();
 
@@ -350,6 +353,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
         var p = await db.ProdutosAcessorio.FirstOrDefaultAsync(x => x.Id == id && x.Ativo);
         if (p is null) return NotFound();
 
+        var limiteNovo = DateTime.UtcNow.AddDays(-14);
         return Ok(new
         {
             p.Id,
@@ -362,6 +366,8 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
             p.PesoKg,
             disponivel = p.Estoque > 0,
             estoque = p.Estoque, // opcional exibir quantidade exata; remova se preferir só "disponível/indisponível"
+            destaque = p.Destaque,
+            novo = p.CriadoEm >= limiteNovo,
         });
     }
 
@@ -376,7 +382,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
 
     public record SalvarProdutoRequest(
         string Nome, string? Descricao, decimal Preco, decimal? PrecoPromocional,
-        int Estoque, string Categoria, string? ImagensUrls, decimal? PesoKg, bool Ativo, int Ordem
+        int Estoque, string Categoria, string? ImagensUrls, decimal? PesoKg, bool Ativo, bool Destaque, int Ordem
     );
 
     [HttpPost]
@@ -397,6 +403,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
             ImagensUrls = req.ImagensUrls,
             PesoKg = req.PesoKg,
             Ativo = req.Ativo,
+            Destaque = req.Destaque,
             Ordem = req.Ordem,
         };
         db.ProdutosAcessorio.Add(produto);
@@ -421,6 +428,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
         produto.ImagensUrls = req.ImagensUrls;
         produto.PesoKg = req.PesoKg;
         produto.Ativo = req.Ativo;
+        produto.Destaque = req.Destaque;
         produto.Ordem = req.Ordem;
         produto.AtualizadoEm = DateTime.UtcNow;
 
