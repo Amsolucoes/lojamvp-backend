@@ -220,6 +220,8 @@ public class ProdutosController(AppDbContext db) : ControllerBase
                 return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outra variação da sua loja." });
         }
 
+        var estoqueAnterior = variacao.Estoque;
+
         variacao.Tamanho = req.Tamanho;
         variacao.Cor = req.Cor;
         variacao.OutroCampo = req.OutroCampo;
@@ -227,6 +229,22 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         variacao.Estoque = req.Estoque;
         variacao.EstoqueMinimo = req.EstoqueMinimo;
         variacao.AtualizadoEm = DateTime.UtcNow;
+
+        // Estoque mudou editando o produto direto (fora da tela Estoque) — registra o
+        // movimento mesmo assim, senão a diferença fica invisível no histórico.
+        if (req.Estoque != estoqueAnterior)
+        {
+            var produtoNome = await db.Produtos.Where(p => p.Id == id).Select(p => p.Nome).FirstOrDefaultAsync();
+            var label = string.Join(" / ", new[] { req.Tamanho, req.Cor }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = id,
+                Tipo = "ajuste",
+                Quantidade = req.Estoque,
+                Observacao = $"Editado via cadastro do produto" + (label != "" ? $" ({label})" : ""),
+                LojaId = lojaId,
+            });
+        }
 
         await db.SaveChangesAsync();
         return Ok(new ProdutoVariacaoDto(
