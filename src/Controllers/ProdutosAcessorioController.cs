@@ -222,6 +222,98 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
         return Ok(pedido);
     }
 
+    // ── Categorias (gestão superadmin) ─────────────────────────────
+    [HttpGet("categorias")]
+    public async Task<IActionResult> ListarCategorias()
+    {
+        var lista = await db.CategoriasAcessorio
+            .Where(c => c.Ativa)
+            .OrderBy(c => c.Ordem).ThenBy(c => c.Nome)
+            .ToListAsync();
+        return Ok(lista);
+    }
+
+    public record SalvarCategoriaAcessorioRequest(string Nome);
+
+    private static string GerarChaveCategoria(string nome)
+    {
+        var normalizado = nome.Trim().ToLowerInvariant();
+        var semAcento = new string(normalizado
+            .Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+            .ToArray());
+        var chave = new string(semAcento.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+        while (chave.Contains("__")) chave = chave.Replace("__", "_");
+        return chave.Trim('_');
+    }
+
+    [HttpPost("categorias")]
+    [Authorize(Roles = "superadmin")]
+    public async Task<IActionResult> CriarCategoria([FromBody] SalvarCategoriaAcessorioRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Nome))
+            return BadRequest(new { erro = "Digite o nome da categoria." });
+
+        var chave = GerarChaveCategoria(req.Nome);
+        if (chave.Length == 0)
+            return BadRequest(new { erro = "Nome inválido." });
+
+        var jaExiste = await db.CategoriasAcessorio.AnyAsync(c => c.Chave == chave);
+        if (jaExiste)
+            return Conflict(new { erro = "Já existe uma categoria com esse nome." });
+
+        var maiorOrdem = await db.CategoriasAcessorio.MaxAsync(c => (int?)c.Ordem) ?? -1;
+
+        var categoria = new CategoriaAcessorio
+        {
+            Nome = req.Nome.Trim(),
+            Chave = chave,
+            Ordem = maiorOrdem + 1,
+        };
+        db.CategoriasAcessorio.Add(categoria);
+        await db.SaveChangesAsync();
+
+        return Ok(categoria);
+    }
+
+    [HttpPut("categorias/{id:guid}")]
+    [Authorize(Roles = "superadmin")]
+    public async Task<IActionResult> AtualizarCategoria(Guid id, [FromBody] SalvarCategoriaAcessorioRequest req)
+    {
+        var categoria = await db.CategoriasAcessorio.FindAsync(id);
+        if (categoria is null) return NotFound();
+
+        if (string.IsNullOrWhiteSpace(req.Nome))
+            return BadRequest(new { erro = "Digite o nome da categoria." });
+
+        // A Chave NÃO muda aqui de propósito — trocar mudaria a categoria de produtos já
+        // salvos silenciosamente. Só o nome de exibição é editável.
+        categoria.Nome = req.Nome.Trim();
+        await db.SaveChangesAsync();
+
+        return Ok(categoria);
+    }
+
+    [HttpDelete("categorias/{id:guid}")]
+    [Authorize(Roles = "superadmin")]
+    public async Task<IActionResult> ExcluirCategoria(Guid id)
+    {
+        var categoria = await db.CategoriasAcessorio.FindAsync(id);
+        if (categoria is null) return NotFound();
+
+        var emUso = await db.ProdutosAcessorio.AnyAsync(p => p.Categoria == categoria.Chave);
+        if (emUso)
+        {
+            categoria.Ativa = false;
+            await db.SaveChangesAsync();
+            return Ok(new { mensagem = "Categoria em uso por produto(s) — foi desativada em vez de excluída." });
+        }
+
+        db.CategoriasAcessorio.Remove(categoria);
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Categoria excluída." });
+    }
+
     // ── Catálogo público ─────────────────────────────────────────
     [HttpGet]
     [AllowAnonymous]

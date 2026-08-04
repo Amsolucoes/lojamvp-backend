@@ -68,6 +68,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ItemPedidoAcessorio> ItensPedidoAcessorio => Set<ItemPedidoAcessorio>();
     public DbSet<MovimentoCaixa> MovimentosCaixa => Set<MovimentoCaixa>();
     public DbSet<ComunicadoEnviado> ComunicadosEnviados => Set<ComunicadoEnviado>();
+    public DbSet<CategoriaAcessorio> CategoriasAcessorio => Set<CategoriaAcessorio>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -766,6 +767,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000003"), PerfilLojaId = perfilSalaoLoja, Nome = "Coloração / tintura", Categoria = "Química", Preco = 120m, DuracaoMin = 120, Ordem = 2 },
             new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000004"), PerfilLojaId = perfilSalaoLoja, Nome = "Manicure", Categoria = "Unhas", Preco = 35m, DuracaoMin = 45, Ordem = 3 },
             new ServicoPerfilLoja { Id = Guid.Parse("21f00000-0000-0000-0000-000000000005"), PerfilLojaId = perfilSalaoLoja, Nome = "Pedicure", Categoria = "Unhas", Preco = 40m, DuracaoMin = 45, Ordem = 4 }
+        );
+
+        mb.Entity<CategoriaAcessorio>().HasData(
+            new CategoriaAcessorio { Id = Guid.Parse("22222222-2222-2222-2222-222222222201"), Nome = "Leitor de código de barras", Chave = "leitor_codigo_barras", Ordem = 0 },
+            new CategoriaAcessorio { Id = Guid.Parse("22222222-2222-2222-2222-222222222202"), Nome = "Impressora fiscal", Chave = "impressora_fiscal", Ordem = 1 },
+            new CategoriaAcessorio { Id = Guid.Parse("22222222-2222-2222-2222-222222222203"), Nome = "Impressora de etiquetas", Chave = "impressora_etiquetas", Ordem = 2 },
+            new CategoriaAcessorio { Id = Guid.Parse("22222222-2222-2222-2222-222222222204"), Nome = "Outro", Chave = "outro", Ordem = 3 }
         );
 
         mb.Entity<ModuloPreco>().HasData(
