@@ -27,7 +27,16 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
         ["MT"] = 25m,
     };
     private const decimal FRETE_PADRAO = 35m; // demais estados
+    // Frete grátis acima de X valor de subtotal — deixe null pra manter desativado.
+    // Pra ativar, troque por um valor, ex: private const decimal? FRETE_GRATIS_ACIMA_DE = 200m;
+    private decimal? FRETE_GRATIS_ACIMA_DE = null;
     private static readonly TimeSpan PRAZO_PAGAMENTO = TimeSpan.FromMinutes(30);
+
+    private decimal CalcularFrete(decimal subtotal, string uf)
+    {
+        if (FRETE_GRATIS_ACIMA_DE.HasValue && subtotal >= FRETE_GRATIS_ACIMA_DE.Value) return 0m;
+        return FRETE_POR_UF.TryGetValue(uf, out var v) ? v : FRETE_PADRAO;
+    }
 
     // Libera de volta o estoque de pedidos que passaram do prazo sem pagar.
     // Chamado nos endpoints públicos, evitando precisar de um job em segundo plano.
@@ -55,10 +64,10 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
 
     [HttpGet("frete")]
     [AllowAnonymous]
-    public IActionResult CalcularFrete([FromQuery] string uf)
+    public IActionResult ConsultarFrete([FromQuery] string uf, [FromQuery] decimal subtotal = 0)
     {
-        var valor = FRETE_POR_UF.TryGetValue(uf.ToUpper(), out var v) ? v : FRETE_PADRAO;
-        return Ok(new { valorFrete = valor });
+        var valor = CalcularFrete(subtotal, uf.ToUpper());
+        return Ok(new { valorFrete = valor, gratis = valor == 0 });
     }
 
     // ── Criar pedido + gerar cobrança Pix ──────────────────────────
@@ -122,7 +131,7 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
             produto.Estoque -= item.Quantidade;
         }
 
-        var valorFrete = FRETE_POR_UF.TryGetValue(pedido.Uf, out var vf) ? vf : FRETE_PADRAO;
+        var valorFrete = CalcularFrete(subtotal, pedido.Uf);
         pedido.Subtotal = subtotal;
         pedido.ValorFrete = valorFrete;
         pedido.Total = subtotal + valorFrete;
