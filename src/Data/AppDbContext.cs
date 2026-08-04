@@ -69,6 +69,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MovimentoCaixa> MovimentosCaixa => Set<MovimentoCaixa>();
     public DbSet<ComunicadoEnviado> ComunicadosEnviados => Set<ComunicadoEnviado>();
     public DbSet<CategoriaAcessorio> CategoriasAcessorio => Set<CategoriaAcessorio>();
+    public DbSet<AvaliacaoAcessorio> AvaliacoesAcessorio => Set<AvaliacaoAcessorio>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -368,6 +369,18 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<ItemPedidoAcessorio>()
             .HasOne(i => i.Produto).WithMany()
             .HasForeignKey(i => i.ProdutoId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<AvaliacaoAcessorio>()
+            .HasOne(a => a.Produto).WithMany()
+            .HasForeignKey(a => a.ProdutoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<AvaliacaoAcessorio>()
+            .HasOne(a => a.Pedido).WithMany()
+            .HasForeignKey(a => a.PedidoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<AvaliacaoAcessorio>()
+            .HasIndex(a => new { a.PedidoId, a.ProdutoId })
+            .IsUnique(); // um pedido só pode avaliar cada produto uma vez
 
         mb.Entity<MovimentoCaixa>()
             .HasOne(m => m.Loja).WithMany()

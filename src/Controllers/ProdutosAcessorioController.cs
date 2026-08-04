@@ -231,6 +231,65 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
         return Ok(pedido);
     }
 
+    // ── Avaliações ───────────────────────────────────────────────
+    public record CriarAvaliacaoRequest(Guid ProdutoId, string Email, int Nota, string? Comentario);
+
+    [HttpPost("avaliacoes")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CriarAvaliacao([FromBody] CriarAvaliacaoRequest req)
+    {
+        if (req.Nota < 1 || req.Nota > 5)
+            return BadRequest(new { erro = "A nota deve ser de 1 a 5." });
+
+        if (string.IsNullOrWhiteSpace(req.Email))
+            return BadRequest(new { erro = "Informe o e-mail usado na compra." });
+
+        // Só quem tem pedido PAGO com esse produto, nesse e-mail, pode avaliar
+        var pedido = await db.PedidosAcessorio
+            .Include(p => p.Itens)
+            .Where(p => p.Status == "pago"
+                     && p.ClienteEmail.ToLower() == req.Email.Trim().ToLower()
+                     && p.Itens.Any(i => i.ProdutoId == req.ProdutoId))
+            .OrderByDescending(p => p.PagoEm)
+            .FirstOrDefaultAsync();
+
+        if (pedido is null)
+            return BadRequest(new { erro = "Não encontramos uma compra paga desse produto com esse e-mail." });
+
+        var jaAvaliou = await db.AvaliacoesAcessorio
+            .AnyAsync(a => a.PedidoId == pedido.Id && a.ProdutoId == req.ProdutoId);
+        if (jaAvaliou)
+            return BadRequest(new { erro = "Você já avaliou este produto." });
+
+        var avaliacao = new AvaliacaoAcessorio
+        {
+            ProdutoId = req.ProdutoId,
+            PedidoId = pedido.Id,
+            ClienteNome = pedido.ClienteNome,
+            Nota = req.Nota,
+            Comentario = string.IsNullOrWhiteSpace(req.Comentario) ? null : req.Comentario.Trim(),
+        };
+        db.AvaliacoesAcessorio.Add(avaliacao);
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Avaliação enviada, obrigado!" });
+    }
+
+    [HttpGet("{id:guid}/avaliacoes")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ListarAvaliacoes(Guid id)
+    {
+        var lista = await db.AvaliacoesAcessorio
+            .Where(a => a.ProdutoId == id)
+            .OrderByDescending(a => a.CriadoEm)
+            .Select(a => new { a.Id, a.ClienteNome, a.Nota, a.Comentario, a.CriadoEm })
+            .ToListAsync();
+
+        var media = lista.Count > 0 ? Math.Round(lista.Average(a => a.Nota), 1) : 0;
+
+        return Ok(new { media, total = lista.Count, avaliacoes = lista });
+    }
+
     // ── Categorias (gestão superadmin) ─────────────────────────────
     [HttpGet("categorias")]
     public async Task<IActionResult> ListarCategorias()
@@ -347,6 +406,8 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
                 disponivel = p.Estoque > 0,
                 destaque = p.Destaque,
                 novo = p.CriadoEm >= limiteNovo,
+                mediaAvaliacoes = db.AvaliacoesAcessorio.Where(a => a.ProdutoId == p.Id).Average(a => (double?)a.Nota) ?? 0,
+                totalAvaliacoes = db.AvaliacoesAcessorio.Count(a => a.ProdutoId == p.Id),
             })
             .ToListAsync();
 
