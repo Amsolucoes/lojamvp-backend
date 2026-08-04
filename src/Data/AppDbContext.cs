@@ -774,7 +774,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111104"), Chave = "etiquetas", Nome = "Impressão de etiquetas", Valor = 0, DisponivelParaAtivar = false },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111105"), Chave = "nf", Nome = "Importação de NF", Valor = 29.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111106"), Chave = "chacara_reservas", Nome = "Reservas (Chácara/Temporada)", Valor = 0, DisponivelParaAtivar = true },
-            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111107"), Chave = "funcionarios", Nome = "Funcionários (comissão e pagamento)", Valor = 39.90m, DisponivelParaAtivar = true }
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111107"), Chave = "funcionarios", Nome = "Funcionários (comissão e pagamento)", Valor = 39.90m, DisponivelParaAtivar = true },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111108"), Chave = "cupom_nao_fiscal", Nome = "Cupom não fiscal (impressora térmica)", Valor = 29.90m, DisponivelParaAtivar = true }
         );
     }
 
