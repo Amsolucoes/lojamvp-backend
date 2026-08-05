@@ -70,6 +70,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ComunicadoEnviado> ComunicadosEnviados => Set<ComunicadoEnviado>();
     public DbSet<CategoriaAcessorio> CategoriasAcessorio => Set<CategoriaAcessorio>();
     public DbSet<AvaliacaoAcessorio> AvaliacoesAcessorio => Set<AvaliacaoAcessorio>();
+    public DbSet<AvaliacaoChacara> AvaliacoesChacara => Set<AvaliacaoChacara>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -289,6 +290,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<Reserva>()
             .HasIndex(r => new { r.LojaId, r.DataInicio, r.DataFim });
+
+        mb.Entity<AvaliacaoChacara>()
+            .HasOne(a => a.Reserva).WithMany()
+            .HasForeignKey(a => a.ReservaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<AvaliacaoChacara>()
+            .HasIndex(a => a.ReservaId)
+            .IsUnique();
 
         mb.Entity<Reserva>()
             .Property(r => r.Valor)

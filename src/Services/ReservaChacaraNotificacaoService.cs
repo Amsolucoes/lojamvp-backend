@@ -120,6 +120,61 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         }
     }
 
+    public async Task<int> EnviarLembretesAvaliacaoDoDiaAsync()
+    {
+        var ontemInicio = DateTime.UtcNow.Date.AddDays(-1);
+        var ontemFim = ontemInicio.AddDays(1);
+
+        var reservas = await db.Reservas
+            .Where(r => r.Status == "confirmada" && !r.AvisoAvaliacaoEnviado
+                     && r.DataFim >= ontemInicio && r.DataFim < ontemFim
+                     && r.ClienteEmail != "")
+            .ToListAsync();
+
+        var enviados = 0;
+        foreach (var reserva in reservas)
+        {
+            var loja = await db.Lojas.FindAsync(reserva.LojaId);
+            if (loja is null || string.IsNullOrWhiteSpace(loja.Slug)) continue;
+
+            var link = $"https://app.aldevsoftware.com.br/chacara-site/{loja.Slug}/avaliar/{reserva.Id}";
+
+            try
+            {
+                var html = $@"
+                    <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                        <h2 style='color:#2f7d4f'>Como foi sua estadia?</h2>
+                        <p>Olá, {reserva.ClienteNome}! Esperamos que tenha aproveitado a {loja.Nome}.</p>
+                        <p>Sua opinião é muito importante — conta pra gente como foi, em menos de 1 minuto:</p>
+                        <div style='margin-top:20px;text-align:center'>
+                            <a href='{link}' style='background:#2f7d4f;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-weight:600'>
+                                Avaliar minha estadia
+                            </a>
+                        </div>
+                    </div>";
+
+                var msg = new EmailMessage
+                {
+                    From = "AldevSoftware <reservas@aldevsoftware.com.br>",
+                    Subject = $"Como foi sua estadia na {loja.Nome}?",
+                    HtmlBody = html,
+                };
+                msg.To.Add(reserva.ClienteEmail);
+                await resend.EmailSendAsync(msg);
+
+                reserva.AvisoAvaliacaoEnviado = true;
+                await db.SaveChangesAsync();
+                enviados++;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao enviar lembrete de avaliação da reserva {ReservaId}.", reserva.Id);
+            }
+        }
+
+        return enviados;
+    }
+
     public async Task NotificarPendenteAsync(Reserva reserva)
     {
         var loja = await db.Lojas.FindAsync(reserva.LojaId);

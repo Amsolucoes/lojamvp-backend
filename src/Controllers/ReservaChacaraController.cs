@@ -78,6 +78,25 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(new { reserva.Id, reserva.ValorPrejuizo, reserva.ObservacaoPrejuizo });
     }
 
+    public record AvaliarClienteRequest(int? Nota, string? Comentario);
+
+    [HttpPatch("{id:int}/avaliar-cliente")]
+    public async Task<IActionResult> AvaliarCliente(int id, [FromBody] AvaliarClienteRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (req.Nota.HasValue && (req.Nota < 1 || req.Nota > 5))
+            return BadRequest(new { erro = "A nota deve ser de 1 a 5." });
+
+        reserva.NotaCliente = req.Nota;
+        reserva.ComentarioCliente = string.IsNullOrWhiteSpace(req.Comentario) ? null : req.Comentario.Trim();
+        await db.SaveChangesAsync();
+
+        return Ok(new { reserva.Id, reserva.NotaCliente, reserva.ComentarioCliente });
+    }
+
     [HttpPatch("{id:int}/manter-negociacao")]
     public async Task<IActionResult> ManterNegociacao(int id)
     {

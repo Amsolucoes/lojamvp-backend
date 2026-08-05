@@ -168,6 +168,77 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         ["ar_condicionado"] = "Ar-condicionado",
     };
 
+    [HttpGet("avaliacao/{reservaId:int}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> BuscarParaAvaliar(string slug, int reservaId)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == reservaId && r.LojaId == loja.Id);
+        if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
+
+        if (reserva.Status != "confirmada")
+            return BadRequest(new { erro = "Essa reserva ainda não foi confirmada." });
+
+        if (reserva.DataFim > DateTime.UtcNow)
+            return BadRequest(new { erro = "Sua estadia ainda não terminou — volte aqui depois do check-out para avaliar." });
+
+        var existente = await db.AvaliacoesChacara.FirstOrDefaultAsync(a => a.ReservaId == reservaId);
+
+        return Ok(new
+        {
+            reserva.ClienteNome,
+            reserva.DataInicio,
+            reserva.DataFim,
+            nomeLoja = loja.Nome,
+            jaAvaliado = existente != null,
+            notaAtual = existente?.Nota,
+            comentarioAtual = existente?.Comentario,
+        });
+    }
+
+    public record EnviarAvaliacaoChacaraRequest(int Nota, string? Comentario);
+
+    [HttpPost("avaliacao/{reservaId:int}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> EnviarAvaliacao(string slug, int reservaId, [FromBody] EnviarAvaliacaoChacaraRequest req)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == reservaId && r.LojaId == loja.Id);
+        if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
+
+        if (reserva.Status != "confirmada")
+            return BadRequest(new { erro = "Essa reserva ainda não foi confirmada." });
+
+        if (reserva.DataFim > DateTime.UtcNow)
+            return BadRequest(new { erro = "Sua estadia ainda não terminou." });
+
+        if (req.Nota < 1 || req.Nota > 5)
+            return BadRequest(new { erro = "Escolha uma nota de 1 a 5 estrelas." });
+
+        var existente = await db.AvaliacoesChacara.FirstOrDefaultAsync(a => a.ReservaId == reservaId);
+        if (existente != null)
+        {
+            existente.Nota = req.Nota;
+            existente.Comentario = string.IsNullOrWhiteSpace(req.Comentario) ? null : req.Comentario.Trim();
+        }
+        else
+        {
+            db.AvaliacoesChacara.Add(new AvaliacaoChacara
+            {
+                ReservaId = reservaId,
+                Nota = req.Nota,
+                Comentario = string.IsNullOrWhiteSpace(req.Comentario) ? null : req.Comentario.Trim(),
+            });
+        }
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Avaliação enviada, obrigado!" });
+    }
+
     [HttpGet("dados")]
     public async Task<IActionResult> Dados(string slug)
     {

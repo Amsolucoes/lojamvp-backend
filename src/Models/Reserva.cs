@@ -35,5 +35,8 @@ public class Reserva
     public DateTime? ExpiraEm { get; set; } // usada pra liberar reservas pendentes nao pagas
     public decimal? ValorPrejuizo { get; set; } // registro interno, não gera cobrança automática
     public string? ObservacaoPrejuizo { get; set; }
+    public int? NotaCliente { get; set; } // 1 a 5 — sua avaliação sobre o cliente
+    public string? ComentarioCliente { get; set; }
+    public bool AvisoAvaliacaoEnviado { get; set; } // controla o lembrete por e-mail (evita mandar 2x)
     public Loja? Loja { get; set; }
 }
