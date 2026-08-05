@@ -33,6 +33,7 @@ public class Reserva
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiraEm { get; set; } // usada pra liberar reservas pendentes nao pagas
-
+    public decimal? ValorPrejuizo { get; set; } // registro interno, não gera cobrança automática
+    public string? ObservacaoPrejuizo { get; set; }
     public Loja? Loja { get; set; }
 }

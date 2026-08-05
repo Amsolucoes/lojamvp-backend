@@ -59,6 +59,25 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(new { reserva.Id, reserva.Status, reserva.ValorPago, saldoPendente = reserva.Valor - reserva.ValorPago });
     }
 
+    public record RegistrarPrejuizoRequest(decimal? Valor, string? Observacao);
+
+    [HttpPatch("{id:int}/prejuizo")]
+    public async Task<IActionResult> RegistrarPrejuizo(int id, [FromBody] RegistrarPrejuizoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (req.Valor.HasValue && req.Valor.Value < 0)
+            return BadRequest(new { erro = "O valor não pode ser negativo." });
+
+        reserva.ValorPrejuizo = req.Valor;
+        reserva.ObservacaoPrejuizo = string.IsNullOrWhiteSpace(req.Observacao) ? null : req.Observacao.Trim();
+        await db.SaveChangesAsync();
+
+        return Ok(new { reserva.Id, reserva.ValorPrejuizo, reserva.ObservacaoPrejuizo });
+    }
+
     [HttpPatch("{id:int}/manter-negociacao")]
     public async Task<IActionResult> ManterNegociacao(int id)
     {
