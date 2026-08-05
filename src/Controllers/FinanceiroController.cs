@@ -1683,6 +1683,15 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
             usado += totalParcelasFuturas;
 
+            // Parcelas de financiamento de faturas antigas (ficam em LancamentosFinanceiros, não em
+            // LancamentosCartao — por isso não entram nas duas somas acima) — soma tudo que ainda
+            // não foi pago, independente do mês de vencimento.
+            var totalFinanciamentoPendente = await db.LancamentosFinanceiros
+                .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente")
+                .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+            usado += totalFinanciamentoPendente;
+
             // Fatura "principal" pra exibir vencimento/status no card (a mais antiga fechada e pendente, senão a aberta)
             var (vencimentoPrincipal, _, statusPrincipal) = await CicloAtualCartaoAsync(cartao);
             var (piInicio, piFim) = CicloDaFatura(cartao, vencimentoPrincipal);
