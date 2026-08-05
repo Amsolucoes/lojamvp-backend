@@ -616,7 +616,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
                 var total = itensCiclo.Sum(i => i.Valor);
                 var faturaExistente = await db.FaturasCartao
-                    .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
+                    .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == anoC && f.MesReferencia.Month == mesC);
 
                 if (modo == "detalhado")
                 {
