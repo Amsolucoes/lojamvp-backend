@@ -179,14 +179,41 @@ public class ProdutosAcessorioController(AppDbContext db, MercadoPagoService mpS
     [AllowAnonymous]
     public async Task<IActionResult> ConsultarStatus(Guid id)
     {
-        var pedido = await db.PedidosAcessorio.FirstOrDefaultAsync(p => p.Id == id);
+        var pedido = await db.PedidosAcessorio.Include(p => p.Itens).FirstOrDefaultAsync(p => p.Id == id);
         if (pedido is null) return NotFound();
 
-        if (pedido.Status == "aguardando_pagamento" && pedido.MpPaymentId != null)
+        // Cobre tanto o pedido ainda esperando (dentro do prazo) quanto o que já expirou e foi
+        // cancelado — o Pix pode cair no Mercado Pago minutos depois do prazo de 30min.
+        if ((pedido.Status == "aguardando_pagamento" || pedido.Status == "cancelado") && pedido.MpPaymentId != null)
         {
             var statusAtual = await mpService.VerificarStatus(pedido.MpPaymentId);
             if (statusAtual == "approved" && pedido.Status != "pago")
             {
+                if (pedido.Status == "cancelado")
+                {
+                    // O estoque já foi devolvido quando expirou — só reserva de novo se ainda tiver
+                    // disponível. Se alguém comprou esse estoque nesse meio-tempo, não reativa sozinho.
+                    var semEstoque = new List<string>();
+                    foreach (var item in pedido.Itens)
+                    {
+                        var produto = await db.ProdutosAcessorio.FindAsync(item.ProdutoId);
+                        if (produto is null || produto.Estoque < item.Quantidade)
+                            semEstoque.Add(item.NomeProduto);
+                    }
+
+                    if (semEstoque.Count > 0)
+                    {
+                        // Não conseguiu revivir — fica cancelado mesmo, com o motivo pro suporte decidir
+                        return Ok(new { pedido.Status, aviso = $"Pagamento identificado, mas sem estoque suficiente para: {string.Join(", ", semEstoque)}. Fale com o suporte." });
+                    }
+
+                    foreach (var item in pedido.Itens)
+                    {
+                        var produto = await db.ProdutosAcessorio.FindAsync(item.ProdutoId);
+                        if (produto != null) produto.Estoque -= item.Quantidade;
+                    }
+                }
+
                 pedido.Status = "pago";
                 pedido.PagoEm = DateTime.UtcNow;
                 pedido.MpStatus = statusAtual;
