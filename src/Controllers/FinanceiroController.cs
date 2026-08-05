@@ -1708,10 +1708,6 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 vencimentoAtual = vencimentoPrincipal,
                 status = statusPrincipal,
                 qtdCompras,
-                debugCiclosPassados = usado - totalParcelasFuturas,
-                debugParcelasFuturas = totalParcelasFuturas,
-                debugCicloAbertaInicio = cicloAberta.Inicio,
-                debugCicloAbertaFim = cicloAberta.Fim,
             });
         }
 
