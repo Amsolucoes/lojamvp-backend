@@ -180,6 +180,23 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(new { reserva.Id, reserva.ExpiraEm });
     }
 
+    [HttpPatch("{id:int}/desfazer-negociacao")]
+    public async Task<IActionResult> DesfazerNegociacao(int id)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (reserva.Status != "pendente_pagamento")
+            return BadRequest(new { erro = "Só é possível fazer isso em reservas pendentes de pagamento." });
+
+        // Reinicia o prazo — volta a expirar sozinha em 15min a partir de agora
+        reserva.ExpiraEm = DateTime.UtcNow.AddMinutes(15);
+        await db.SaveChangesAsync();
+
+        return Ok(new { reserva.Id, reserva.ExpiraEm });
+    }
+
     public record RegistrarPagamentoRequest(decimal Valor);
 
     [HttpPatch("{id:int}/registrar-pagamento")]
