@@ -475,6 +475,12 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             .Where(l => l.Length > 0)
             .ToList();
 
+        var avisos = (info?.AvisosUso ?? "")
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+
         return Ok(new
         {
             nome = loja.Nome,
@@ -483,6 +489,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             descricao = info?.Descricao ?? "",
             endereco = info?.Endereco ?? "",
             mapaEmbedUrl = info?.MapaEmbedUrl,
+            horaEntrada = info?.HoraEntrada ?? "08:00",
+            horaSaida = info?.HoraSaida ?? "22:00",
+            avisosUso = avisos,
             fotos,
             comodidades,
             comodidadesExtras,

@@ -40,6 +40,7 @@ public class InfoChacaraController(AppDbContext db) : ControllerBase
 
     public record AtualizarInfoRequest(
         string Descricao, string Endereco, string Comodidades, string? ComodidadesExtras, string? MapaEmbedUrl,
+        string? HoraEntrada, string? HoraSaida, string? AvisosUso,
         string? LocadorNome, string? LocadorRg, string? LocadorCpf, string? LocadorEndereco, string? LocadorTelefone, string? CidadeAssinatura
     );
 
@@ -61,6 +62,9 @@ public class InfoChacaraController(AppDbContext db) : ControllerBase
         info.Comodidades = req.Comodidades ?? "";
         info.ComodidadesExtras = string.IsNullOrWhiteSpace(req.ComodidadesExtras) ? null : req.ComodidadesExtras.Trim();
         info.MapaEmbedUrl = string.IsNullOrWhiteSpace(req.MapaEmbedUrl) ? null : req.MapaEmbedUrl.Trim();
+        info.HoraEntrada = string.IsNullOrWhiteSpace(req.HoraEntrada) ? "08:00" : req.HoraEntrada.Trim();
+        info.HoraSaida = string.IsNullOrWhiteSpace(req.HoraSaida) ? "22:00" : req.HoraSaida.Trim();
+        info.AvisosUso = string.IsNullOrWhiteSpace(req.AvisosUso) ? null : req.AvisosUso.Trim();
         info.LocadorNome = string.IsNullOrWhiteSpace(req.LocadorNome) ? null : req.LocadorNome.Trim();
         info.LocadorRg = string.IsNullOrWhiteSpace(req.LocadorRg) ? null : req.LocadorRg.Trim();
         info.LocadorCpf = string.IsNullOrWhiteSpace(req.LocadorCpf) ? null : req.LocadorCpf.Trim();
