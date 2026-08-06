@@ -1,17 +1,21 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using LojaApi.Data;
+﻿using LojaApi.Data;
+using LojaApi.Services;
 using LojaApi.src.Models;
 using LojaApi.src.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Controllers;
 
 [ApiController]
 [Route("api/publico/{slug}/chacara")]
 [AllowAnonymous]
-public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.ReservaChacaraNotificacaoService notificacao) : ControllerBase
+public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.ReservaChacaraNotificacaoService notificacao, MercadoPagoService mpService) : ControllerBase
 {
+    // Cartão parcelado (pagando o total): até R$800 → 2x; acima disso → trava em 3x
+    private static int ParcelasMaximas(decimal valor) => valor <= 800m ? 2 : 3;
+
     [HttpGet("disponibilidade")]
     public async Task<IActionResult> Disponibilidade(string slug, [FromQuery] DateTime dataInicio, [FromQuery] DateTime dataFim)
     {
@@ -237,6 +241,165 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         await db.SaveChangesAsync();
 
         return Ok(new { mensagem = "Avaliação enviada, obrigado!" });
+    }
+
+    // ── Escolhe a forma de pagamento (define o que os endpoints seguintes vão cobrar) ──
+    public record EscolherPagamentoRequest(string FormaPagamento); // pix | cartao | combinado
+
+    [HttpPost("reservas/{id:int}/pagamento/escolher")]
+    [AllowAnonymous]
+    public async Task<IActionResult> EscolherPagamento(string slug, int id, [FromBody] EscolherPagamentoRequest req)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == loja.Id);
+        if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
+
+        if (reserva.Status != "pendente_pagamento")
+            return BadRequest(new { erro = "Essa reserva não está mais aguardando pagamento." });
+
+        if (req.FormaPagamento != "pix" && req.FormaPagamento != "cartao" && req.FormaPagamento != "combinado")
+            return BadRequest(new { erro = "Forma de pagamento inválida." });
+
+        reserva.FormaPagamento = req.FormaPagamento;
+        await db.SaveChangesAsync();
+
+        var valorPix = req.FormaPagamento is "pix" or "combinado" ? reserva.Valor / 2 : 0;
+        var valorCartao = req.FormaPagamento == "cartao" ? reserva.Valor
+                         : req.FormaPagamento == "combinado" ? reserva.Valor / 2 : 0;
+        var parcelasMax = req.FormaPagamento == "cartao" ? ParcelasMaximas(reserva.Valor) : 1;
+
+        return Ok(new { valorPix, valorCartao, parcelasMax });
+    }
+
+    // ── Gera o Pix (sinal de 50%, ou metade do combinado) ──────────
+    [HttpPost("reservas/{id:int}/pagamento/pix")]
+    [AllowAnonymous]
+    public async Task<IActionResult> PagarPix(string slug, int id)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == loja.Id);
+        if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
+
+        if (reserva.FormaPagamento != "pix" && reserva.FormaPagamento != "combinado")
+            return BadRequest(new { erro = "Escolha a forma de pagamento antes de gerar o Pix." });
+
+        if (string.IsNullOrWhiteSpace(reserva.ClienteDocumento))
+            return BadRequest(new { erro = "CPF é obrigatório para gerar o Pix." });
+
+        var valor = reserva.Valor / 2;
+        var descricao = $"Reserva {loja.Nome} — {reserva.DataInicio:dd/MM} a {reserva.DataFim:dd/MM}";
+
+        var resultado = await mpService.CriarPix(valor, descricao, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid());
+        if (!resultado.Sucesso)
+            return BadRequest(new { erro = resultado.Erro });
+
+        reserva.MpPaymentId = resultado.MpPaymentId;
+        reserva.MpStatusPix = resultado.Status;
+        await db.SaveChangesAsync();
+
+        return Ok(new { valor, qrCode = resultado.QrCode, qrCodeBase64 = resultado.QrCodeBase64 });
+    }
+
+    // ── Cobra no cartão (total parcelado, ou metade à vista no combinado) ──
+    public record PagarCartaoRequest(string Token, int Parcelas);
+
+    [HttpPost("reservas/{id:int}/pagamento/cartao")]
+    [AllowAnonymous]
+    public async Task<IActionResult> PagarCartao(string slug, int id, [FromBody] PagarCartaoRequest req)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == loja.Id);
+        if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
+
+        if (reserva.FormaPagamento != "cartao" && reserva.FormaPagamento != "combinado")
+            return BadRequest(new { erro = "Escolha a forma de pagamento antes de cobrar o cartão." });
+
+        if (string.IsNullOrWhiteSpace(reserva.ClienteDocumento))
+            return BadRequest(new { erro = "CPF é obrigatório para pagar no cartão." });
+
+        var ehCombinado = reserva.FormaPagamento == "combinado";
+        var valor = ehCombinado ? reserva.Valor / 2 : reserva.Valor;
+        var parcelasPermitidas = ehCombinado ? 1 : ParcelasMaximas(reserva.Valor);
+
+        if (req.Parcelas < 1 || req.Parcelas > parcelasPermitidas)
+            return BadRequest(new { erro = $"Para esse valor, o máximo é {parcelasPermitidas}x." });
+
+        var descricao = $"Reserva {loja.Nome} — {reserva.DataInicio:dd/MM} a {reserva.DataFim:dd/MM}";
+
+        var resultado = await mpService.CriarCartao(valor, descricao, req.Token, req.Parcelas, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid());
+        if (!resultado.Sucesso)
+            return BadRequest(new { erro = resultado.Erro });
+
+        reserva.MpPaymentIdCartao = resultado.MpPaymentId;
+        reserva.MpStatusCartao = resultado.Status;
+        await AtualizarConfirmacaoSeCompleto(reserva);
+        await db.SaveChangesAsync();
+
+        return Ok(new { status = resultado.Status, valor });
+    }
+
+    // ── Consulta status (polling) — confirma a reserva quando tudo que era necessário aprovar já aprovou ──
+    [HttpGet("reservas/{id:int}/pagamento/status")]
+    [AllowAnonymous]
+    public async Task<IActionResult> StatusPagamento(string slug, int id)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == loja.Id);
+        if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
+
+        if (reserva.Status == "pendente_pagamento" && reserva.MpPaymentId != null && reserva.MpStatusPix != "approved")
+        {
+            var statusPix = await mpService.VerificarStatus(reserva.MpPaymentId);
+            if (statusPix != null) reserva.MpStatusPix = statusPix;
+        }
+        if (reserva.Status == "pendente_pagamento" && reserva.MpPaymentIdCartao != null && reserva.MpStatusCartao != "approved")
+        {
+            var statusCartao = await mpService.VerificarStatus(reserva.MpPaymentIdCartao);
+            if (statusCartao != null) reserva.MpStatusCartao = statusCartao;
+        }
+
+        var confirmouAgora = await AtualizarConfirmacaoSeCompleto(reserva);
+        await db.SaveChangesAsync();
+
+        if (confirmouAgora)
+        {
+            try { await notificacao.NotificarConfirmacaoAsync(reserva); } catch { /* já confirmado, e-mail é best-effort */ }
+        }
+
+        return Ok(new { reserva.Status, reserva.MpStatusPix, reserva.MpStatusCartao });
+    }
+
+    // Confirma a reserva se as condições da forma de pagamento escolhida foram satisfeitas.
+    // Retorna true só quando a confirmação acabou de acontecer agora (pra saber se manda e-mail).
+    private async Task<bool> AtualizarConfirmacaoSeCompleto(Reserva reserva)
+    {
+        if (reserva.Status != "pendente_pagamento") return false;
+
+        var pixOk = reserva.MpStatusPix == "approved";
+        var cartaoOk = reserva.MpStatusCartao == "approved";
+
+        var completo = reserva.FormaPagamento switch
+        {
+            "pix" => pixOk,
+            "cartao" => cartaoOk,
+            "combinado" => pixOk && cartaoOk,
+            _ => false,
+        };
+        if (!completo) return false;
+
+        reserva.ValorPago = reserva.FormaPagamento == "pix" ? reserva.Valor / 2 : reserva.Valor;
+        reserva.Status = "confirmada";
+        reserva.DataConfirmacao = DateTime.UtcNow;
+        reserva.ExpiraEm = null;
+        return true;
     }
 
     [HttpGet("dados")]

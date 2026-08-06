@@ -26,7 +26,11 @@ public class Reserva
     // valores: pendente_pagamento | confirmada | cancelada | expirada
 
     public string? MpPreferenceId { get; set; }
-    public string? MpPaymentId { get; set; }
+    public string? MpPaymentId { get; set; } // pagamento via Pix (sinal ou combinado)
+    public string? MpStatusPix { get; set; }
+    public string? MpPaymentIdCartao { get; set; } // pagamento via cartão (total ou parte do combinado)
+    public string? MpStatusCartao { get; set; }
+    public string? FormaPagamento { get; set; } // pix | cartao | combinado
 
     public DateTime? ContratoEnviadoEm { get; set; }
     public bool AvisoCheckoutEnviado { get; set; }
