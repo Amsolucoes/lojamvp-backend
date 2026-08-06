@@ -122,16 +122,17 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
         if (reserva is null) return NotFound();
 
-        if (reserva.Status != "confirmada")
+        if (reserva.Status != "confirmada" && reserva.Status != "confirmada_parcial")
             return BadRequest(new { erro = "Só é possível registrar pagamento adicional em reservas já confirmadas." });
 
         if (req.Valor <= 0)
             return BadRequest(new { erro = "Informe um valor de pagamento maior que zero." });
 
         reserva.ValorPago = Math.Min(reserva.Valor, reserva.ValorPago + req.Valor);
+        if (reserva.ValorPago >= reserva.Valor) reserva.Status = "confirmada"; // saldo quitado, sai do "parcial"
         await db.SaveChangesAsync();
 
-        return Ok(new { reserva.Id, reserva.ValorPago, saldoPendente = reserva.Valor - reserva.ValorPago, quitada = reserva.ValorPago >= reserva.Valor });
+        return Ok(new { reserva.Id, reserva.Status, reserva.ValorPago, saldoPendente = reserva.Valor - reserva.ValorPago, quitada = reserva.ValorPago >= reserva.Valor });
     }
 
     public record CriarReservaManualRequest(
@@ -157,7 +158,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
 
         var conflita = await db.Reservas.AnyAsync(r =>
             r.LojaId == lojaId &&
-            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > DateTime.UtcNow))) &&
+            (r.Status == "confirmada" || r.Status == "confirmada_parcial" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > DateTime.UtcNow))) &&
             r.DataInicio <= fim && r.DataFim >= ini);
 
         if (conflita)
@@ -218,7 +219,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         // Revalida disponibilidade, excluindo a própria reserva da checagem
         var conflita = await db.Reservas.AnyAsync(r =>
             r.LojaId == lojaId && r.Id != id &&
-            (r.Status == "confirmada" || (r.Status == "pendente_pagamento" && r.ExpiraEm > DateTime.UtcNow)) &&
+            (r.Status == "confirmada" || r.Status == "confirmada_parcial" || (r.Status == "pendente_pagamento" && r.ExpiraEm > DateTime.UtcNow)) &&
             r.DataInicio <= fim && r.DataFim >= ini);
 
         if (conflita)

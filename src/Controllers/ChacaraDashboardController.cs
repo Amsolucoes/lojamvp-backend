@@ -29,7 +29,7 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
         var agora = DateTime.UtcNow;
 
         var confirmadas = await db.Reservas
-            .Where(r => r.LojaId == lojaId && r.Status == "confirmada")
+            .Where(r => r.LojaId == lojaId && (r.Status == "confirmada" || r.Status == "confirmada_parcial"))
             .ToListAsync();
 
         // Reservas "em negociação" — pendentes de pagamento que você marcou pra não expirar
