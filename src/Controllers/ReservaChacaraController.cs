@@ -103,6 +103,33 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(new { reserva.Id, reserva.Status });
     }
 
+    [HttpPatch("{id:int}/reativar")]
+    public async Task<IActionResult> Reativar(int id)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (reserva.Status != "expirada")
+            return BadRequest(new { erro = "Só é possível reativar uma reserva expirada." });
+
+        // A data pode ter sido ocupada por outra reserva desde que essa expirou — não deixa
+        // reativar cegamente se der conflito.
+        var conflita = await db.Reservas.AnyAsync(r =>
+            r.Id != id && r.LojaId == lojaId &&
+            (r.Status == "confirmada" || r.Status == "confirmada_parcial" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > DateTime.UtcNow))) &&
+            r.DataInicio <= reserva.DataFim && r.DataFim >= reserva.DataInicio);
+
+        if (conflita)
+            return Conflict(new { erro = "Essas datas já foram ocupadas por outra reserva. Não é possível reativar." });
+
+        reserva.Status = "pendente_pagamento";
+        reserva.ExpiraEm = DateTime.UtcNow.AddMinutes(15); // volta com prazo novo — se quiser manter negociando, use o botão "manter em negociação" depois
+        await db.SaveChangesAsync();
+
+        return Ok(new { reserva.Id, reserva.Status, reserva.ExpiraEm });
+    }
+
     public record ConfirmarComPagamentoRequest(decimal? ValorPago);
 
     [HttpPatch("{id:int}/confirmar")]
