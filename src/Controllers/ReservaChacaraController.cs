@@ -22,11 +22,26 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return vinculo?.LojaId;
     }
 
+    // Marca como "expirada" as reservas pendentes cujo prazo já passou — chamado sob demanda
+    // (mesmo padrão usado na Loja de Acessórios), sem precisar de job em segundo plano dedicado.
+    private async Task ExpirarReservasVencidasAsync(Guid lojaId)
+    {
+        var agora = DateTime.UtcNow;
+        var vencidas = await db.Reservas
+            .Where(r => r.LojaId == lojaId && r.Status == "pendente_pagamento" && r.ExpiraEm != null && r.ExpiraEm < agora)
+            .ToListAsync();
+        if (vencidas.Count == 0) return;
+        foreach (var r in vencidas) r.Status = "expirada";
+        await db.SaveChangesAsync();
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar()
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
+
+        await ExpirarReservasVencidasAsync(lojaId.Value);
 
         var lista = await db.Reservas
             .Where(r => r.LojaId == lojaId)
@@ -34,6 +49,58 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
             .ToListAsync();
 
         return Ok(lista);
+    }
+
+    // ── Reservas perdidas (expiradas) — paginado, com filtro de mês/ano ou período livre ──
+    [HttpGet("perdidas")]
+    public async Task<IActionResult> ListarPerdidas(
+        [FromQuery] int pagina = 1, [FromQuery] int porPagina = 10,
+        [FromQuery] int? mes = null, [FromQuery] int? ano = null,
+        [FromQuery] DateTime? de = null, [FromQuery] DateTime? ate = null)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(new { itens = Array.Empty<object>(), total = 0, pagina, porPagina });
+
+        await ExpirarReservasVencidasAsync(lojaId.Value);
+
+        var q = db.Reservas.Where(r => r.LojaId == lojaId && r.Status == "expirada");
+
+        if (de.HasValue && ate.HasValue)
+        {
+            var iniF = DateTime.SpecifyKind(de.Value.Date, DateTimeKind.Utc);
+            var fimF = DateTime.SpecifyKind(ate.Value.Date, DateTimeKind.Utc).AddDays(1);
+            q = q.Where(r => r.CriadoEm >= iniF && r.CriadoEm < fimF);
+        }
+        else if (mes.HasValue && ano.HasValue)
+        {
+            var iniF = new DateTime(ano.Value, mes.Value, 1, 0, 0, 0, DateTimeKind.Utc);
+            var fimF = iniF.AddMonths(1);
+            q = q.Where(r => r.CriadoEm >= iniF && r.CriadoEm < fimF);
+        }
+
+        var total = await q.CountAsync();
+        var itens = await q.OrderByDescending(r => r.CriadoEm)
+            .Skip((pagina - 1) * porPagina).Take(porPagina)
+            .ToListAsync();
+
+        return Ok(new { itens, total, pagina, porPagina });
+    }
+
+    // ── Marcar manualmente como expirada (você decide, sem esperar o prazo) ──
+    [HttpPatch("{id:int}/marcar-expirada")]
+    public async Task<IActionResult> MarcarExpirada(int id)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        if (reserva.Status != "pendente_pagamento")
+            return BadRequest(new { erro = "Só é possível marcar como expirada uma reserva pendente de pagamento." });
+
+        reserva.Status = "expirada";
+        await db.SaveChangesAsync();
+
+        return Ok(new { reserva.Id, reserva.Status });
     }
 
     public record ConfirmarComPagamentoRequest(decimal? ValorPago);

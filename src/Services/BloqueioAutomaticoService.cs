@@ -55,6 +55,7 @@ public class BloqueioAutomaticoService(
                 await alertaEmailService.EnviarAlertasDoDiaAsync();
 
                 var reservaChacaraNotificacaoService = scope.ServiceProvider.GetRequiredService<ReservaChacaraNotificacaoService>();
+                await reservaChacaraNotificacaoService.ExpirarReservasVencidasAsync();
                 await reservaChacaraNotificacaoService.EnviarLembretesAvaliacaoDoDiaAsync();
 
                 logger.LogInformation("Verificação automática de bloqueio concluída em {Data} UTC.", DateTime.UtcNow);

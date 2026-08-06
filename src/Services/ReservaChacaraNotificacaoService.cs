@@ -130,6 +130,17 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         }
     }
 
+    public async Task<int> ExpirarReservasVencidasAsync()
+    {
+        var agora = DateTime.UtcNow;
+        var vencidas = await db.Reservas
+            .Where(r => r.Status == "pendente_pagamento" && r.ExpiraEm != null && r.ExpiraEm < agora)
+            .ToListAsync();
+        foreach (var r in vencidas) r.Status = "expirada";
+        if (vencidas.Count > 0) await db.SaveChangesAsync();
+        return vencidas.Count;
+    }
+
     public async Task<int> EnviarLembretesAvaliacaoDoDiaAsync()
     {
         var ontemInicio = DateTime.UtcNow.Date.AddDays(-1);
