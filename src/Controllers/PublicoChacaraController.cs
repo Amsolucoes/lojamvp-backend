@@ -383,6 +383,27 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         return Ok(new { reserva.Status, reserva.MpStatusPix, reserva.MpStatusCartao });
     }
 
+    [HttpPost("reservas/{id:int}/cancelar")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CancelarPeloCliente(string slug, int id)
+    {
+        var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
+        if (loja is null) return NotFound(new { erro = "Página não encontrada." });
+
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == loja.Id);
+        if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
+
+        if (reserva.Status != "pendente_pagamento")
+            return BadRequest(new { erro = "Essa reserva não pode mais ser cancelada." });
+
+        reserva.Status = "cancelada";
+        reserva.MotivoCancelamento = "Cliente desistiu";
+        reserva.ExpiraEm = null;
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Reserva cancelada." });
+    }
+
     // Confirma a reserva se as condições da forma de pagamento escolhida foram satisfeitas.
     // Retorna true só quando a confirmação acabou de acontecer agora (pra saber se manda e-mail).
     private async Task<bool> AtualizarConfirmacaoSeCompleto(Reserva reserva)

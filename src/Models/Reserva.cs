@@ -42,5 +42,6 @@ public class Reserva
     public int? NotaCliente { get; set; } // 1 a 5 — sua avaliação sobre o cliente
     public string? ComentarioCliente { get; set; }
     public bool AvisoAvaliacaoEnviado { get; set; } // controla o lembrete por e-mail (evita mandar 2x)
+    public string? MotivoCancelamento { get; set; } // preenchido quando o próprio cliente cancela
     public Loja? Loja { get; set; }
 }
