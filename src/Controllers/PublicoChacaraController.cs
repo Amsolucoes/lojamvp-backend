@@ -16,6 +16,11 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
     // Cartão parcelado (pagando o total): até R$800 → 2x; acima disso → trava em 3x
     private static int ParcelasMaximas(decimal valor) => valor <= 800m ? 2 : 3;
 
+    // Repassa a taxa fixa de processamento do Mercado Pago (~4,98% no modo Parcelado Cliente)
+    // — não confundir com juros de parcelamento, que o próprio MP já cobra do cliente à parte.
+    private const decimal MARKUP_CARTAO = 1.05m;
+    private static decimal ComMarkupCartao(decimal valor) => Math.Round(valor * MARKUP_CARTAO, 2);
+
     [HttpGet("disponibilidade")]
     public async Task<IActionResult> Disponibilidade(string slug, [FromQuery] DateTime dataInicio, [FromQuery] DateTime dataFim)
     {
@@ -266,9 +271,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         await db.SaveChangesAsync();
 
         var valorPix = req.FormaPagamento is "pix" or "combinado" ? reserva.Valor / 2 : 0;
-        var valorCartao = req.FormaPagamento == "cartao" ? reserva.Valor
-                         : req.FormaPagamento == "combinado" ? reserva.Valor / 2 : 0;
         var parcelasMax = req.FormaPagamento == "cartao" ? ParcelasMaximas(reserva.Valor) : 1;
+        var valorCartao = req.FormaPagamento == "cartao" ? ComMarkupCartao(reserva.Valor)
+                         : req.FormaPagamento == "combinado" ? ComMarkupCartao(reserva.Valor / 2) : 0;
 
         return Ok(new { valorPix, valorCartao, parcelasMax });
     }
@@ -324,8 +329,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             return BadRequest(new { erro = "CPF é obrigatório para pagar no cartão." });
 
         var ehCombinado = reserva.FormaPagamento == "combinado";
-        var valor = ehCombinado ? reserva.Valor / 2 : reserva.Valor;
-        var parcelasPermitidas = ehCombinado ? 1 : ParcelasMaximas(reserva.Valor);
+        var valorBase = ehCombinado ? reserva.Valor / 2 : reserva.Valor;
+        var valor = ComMarkupCartao(valorBase);
+        var parcelasPermitidas = ehCombinado ? 1 : ParcelasMaximas(reserva.Valor); // faixa baseada no valor real, sem o markup
 
         if (req.Parcelas < 1 || req.Parcelas > parcelasPermitidas)
             return BadRequest(new { erro = $"Para esse valor, o máximo é {parcelasPermitidas}x." });
