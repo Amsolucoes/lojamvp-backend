@@ -293,7 +293,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var valor = reserva.Valor / 2;
         var descricao = $"Reserva {loja.Nome} — {reserva.DataInicio:dd/MM} a {reserva.DataFim:dd/MM}";
 
-        var resultado = await mpService.CriarPix(valor, descricao, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid());
+        var resultado = await mpService.CriarPix(valor, descricao, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid(), reserva.ExpiraEm);
         if (!resultado.Sucesso)
             return BadRequest(new { erro = resultado.Erro });
 
@@ -394,6 +394,19 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             _ => false,
         };
         if (!completo) return false;
+
+        // Pagamento chegou depois do prazo de 15min — a data pode já ter sido pega por outra
+        // reserva nesse meio-tempo. Não confirma automaticamente nesse caso; fica pendente pra
+        // você resolver manualmente (reagendar o cliente ou estornar o pagamento no Mercado Pago).
+        if (reserva.ExpiraEm.HasValue && reserva.ExpiraEm.Value < DateTime.UtcNow)
+        {
+            var conflitaAgora = await db.Reservas.AnyAsync(r =>
+                r.Id != reserva.Id && r.LojaId == reserva.LojaId &&
+                (r.Status == "confirmada" || r.Status == "confirmada_parcial" || (r.Status == "pendente_pagamento" && (r.ExpiraEm == null || r.ExpiraEm > DateTime.UtcNow))) &&
+                r.DataInicio <= reserva.DataFim && r.DataFim >= reserva.DataInicio);
+
+            if (conflitaAgora) return false; // fica pendente — pagamento recebido, mas sem data livre
+        }
 
         var ehSoPix = reserva.FormaPagamento == "pix";
         reserva.ValorPago = ehSoPix ? reserva.Valor / 2 : reserva.Valor;

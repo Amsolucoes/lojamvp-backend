@@ -14,13 +14,17 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     public async Task<MpPaymentResult> CriarPix(
         decimal valor, string descricao,
         string emailPagador, string cpfPagador,
-        string nomePagador, Guid pagamentoId)
+        string nomePagador, Guid pagamentoId,
+        DateTime? expiraEm = null)
     {
         var body = new
         {
             transaction_amount = valor,
             description = descricao,
             payment_method_id = "pix",
+            date_of_expiration = expiraEm.HasValue
+                ? new DateTimeOffset(DateTime.SpecifyKind(expiraEm.Value, DateTimeKind.Utc), TimeSpan.Zero).ToString("yyyy-MM-ddTHH:mm:ss.fffK")
+                : null,
             //external_reference = pagamentoId.ToString(),
             payer = new
             {
