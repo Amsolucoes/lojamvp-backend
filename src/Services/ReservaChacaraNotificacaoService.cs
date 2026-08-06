@@ -27,6 +27,13 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
             logger.LogError(ex, "Erro ao gerar contrato PDF da reserva {ReservaId}.", reserva.Id);
         }
 
+        // Linha de valor pago/pendente reaproveitada nos dois e-mails abaixo
+        var saldoPendente = reserva.Valor - reserva.ValorPago;
+        var linhaValor = saldoPendente > 0.01m
+            ? $@"<tr><td style='padding:6px 10px'>Valor pago (sinal)</td><td style='padding:6px 10px;text-align:right'><strong>R$ {reserva.ValorPago:N2}</strong></td></tr>
+                 <tr><td style='padding:6px 10px'>Saldo a receber</td><td style='padding:6px 10px;text-align:right;color:#c38228'><strong>R$ {saldoPendente:N2}</strong></td></tr>"
+            : $@"<tr><td style='padding:6px 10px'>Valor pago</td><td style='padding:6px 10px;text-align:right'><strong>R$ {reserva.ValorPago:N2}</strong></td></tr>";
+
         // 2) E-mail pro dono da loja, com o contrato anexado (se foi gerado com sucesso)
         if (!string.IsNullOrWhiteSpace(loja.Email))
         {
@@ -40,7 +47,8 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
                             <tr><td style='padding:6px 10px'>Período</td><td style='padding:6px 10px;text-align:right'>{reserva.DataInicio:dd/MM/yyyy} — {reserva.DataFim:dd/MM/yyyy}</td></tr>
                             <tr><td style='padding:6px 10px'>Pessoas</td><td style='padding:6px 10px;text-align:right'>{reserva.Pessoas}</td></tr>
                             <tr><td style='padding:6px 10px'>Telefone</td><td style='padding:6px 10px;text-align:right'>{reserva.ClienteTelefone}</td></tr>
-                            <tr><td style='padding:6px 10px'>Valor</td><td style='padding:6px 10px;text-align:right'><strong>R$ {reserva.Valor:N2}</strong></td></tr>
+                            <tr><td style='padding:6px 10px'>Valor da reserva</td><td style='padding:6px 10px;text-align:right'>R$ {reserva.Valor:N2}</td></tr>
+                            {linhaValor}
                         </table>
                     </div>";
 
@@ -86,8 +94,10 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
                         <p>Olá, {reserva.ClienteNome}! Sua reserva na {loja.Nome} foi confirmada.</p>
                         <table style='width:100%;border-collapse:collapse;margin-top:12px'>
                             <tr><td style='padding:6px 10px'>Período</td><td style='padding:6px 10px;text-align:right'>{reserva.DataInicio:dd/MM/yyyy} — {reserva.DataFim:dd/MM/yyyy}</td></tr>
-                            <tr><td style='padding:6px 10px'>Valor pago</td><td style='padding:6px 10px;text-align:right'><strong>R$ {reserva.Valor:N2}</strong></td></tr>
+                            <tr><td style='padding:6px 10px'>Valor da reserva</td><td style='padding:6px 10px;text-align:right'>R$ {reserva.Valor:N2}</td></tr>
+                            {linhaValor}
                         </table>
+                        {(saldoPendente > 0.01m ? "<p style='margin-top:12px;font-size:13px;color:#c38228'>O saldo restante é acertado na chegada.</p>" : "")}
                         <p style='margin-top:16px'>Segue em anexo o contrato de locação. Guarde este e-mail.</p>
                     </div>";
 
