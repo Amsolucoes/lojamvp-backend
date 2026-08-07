@@ -302,8 +302,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .IsUnique();
 
         mb.Entity<ConfiguracaoEtiqueta>()
-            .HasIndex(c => c.LojaId)
-            .IsUnique();
+            .HasIndex(c => c.LojaId); // não é mais único — permite vários modelos por loja
 
         mb.Entity<Reserva>()
             .Property(r => r.Valor)
