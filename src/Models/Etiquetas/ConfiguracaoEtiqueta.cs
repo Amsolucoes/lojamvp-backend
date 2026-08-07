@@ -22,5 +22,11 @@ public class ConfiguracaoEtiqueta
     public decimal LarguraMm { get; set; } = 40;
     public decimal AlturaMm { get; set; } = 30;
 
+    [MaxLength(7)]
+    public string CorTexto { get; set; } = "#000000";
+    [MaxLength(60)]
+    public string FonteFamilia { get; set; } = "Arial, sans-serif";
+    public int EscalaFonte { get; set; } = 100; // % — 100 = tamanho padrão, 150 = 50% maior, etc.
+
     public DateTime AtualizadoEm { get; set; } = DateTime.UtcNow;
 }

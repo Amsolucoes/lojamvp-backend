@@ -41,7 +41,8 @@ public class EtiquetasController(AppDbContext db) : ControllerBase
     public record AtualizarConfigRequest(
         bool IncluirLogo, bool UsarLogoPropria, string? LogoEtiquetaUrl,
         bool IncluirNomeMarca, bool IncluirNomeProduto, bool IncluirPreco, bool IncluirCodigoBarras,
-        decimal LarguraMm, decimal AlturaMm
+        decimal LarguraMm, decimal AlturaMm,
+        string? CorTexto, string? FonteFamilia, int? EscalaFonte
     );
 
     [HttpPut]
@@ -69,6 +70,9 @@ public class EtiquetasController(AppDbContext db) : ControllerBase
         cfg.IncluirCodigoBarras = req.IncluirCodigoBarras;
         cfg.LarguraMm = req.LarguraMm;
         cfg.AlturaMm = req.AlturaMm;
+        cfg.CorTexto = string.IsNullOrWhiteSpace(req.CorTexto) ? "#000000" : req.CorTexto.Trim();
+        cfg.FonteFamilia = string.IsNullOrWhiteSpace(req.FonteFamilia) ? "Arial, sans-serif" : req.FonteFamilia.Trim();
+        cfg.EscalaFonte = req.EscalaFonte is >= 50 and <= 300 ? req.EscalaFonte.Value : 100;
         cfg.AtualizadoEm = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
