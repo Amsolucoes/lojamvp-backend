@@ -1,5 +1,6 @@
 using LojaApi.Models;
 using LojaApi.src.Models;
+using LojaApi.src.Models.Etiquetas;
 using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Data;
@@ -71,6 +72,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CategoriaAcessorio> CategoriasAcessorio => Set<CategoriaAcessorio>();
     public DbSet<AvaliacaoAcessorio> AvaliacoesAcessorio => Set<AvaliacaoAcessorio>();
     public DbSet<AvaliacaoChacara> AvaliacoesChacara => Set<AvaliacaoChacara>();
+    public DbSet<ConfiguracaoEtiqueta> ConfiguracoesEtiqueta => Set<ConfiguracaoEtiqueta>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -297,6 +299,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<AvaliacaoChacara>()
             .HasIndex(a => a.ReservaId)
+            .IsUnique();
+
+        mb.Entity<ConfiguracaoEtiqueta>()
+            .HasIndex(c => c.LojaId)
             .IsUnique();
 
         mb.Entity<Reserva>()
