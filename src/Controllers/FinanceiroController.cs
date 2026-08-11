@@ -561,7 +561,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
 
         var lancamentos = await db.LancamentosFinanceiros
-            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes)
+            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes && l.CartaoOrigemId == null)
             .Include(l => l.Categoria)
             .Select(l => new
             {
@@ -644,7 +644,14 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     var totalAntecipadoLinha = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
                         .Where(p => p.FaturaCartaoId == faturaExistente.Id)
                         .SumAsync(p => (decimal?)p.Valor) ?? 0;
-                    var totalRestanteLinha = total - totalAntecipadoLinha;
+
+                    // Parcelas de financiamento (refinanciamento de fatura anterior) que caem
+                    // neste mesmo ciclo entram somadas aqui, pra não aparecerem como linha separada.
+                    var totalFinanciamentoLinha = await db.LancamentosFinanceiros
+                        .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente" && l.Vencimento.Year == anoC && l.Vencimento.Month == mesC)
+                        .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+                    var totalRestanteLinha = total - totalAntecipadoLinha + totalFinanciamentoLinha;
                     if (totalRestanteLinha <= 0) continue;
 
                     linhasCartao.Add(new
@@ -1378,6 +1385,16 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     db.LancamentosFinanceiros.RemoveRange(parcelasParaRemover);
                 }
 
+                // Se estava paga junto com parcela(s) de refinanciamento deste ciclo, desfaz também
+                var parcelasDoMesParaDesfazer = await db.LancamentosFinanceiros
+                    .Where(l => l.CartaoOrigemId == id && l.Status == "pago" && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
+                    .ToListAsync();
+                foreach (var p in parcelasDoMesParaDesfazer)
+                {
+                    p.Status = "pendente";
+                    p.PagoEm = null;
+                }
+
                 fatura.Status = "pendente";
                 fatura.ValorPago = 0;
                 fatura.PagoEm = null;
@@ -1387,6 +1404,17 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 fatura.Status = "pago";
                 fatura.ValorPago = totalDevido;
                 fatura.PagoEm = DateTime.UtcNow;
+
+                // Marca junto as parcelas de refinanciamento deste mesmo ciclo, já que
+                // o valor delas foi somado no total pago acima.
+                var parcelasDoMesParaPagar = await db.LancamentosFinanceiros
+                    .Where(l => l.CartaoOrigemId == id && l.Status == "pendente" && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
+                    .ToListAsync();
+                foreach (var p in parcelasDoMesParaPagar)
+                {
+                    p.Status = "pago";
+                    p.PagoEm = DateTime.UtcNow;
+                }
                 break;
 
             case "parcial":
