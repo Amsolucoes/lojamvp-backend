@@ -1433,14 +1433,19 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     var valorParcela = Math.Round(comJuros / parcelas, 2);
                     var grupoId = Guid.NewGuid();
 
-                    // Por padrão, a 1ª parcela cai no mês seguinte ao vencimento da fatura;
-                    // o usuário pode escolher outra data se preferir.
-                    var primeiraParcela = req.PrimeiraParcela.HasValue
-                        ? DateTime.SpecifyKind(req.PrimeiraParcela.Value.Date, DateTimeKind.Utc).AddHours(12)
-                        : DateTime.SpecifyKind(vencimento.Date, DateTimeKind.Utc).AddMonths(1).AddHours(12);
+                    // A 1ª parcela sempre cai na data de vencimento REAL do cartão (não numa
+                    // data arbitrária) — isso é o que garante que ela some na fatura certa em
+                    // vez de virar uma linha separada. Se o usuário escolheu uma data, usamos
+                    // só o mês/ano dela; o dia é sempre recalculado pelo dia de vencimento do cartão.
+                    var mesInicioParcelas = req.PrimeiraParcela.HasValue
+                        ? new DateTime(req.PrimeiraParcela.Value.Year, req.PrimeiraParcela.Value.Month, 1)
+                        : mesReferencia.AddMonths(1);
 
                     for (int i = 0; i < parcelas; i++)
                     {
+                        var mesParcela = mesInicioParcelas.AddMonths(i);
+                        var vencimentoParcela = CalcularVencimentoFatura(cartao, mesParcela.Year, mesParcela.Month);
+
                         db.LancamentosFinanceiros.Add(new LancamentoFinanceiro
                         {
                             LojaId = lojaId!.Value,
@@ -1449,7 +1454,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                             Modo = "parcelada",
                             Descricao = $"Financiamento fatura {cartao.Nome} ({MESES[mesReferencia.Month - 1]})",
                             Valor = valorParcela,
-                            Vencimento = primeiraParcela.AddMonths(i),
+                            Vencimento = vencimentoParcela,
                             GrupoParcelamentoId = grupoId,
                             NumeroParcela = i + 1,
                             TotalParcelas = parcelas,
