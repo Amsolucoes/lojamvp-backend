@@ -2,6 +2,7 @@ using LojaApi.Models;
 using LojaApi.src.Models;
 using LojaApi.src.Models.Etiquetas;
 using LojaApi.src.Models.Funcionarios;
+using LojaApi.src.Models.OrdemServico;
 using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Data;
@@ -74,6 +75,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AvaliacaoAcessorio> AvaliacoesAcessorio => Set<AvaliacaoAcessorio>();
     public DbSet<AvaliacaoChacara> AvaliacoesChacara => Set<AvaliacaoChacara>();
     public DbSet<ConfiguracaoEtiqueta> ConfiguracoesEtiqueta => Set<ConfiguracaoEtiqueta>();
+    public DbSet<ChecklistCategoria> ChecklistCategorias => Set<ChecklistCategoria>();
+    public DbSet<ChecklistItem> ChecklistItens => Set<ChecklistItem>();
+    public DbSet<OrcamentoServico> OrcamentosServico => Set<OrcamentoServico>();
+    public DbSet<ItemOrcamentoServico> ItensOrcamentoServico => Set<ItemOrcamentoServico>();
+    public DbSet<MecanicoOrcamento> MecanicosOrcamento => Set<MecanicoOrcamento>();
+    public DbSet<ChecklistRespostaItem> ChecklistRespostasItem => Set<ChecklistRespostaItem>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -409,6 +416,38 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<MovimentoCaixa>()
             .HasOne(m => m.OrigemVenda).WithMany()
             .HasForeignKey(m => m.OrigemVendaId).OnDelete(DeleteBehavior.SetNull);
+
+        // ── Ordem de Serviço ────────────────────────────────────────
+        mb.Entity<ChecklistItem>()
+            .HasOne(i => i.Categoria).WithMany(c => c.Itens)
+            .HasForeignKey(i => i.CategoriaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ItemOrcamentoServico>()
+            .HasOne(i => i.Orcamento).WithMany(o => o.Itens)
+            .HasForeignKey(i => i.OrcamentoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ItemOrcamentoServico>()
+            .HasOne(i => i.Produto).WithMany()
+            .HasForeignKey(i => i.ProdutoId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<MecanicoOrcamento>()
+            .HasOne(m => m.Orcamento).WithMany(o => o.Mecanicos)
+            .HasForeignKey(m => m.OrcamentoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<MecanicoOrcamento>()
+            .HasOne(m => m.Profissional).WithMany()
+            .HasForeignKey(m => m.ProfissionalId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<ChecklistRespostaItem>()
+            .HasOne(r => r.Orcamento).WithMany(o => o.ChecklistRespostas)
+            .HasForeignKey(r => r.OrcamentoId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ChecklistRespostaItem>()
+            .HasOne(r => r.ChecklistItem).WithMany()
+            .HasForeignKey(r => r.ChecklistItemId).OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<OrcamentoServico>()
+            .HasIndex(o => new { o.LojaId, o.Status });
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
@@ -817,7 +856,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111105"), Chave = "nf", Nome = "Importação de NF", Valor = 29.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111106"), Chave = "chacara_reservas", Nome = "Reservas (Chácara/Temporada)", Valor = 39.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111107"), Chave = "funcionarios", Nome = "Funcionários (comissão e pagamento)", Valor = 39.90m, DisponivelParaAtivar = true },
-            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111108"), Chave = "cupom_nao_fiscal", Nome = "Cupom não fiscal (impressora térmica)", Valor = 29.90m, DisponivelParaAtivar = true }
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111108"), Chave = "cupom_nao_fiscal", Nome = "Cupom não fiscal (impressora térmica)", Valor = 29.90m, DisponivelParaAtivar = true },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111109"), Chave = "ordem_servico", Nome = "Ordem de Serviço (oficina/auto peças)", Valor = 49.90m, DisponivelParaAtivar = false }
         );
     }
 
