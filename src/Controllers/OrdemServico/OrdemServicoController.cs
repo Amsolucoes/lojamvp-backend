@@ -1,0 +1,407 @@
+﻿using LojaApi.Data;
+using LojaApi.Models;
+using LojaApi.src.Models.Funcionarios;
+using LojaApi.src.Models.OrdemServico;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+
+namespace LojaApi.src.Controllers.OrdemServico;
+
+[ApiController]
+[Route("api/ordemservico")]
+[Authorize]
+public class OrdemServicoController(AppDbContext db) : ControllerBase
+{
+    private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    private async Task<Guid?> GetLojaId()
+    {
+        var vinculo = await db.UsuariosLoja.FirstOrDefaultAsync(ul => ul.UsuarioId == UsuarioId && ul.Ativo);
+        return vinculo?.LojaId;
+    }
+
+    private async Task<Guid> ObterOuCriarCategoriaOSAsync(Guid lojaId)
+    {
+        var categoria = await db.CategoriasFinanceiras
+            .FirstOrDefaultAsync(c => c.LojaId == lojaId && c.Nome == "Ordem de Serviço");
+        if (categoria != null) return categoria.Id;
+
+        categoria = new CategoriaFinanceira
+        {
+            LojaId = lojaId,
+            Nome = "Ordem de Serviço",
+            Tipo = "receber",
+            Icone = "🔧",
+        };
+        db.CategoriasFinanceiras.Add(categoria);
+        await db.SaveChangesAsync();
+        return categoria.Id;
+    }
+
+    // ══════════════ Checklist — categorias e itens ══════════════
+
+    [HttpGet("checklist-categorias")]
+    public async Task<IActionResult> ListarChecklistCategorias()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.ChecklistCategorias
+            .Where(c => c.LojaId == lojaId)
+            .Include(c => c.Itens)
+            .OrderBy(c => c.Ordem)
+            .Select(c => new
+            {
+                c.Id,
+                c.Nome,
+                c.Ordem,
+                c.Ativa,
+                itens = c.Itens.OrderBy(i => i.Ordem).Select(i => new { i.Id, i.Nome, i.Ordem, i.Ativo }),
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    public record SalvarChecklistCategoriaRequest(string Nome, int Ordem, bool Ativa);
+
+    [HttpPost("checklist-categorias")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> CriarChecklistCategoria([FromBody] SalvarChecklistCategoriaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var categoria = new ChecklistCategoria
+        {
+            LojaId = lojaId.Value,
+            Nome = req.Nome.Trim(),
+            Ordem = req.Ordem,
+            Ativa = req.Ativa,
+        };
+        db.ChecklistCategorias.Add(categoria);
+        await db.SaveChangesAsync();
+
+        return Ok(new { categoria.Id, categoria.Nome, categoria.Ordem, categoria.Ativa });
+    }
+
+    public record SalvarChecklistItemRequest(Guid CategoriaId, string Nome, int Ordem, bool Ativo);
+
+    [HttpPost("checklist-itens")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> CriarChecklistItem([FromBody] SalvarChecklistItemRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var categoria = await db.ChecklistCategorias.FirstOrDefaultAsync(c => c.Id == req.CategoriaId && c.LojaId == lojaId);
+        if (categoria is null) return BadRequest(new { erro = "Categoria de checklist não encontrada." });
+
+        var item = new ChecklistItem
+        {
+            LojaId = lojaId!.Value,
+            CategoriaId = categoria.Id,
+            Nome = req.Nome.Trim(),
+            Ordem = req.Ordem,
+            Ativo = req.Ativo,
+        };
+        db.ChecklistItens.Add(item);
+        await db.SaveChangesAsync();
+
+        return Ok(new { item.Id, item.CategoriaId, item.Nome, item.Ordem, item.Ativo });
+    }
+
+    // ══════════════ Orçamento / Ordem de Serviço ══════════════
+
+    [HttpGet("orcamentos")]
+    public async Task<IActionResult> Listar([FromQuery] string? status)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var q = db.OrcamentosServico.Where(o => o.LojaId == lojaId);
+        if (!string.IsNullOrWhiteSpace(status)) q = q.Where(o => o.Status == status);
+
+        var lista = await q
+            .OrderByDescending(o => o.CriadoEm)
+            .Select(o => new
+            {
+                o.Id,
+                o.ClienteId,
+                o.VeiculoDescricao,
+                o.Status,
+                o.ValorTotal,
+                o.CriadoEm,
+                o.AprovadoEm,
+                o.ConcluidoEm,
+                qtdMecanicos = o.Mecanicos.Count,
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    [HttpGet("orcamentos/{id:guid}")]
+    public async Task<IActionResult> Buscar(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var o = await db.OrcamentosServico
+            .Include(x => x.Itens)
+            .Include(x => x.Mecanicos).ThenInclude(m => m.Profissional)
+            .Include(x => x.ChecklistRespostas).ThenInclude(r => r.ChecklistItem)
+            .FirstOrDefaultAsync(x => x.Id == id && x.LojaId == lojaId);
+
+        if (o is null) return NotFound();
+
+        return Ok(new
+        {
+            o.Id,
+            o.ClienteId,
+            o.VeiculoDescricao,
+            o.Status,
+            o.Observacoes,
+            o.ValorTotal,
+            o.CriadoEm,
+            o.AprovadoEm,
+            o.ConcluidoEm,
+            itens = o.Itens.Select(i => new { i.Id, i.Tipo, i.ProdutoId, i.Descricao, i.Quantidade, i.ValorUnitario, i.ValorTotal }),
+            mecanicos = o.Mecanicos.Select(m => new { m.Id, m.ProfissionalId, NomeProfissional = m.Profissional!.Nome, m.ComissaoPercentual }),
+            checklist = o.ChecklistRespostas.Select(r => new { r.Id, r.ChecklistItemId, NomeItem = r.ChecklistItem!.Nome, r.Estado, r.Observacao }),
+        });
+    }
+
+    public record ItemOrcamentoRequest(string Tipo, Guid? ProdutoId, string Descricao, int Quantidade, decimal ValorUnitario);
+    public record MecanicoOrcamentoRequest(Guid ProfissionalId, decimal ComissaoPercentual);
+    public record ChecklistRespostaRequest(Guid ChecklistItemId, string Estado, string? Observacao);
+
+    public record CriarOrcamentoRequest(
+        Guid ClienteId,
+        string? VeiculoDescricao,
+        string? Observacoes,
+        List<ItemOrcamentoRequest> Itens,
+        List<MecanicoOrcamentoRequest> Mecanicos,
+        List<ChecklistRespostaRequest>? ChecklistRespostas
+    );
+
+    [HttpPost("orcamentos")]
+    public async Task<IActionResult> Criar([FromBody] CriarOrcamentoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        if (req.Itens is null || req.Itens.Count == 0)
+            return BadRequest(new { erro = "O orçamento precisa ter ao menos um item." });
+
+        var cliente = await db.Clientes.FindAsync(req.ClienteId);
+        if (cliente is null) return BadRequest(new { erro = "Cliente não encontrado." });
+
+        var orcamento = new OrcamentoServico
+        {
+            LojaId = lojaId.Value,
+            ClienteId = req.ClienteId,
+            VeiculoDescricao = req.VeiculoDescricao,
+            Observacoes = req.Observacoes,
+            Status = "pendente",
+        };
+
+        decimal valorTotal = 0;
+        foreach (var i in req.Itens)
+        {
+            if (i.Tipo != "peca" && i.Tipo != "servico")
+                return BadRequest(new { erro = "Tipo de item inválido — use 'peca' ou 'servico'." });
+
+            var subtotal = i.Quantidade * i.ValorUnitario;
+            valorTotal += subtotal;
+
+            orcamento.Itens.Add(new ItemOrcamentoServico
+            {
+                LojaId = lojaId.Value,
+                Tipo = i.Tipo,
+                ProdutoId = i.ProdutoId,
+                Descricao = i.Descricao.Trim(),
+                Quantidade = i.Quantidade,
+                ValorUnitario = i.ValorUnitario,
+                ValorTotal = subtotal,
+            });
+        }
+        orcamento.ValorTotal = valorTotal;
+
+        if (req.Mecanicos != null)
+        {
+            foreach (var m in req.Mecanicos)
+            {
+                var profissional = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == m.ProfissionalId && p.LojaId == lojaId);
+                if (profissional is null) return BadRequest(new { erro = "Mecânico/profissional não encontrado." });
+
+                orcamento.Mecanicos.Add(new MecanicoOrcamento
+                {
+                    LojaId = lojaId.Value,
+                    ProfissionalId = profissional.Id,
+                    ComissaoPercentual = m.ComissaoPercentual > 0 ? m.ComissaoPercentual : (profissional.ComissaoPadraoPercentual ?? 0),
+                });
+            }
+        }
+
+        if (req.ChecklistRespostas != null)
+        {
+            foreach (var r in req.ChecklistRespostas)
+            {
+                orcamento.ChecklistRespostas.Add(new ChecklistRespostaItem
+                {
+                    LojaId = lojaId.Value,
+                    ChecklistItemId = r.ChecklistItemId,
+                    Estado = r.Estado,
+                    Observacao = r.Observacao,
+                });
+            }
+        }
+
+        db.OrcamentosServico.Add(orcamento);
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.Status, orcamento.ValorTotal });
+    }
+
+    // ── Aprovar (pendente → em_andamento) ──────────────────────────
+    [HttpPatch("orcamentos/{id:guid}/aprovar")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Aprovar(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico.FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status != "pendente")
+            return BadRequest(new { erro = "Só é possível aprovar um orçamento pendente." });
+
+        orcamento.Status = "em_andamento";
+        orcamento.AprovadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.Status });
+    }
+
+    // ── Reprovar / Cancelar ─────────────────────────────────────────
+    [HttpPatch("orcamentos/{id:guid}/cancelar")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Cancelar(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico.FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status == "concluido")
+            return BadRequest(new { erro = "Não é possível cancelar uma ordem já concluída." });
+
+        orcamento.Status = "cancelado";
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.Status });
+    }
+
+    // ── Concluir: gera Financeiro (a receber) + comissão por mecânico + baixa estoque ──
+    public record ConcluirOrcamentoRequest(Guid ContaBancariaId, DateTime? Vencimento);
+
+    [HttpPatch("orcamentos/{id:guid}/concluir")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Concluir(Guid id, [FromBody] ConcluirOrcamentoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico
+            .Include(o => o.Itens)
+            .Include(o => o.Mecanicos)
+            .FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status != "em_andamento")
+            return BadRequest(new { erro = "Só é possível concluir uma ordem em andamento (aprovada)." });
+
+        var conta = await db.ContasBancarias.FirstOrDefaultAsync(c => c.Id == req.ContaBancariaId && c.LojaId == lojaId);
+        if (conta is null) return BadRequest(new { erro = "Conta bancária não encontrada." });
+
+        // ── Valida e baixa estoque das peças que vieram do estoque ──
+        foreach (var item in orcamento.Itens.Where(i => i.Tipo == "peca" && i.ProdutoId.HasValue))
+        {
+            var produto = await db.Produtos.FindAsync(item.ProdutoId!.Value);
+            if (produto is null) return BadRequest(new { erro = $"Produto do item '{item.Descricao}' não encontrado." });
+            if (produto.Estoque < item.Quantidade)
+                return BadRequest(new { erro = $"Estoque insuficiente para '{produto.Nome}' — disponível: {produto.Estoque}." });
+        }
+
+        foreach (var item in orcamento.Itens.Where(i => i.Tipo == "peca" && i.ProdutoId.HasValue))
+        {
+            var produto = await db.Produtos.FindAsync(item.ProdutoId!.Value);
+            produto!.Estoque -= item.Quantidade;
+            produto.AtualizadoEm = DateTime.UtcNow;
+
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = produto.Id,
+                Tipo = "saida",
+                Quantidade = item.Quantidade,
+                Observacao = $"Ordem de Serviço #{orcamento.Id.ToString()[..8]} - {item.Descricao}",
+                LojaId = lojaId,
+            });
+        }
+
+        // ── Gera o lançamento a receber no Financeiro ──
+        var categoriaId = await ObterOuCriarCategoriaOSAsync(lojaId!.Value);
+        var lancamento = new LancamentoFinanceiro
+        {
+            LojaId = lojaId.Value,
+            ContaBancariaId = conta.Id,
+            Tipo = "receber",
+            Modo = "avulsa",
+            Descricao = $"Ordem de Serviço — {orcamento.VeiculoDescricao ?? orcamento.Id.ToString()[..8]}",
+            CategoriaId = categoriaId,
+            Valor = orcamento.ValorTotal,
+            Vencimento = req.Vencimento ?? DateTime.UtcNow,
+        };
+        db.LancamentosFinanceiros.Add(lancamento);
+        await db.SaveChangesAsync();
+
+        orcamento.LancamentoFinanceiroId = lancamento.Id;
+
+        // ── Gera a comissão de cada mecânico vinculado ──
+        foreach (var mecanico in orcamento.Mecanicos)
+        {
+            if (mecanico.ComissaoPercentual <= 0) continue;
+
+            var valorComissao = Math.Round(orcamento.ValorTotal * (mecanico.ComissaoPercentual / 100m), 2);
+            db.ComissoesFuncionario.Add(new ComissaoFuncionario
+            {
+                LojaId = lojaId.Value,
+                ProfissionalId = mecanico.ProfissionalId,
+                OrigemTipo = "ordem_servico",
+                OrigemId = orcamento.Id,
+                ValorServico = orcamento.ValorTotal,
+                ComissaoPercentual = mecanico.ComissaoPercentual,
+                ValorComissao = valorComissao,
+            });
+        }
+
+        orcamento.Status = "concluido";
+        orcamento.ConcluidoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.Status, orcamento.LancamentoFinanceiroId });
+    }
+
+    // ── Excluir (só se ainda pendente) ─────────────────────────────
+    [HttpDelete("orcamentos/{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Excluir(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico.FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status != "pendente")
+            return BadRequest(new { erro = "Só é possível excluir um orçamento ainda pendente. Cancele em vez de excluir." });
+
+        db.OrcamentosServico.Remove(orcamento);
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Orçamento excluído." });
+    }
+}
