@@ -1,5 +1,6 @@
 ﻿using LojaApi.Data;
 using LojaApi.src.Models;
+using LojaApi.src.Models.Funcionarios;
 using LojaApi.src.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

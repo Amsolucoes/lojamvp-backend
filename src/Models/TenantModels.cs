@@ -1,4 +1,5 @@
 using LojaApi.src.Models;
+using LojaApi.src.Models.Funcionarios;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

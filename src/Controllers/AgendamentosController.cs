@@ -1,6 +1,6 @@
 ﻿using LojaApi.Data;
 using LojaApi.Models;
-using LojaApi.src.Models;
+using LojaApi.src.Models.Funcionarios;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -235,7 +235,7 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         // (só na primeira vez que vira "concluido", pra não duplicar se reabrir/reconcluir)
         if (req.Status == "concluido" && statusAnterior != "concluido" && ag.ProfissionalId.HasValue)
         {
-            var jaTemComissao = await db.ComissoesFuncionario.AnyAsync(c => c.AgendamentoId == ag.Id);
+            var jaTemComissao = await db.ComissoesFuncionario.AnyAsync(c => c.OrigemTipo == "agendamento" && c.OrigemId == ag.Id);
             if (!jaTemComissao)
             {
                 var profissional = await db.Profissionais.FindAsync(ag.ProfissionalId.Value);
@@ -254,6 +254,8 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
                         {
                             LojaId = lojaId!.Value,
                             ProfissionalId = profissional.Id,
+                            OrigemTipo = "agendamento",
+                            OrigemId = ag.Id,
                             AgendamentoId = ag.Id,
                             ValorServico = ag.Preco,
                             ComissaoPercentual = percentual.Value,

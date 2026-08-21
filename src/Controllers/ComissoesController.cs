@@ -1,6 +1,6 @@
 ﻿using LojaApi.Data;
 using LojaApi.Models;
-using LojaApi.src.Models;
+using LojaApi.src.Models.Funcionarios;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

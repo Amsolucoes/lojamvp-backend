@@ -1,6 +1,7 @@
 using LojaApi.Models;
 using LojaApi.src.Models;
 using LojaApi.src.Models.Etiquetas;
+using LojaApi.src.Models.Funcionarios;
 using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Data;
@@ -370,7 +371,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<ComissaoFuncionario>()
             .HasOne(c => c.Agendamento).WithMany()
-            .HasForeignKey(c => c.AgendamentoId).OnDelete(DeleteBehavior.Cascade);
+            .HasForeignKey(c => c.AgendamentoId)
+            .IsRequired(false)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ComissaoFuncionario>()
+            .HasIndex(c => new { c.OrigemTipo, c.OrigemId });
 
         mb.Entity<FechamentoComissao>()
             .HasOne(f => f.Profissional).WithMany()
