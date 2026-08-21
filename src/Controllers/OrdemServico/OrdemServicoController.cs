@@ -185,13 +185,18 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
     // ══════════════ Orçamento / Ordem de Serviço ══════════════
 
     [HttpGet("orcamentos")]
-    public async Task<IActionResult> Listar([FromQuery] string? status)
+    public async Task<IActionResult> Listar([FromQuery] string? status, [FromQuery] string? placa)
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
         var q = db.OrcamentosServico.Where(o => o.LojaId == lojaId);
         if (!string.IsNullOrWhiteSpace(status)) q = q.Where(o => o.Status == status);
+        if (!string.IsNullOrWhiteSpace(placa))
+        {
+            var placaBusca = placa.Trim().ToUpperInvariant();
+            q = q.Where(o => o.Placa != null && o.Placa.Contains(placaBusca));
+        }
 
         var lista = await q
             .OrderByDescending(o => o.CriadoEm)
@@ -200,6 +205,7 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
                 o.Id,
                 o.ClienteId,
                 o.VeiculoDescricao,
+                o.Placa,
                 o.Status,
                 o.ValorTotal,
                 o.CriadoEm,
@@ -229,6 +235,7 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
             o.Id,
             o.ClienteId,
             o.VeiculoDescricao,
+            o.Placa,
             o.Status,
             o.Observacoes,
             o.ValorTotal,
@@ -248,6 +255,7 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
     public record CriarOrcamentoRequest(
         Guid ClienteId,
         string? VeiculoDescricao,
+        string? Placa,
         string? Observacoes,
         List<ItemOrcamentoRequest> Itens,
         List<MecanicoOrcamentoRequest> Mecanicos,
@@ -271,6 +279,7 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
             LojaId = lojaId.Value,
             ClienteId = req.ClienteId,
             VeiculoDescricao = req.VeiculoDescricao,
+            Placa = string.IsNullOrWhiteSpace(req.Placa) ? null : req.Placa.Trim().ToUpperInvariant(),
             Observacoes = req.Observacoes,
             Status = "pendente",
         };

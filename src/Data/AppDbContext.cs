@@ -449,6 +449,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<OrcamentoServico>()
             .HasIndex(o => new { o.LojaId, o.Status });
 
+        mb.Entity<OrcamentoServico>()
+            .HasIndex(o => new { o.LojaId, o.Placa });
+
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
         {

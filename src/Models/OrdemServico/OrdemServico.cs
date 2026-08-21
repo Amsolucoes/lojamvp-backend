@@ -47,7 +47,10 @@ public class OrcamentoServico
     public Guid ClienteId { get; set; }
 
     [MaxLength(200)]
-    public string? VeiculoDescricao { get; set; } // ex: "Gol 2015 - placa ABC1D23"
+    public string? VeiculoDescricao { get; set; } // ex: "Gol 2015"
+
+    [MaxLength(10)]
+    public string? Placa { get; set; } // ex: "ABC1D23" — campo próprio pra permitir busca
 
     [MaxLength(20)]
     public string Status { get; set; } = "pendente"; // pendente | aprovado | reprovado | em_andamento | concluido | cancelado
