@@ -87,6 +87,40 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
         return Ok(new { categoria.Id, categoria.Nome, categoria.Ordem, categoria.Ativa });
     }
 
+    [HttpPut("checklist-categorias/{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarChecklistCategoria(Guid id, [FromBody] SalvarChecklistCategoriaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var categoria = await db.ChecklistCategorias.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (categoria is null) return NotFound();
+
+        categoria.Nome = req.Nome.Trim();
+        categoria.Ordem = req.Ordem;
+        categoria.Ativa = req.Ativa;
+        await db.SaveChangesAsync();
+
+        return Ok(new { categoria.Id, categoria.Nome, categoria.Ordem, categoria.Ativa });
+    }
+
+    [HttpDelete("checklist-categorias/{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> ExcluirChecklistCategoria(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var categoria = await db.ChecklistCategorias.Include(c => c.Itens).FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
+        if (categoria is null) return NotFound();
+
+        var itemIds = categoria.Itens.Select(i => i.Id).ToList();
+        var emUso = await db.ChecklistRespostasItem.AnyAsync(r => itemIds.Contains(r.ChecklistItemId));
+        if (emUso)
+            return BadRequest(new { erro = "Não é possível excluir: esta categoria tem itens já usados em orçamentos. Desative os itens em vez de excluir." });
+
+        db.ChecklistCategorias.Remove(categoria); // cascade remove os itens junto
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Categoria excluída." });
+    }
+
     public record SalvarChecklistItemRequest(Guid CategoriaId, string Nome, int Ordem, bool Ativo);
 
     [HttpPost("checklist-itens")]
@@ -109,6 +143,43 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { item.Id, item.CategoriaId, item.Nome, item.Ordem, item.Ativo });
+    }
+
+    [HttpPut("checklist-itens/{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarChecklistItem(Guid id, [FromBody] SalvarChecklistItemRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var item = await db.ChecklistItens.FirstOrDefaultAsync(i => i.Id == id && i.LojaId == lojaId);
+        if (item is null) return NotFound();
+
+        item.Nome = req.Nome.Trim();
+        item.Ordem = req.Ordem;
+        item.Ativo = req.Ativo;
+        await db.SaveChangesAsync();
+
+        return Ok(new { item.Id, item.CategoriaId, item.Nome, item.Ordem, item.Ativo });
+    }
+
+    [HttpDelete("checklist-itens/{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> ExcluirChecklistItem(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var item = await db.ChecklistItens.FirstOrDefaultAsync(i => i.Id == id && i.LojaId == lojaId);
+        if (item is null) return NotFound();
+
+        var emUso = await db.ChecklistRespostasItem.AnyAsync(r => r.ChecklistItemId == id);
+        if (emUso)
+        {
+            item.Ativo = false;
+            await db.SaveChangesAsync();
+            return Ok(new { mensagem = "Item em uso em orçamentos — foi desativado em vez de excluído." });
+        }
+
+        db.ChecklistItens.Remove(item);
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Item excluído." });
     }
 
     // ══════════════ Orçamento / Ordem de Serviço ══════════════
