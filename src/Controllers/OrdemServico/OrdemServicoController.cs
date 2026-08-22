@@ -520,7 +520,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
             var produto = await db.Produtos.FindAsync(item.ProdutoId!.Value);
             if (produto is null) return BadRequest(new { erro = $"Produto do item '{item.Descricao}' não encontrado." });
             if (produto.Estoque < item.Quantidade)
-                return BadRequest(new { erro = $"Estoque insuficiente para '{produto.Nome}' — disponível: {produto.Estoque}." });
+                return BadRequest(new { erro = $"Estoque insuficiente para '{produto.Nome}' — disponível: {produto.Estoque:0.###}." });
         }
 
         foreach (var item in orcamento.Itens.Where(i => i.Tipo == "peca" && i.ProdutoId.HasValue))
