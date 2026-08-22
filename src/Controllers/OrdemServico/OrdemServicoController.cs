@@ -541,6 +541,9 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
 
         // ── Gera o lançamento a receber no Financeiro ──
         var categoriaId = await ObterOuCriarCategoriaOSAsync(lojaId!.Value);
+        var vencimento = req.Vencimento.HasValue
+            ? DateTime.SpecifyKind(req.Vencimento.Value.Date, DateTimeKind.Utc).AddHours(12)
+            : DateTime.UtcNow;
         var lancamento = new LancamentoFinanceiro
         {
             LojaId = lojaId.Value,
@@ -550,7 +553,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
             Descricao = $"Ordem de Serviço — {orcamento.VeiculoDescricao ?? orcamento.Id.ToString()[..8]}",
             CategoriaId = categoriaId,
             Valor = orcamento.ValorTotal,
-            Vencimento = req.Vencimento ?? DateTime.UtcNow,
+            Vencimento = vencimento,
         };
         db.LancamentosFinanceiros.Add(lancamento);
 
