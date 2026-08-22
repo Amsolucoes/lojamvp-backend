@@ -553,7 +553,6 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
             Vencimento = req.Vencimento ?? DateTime.UtcNow,
         };
         db.LancamentosFinanceiros.Add(lancamento);
-        await db.SaveChangesAsync();
 
         orcamento.LancamentoFinanceiroId = lancamento.Id;
 
@@ -577,6 +576,9 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
 
         orcamento.Status = "concluido";
         orcamento.ConcluidoEm = DateTime.UtcNow;
+
+        // Uma única gravação no final — ou tudo (baixa de estoque + financeiro + comissão
+        // + status) é salvo junto, ou nada é, evitando ficar com efeito parcial se algo falhar no meio.
         await db.SaveChangesAsync();
 
         return Ok(new { orcamento.Id, orcamento.Status, orcamento.LancamentoFinanceiroId });
