@@ -343,6 +343,99 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         return Ok(new { orcamento.Id, orcamento.Status, orcamento.ValorTotal });
     }
 
+    // ── Editar (só pendente ou em_andamento — antes de concluir) ────
+    [HttpPut("orcamentos/{id:guid}")]
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] CriarOrcamentoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico
+            .Include(o => o.Itens)
+            .Include(o => o.Mecanicos)
+            .Include(o => o.ChecklistRespostas)
+            .FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status != "pendente" && orcamento.Status != "em_andamento")
+            return BadRequest(new { erro = "Só é possível editar uma ordem pendente ou em andamento. Ordens concluídas já geraram financeiro, comissão e baixa de estoque." });
+
+        if (req.Itens is null || req.Itens.Count == 0)
+            return BadRequest(new { erro = "O orçamento precisa ter ao menos um item." });
+
+        var cliente = await db.Clientes.FindAsync(req.ClienteId);
+        if (cliente is null) return BadRequest(new { erro = "Cliente não encontrado." });
+
+        orcamento.ClienteId = req.ClienteId;
+        orcamento.VeiculoDescricao = req.VeiculoDescricao;
+        orcamento.Placa = string.IsNullOrWhiteSpace(req.Placa) ? null : req.Placa.Trim().ToUpperInvariant();
+        orcamento.Observacoes = req.Observacoes;
+
+        // Remove itens/mecânicos/checklist antigos e recria do zero — seguro aqui
+        // porque a ordem ainda não gerou nenhum efeito colateral (estoque/financeiro/comissão)
+        db.ItensOrcamentoServico.RemoveRange(orcamento.Itens);
+        db.MecanicosOrcamento.RemoveRange(orcamento.Mecanicos);
+        db.ChecklistRespostasItem.RemoveRange(orcamento.ChecklistRespostas);
+
+        decimal valorTotal = 0;
+        foreach (var i in req.Itens)
+        {
+            if (i.Tipo != "peca" && i.Tipo != "servico")
+                return BadRequest(new { erro = "Tipo de item inválido — use 'peca' ou 'servico'." });
+
+            var subtotal = i.Quantidade * i.ValorUnitario;
+            valorTotal += subtotal;
+
+            db.ItensOrcamentoServico.Add(new ItemOrcamentoServico
+            {
+                LojaId = lojaId!.Value,
+                OrcamentoId = orcamento.Id,
+                Tipo = i.Tipo,
+                ProdutoId = i.ProdutoId,
+                Descricao = i.Descricao.Trim(),
+                Quantidade = i.Quantidade,
+                ValorUnitario = i.ValorUnitario,
+                ValorTotal = subtotal,
+            });
+        }
+        orcamento.ValorTotal = valorTotal;
+
+        if (req.Mecanicos != null)
+        {
+            foreach (var m in req.Mecanicos)
+            {
+                var profissional = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == m.ProfissionalId && p.LojaId == lojaId);
+                if (profissional is null) return BadRequest(new { erro = "Mecânico/profissional não encontrado." });
+
+                db.MecanicosOrcamento.Add(new MecanicoOrcamento
+                {
+                    LojaId = lojaId.Value,
+                    OrcamentoId = orcamento.Id,
+                    ProfissionalId = profissional.Id,
+                    ComissaoPercentual = m.ComissaoPercentual > 0 ? m.ComissaoPercentual : (profissional.ComissaoPadraoPercentual ?? 0),
+                });
+            }
+        }
+
+        if (req.ChecklistRespostas != null)
+        {
+            foreach (var r in req.ChecklistRespostas)
+            {
+                db.ChecklistRespostasItem.Add(new ChecklistRespostaItem
+                {
+                    LojaId = lojaId.Value,
+                    OrcamentoId = orcamento.Id,
+                    ChecklistItemId = r.ChecklistItemId,
+                    Estado = r.Estado,
+                    Observacao = r.Observacao,
+                });
+            }
+        }
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.Status, orcamento.ValorTotal });
+    }
+
     // ── Aprovar (pendente → em_andamento) ──────────────────────────
     [HttpPatch("orcamentos/{id:guid}/aprovar")]
     [Authorize(Roles = "admin,superadmin")]
