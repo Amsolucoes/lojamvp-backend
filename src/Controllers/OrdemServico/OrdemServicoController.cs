@@ -380,6 +380,26 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         return Ok(new { orcamento.Id, orcamento.Status });
     }
 
+    // ── Reabrir uma ordem cancelada — volta pra "em andamento" ─────
+    [HttpPatch("orcamentos/{id:guid}/reabrir")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Reabrir(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico.FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status != "cancelado")
+            return BadRequest(new { erro = "Só é possível reabrir uma ordem cancelada." });
+
+        // Volta direto pra em_andamento — ela já tinha sido aprovada antes de ser cancelada,
+        // então não faz sentido pedir aprovação de novo.
+        orcamento.Status = "em_andamento";
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.Status });
+    }
+
     // ── Concluir: gera Financeiro (a receber) + comissão por mecânico + baixa estoque ──
     public record ConcluirOrcamentoRequest(Guid ContaBancariaId, DateTime? Vencimento);
 
