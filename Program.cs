@@ -48,6 +48,7 @@ internal class Program
         builder.Services.AddScoped<ComunicadoEmailService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
         builder.Services.AddScoped<ReservaChacaraNotificacaoService>();
+        builder.Services.AddScoped<OrdemServicoNotificacaoService>();
 
         // ── Controllers + Swagger ─────────────────────────────────────────
         builder.Services.AddControllers();

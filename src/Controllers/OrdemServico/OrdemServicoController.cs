@@ -2,6 +2,7 @@
 using LojaApi.Models;
 using LojaApi.src.Models.Funcionarios;
 using LojaApi.src.Models.OrdemServico;
+using LojaApi.src.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,7 @@ namespace LojaApi.src.Controllers.OrdemServico;
 [ApiController]
 [Route("api/ordemservico")]
 [Authorize]
-public class OrdemServicoController(AppDbContext db) : ControllerBase
+public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoService notificacao) : ControllerBase
 {
     private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -466,6 +467,20 @@ public class OrdemServicoController(AppDbContext db) : ControllerBase
         await db.SaveChangesAsync();
 
         return Ok(new { orcamento.Id, orcamento.Status, orcamento.LancamentoFinanceiroId });
+    }
+
+    // ── Enviar orçamento por e-mail pro cliente ────────────────────
+    [HttpPost("orcamentos/{id:guid}/enviar-email")]
+    public async Task<IActionResult> EnviarEmail(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var resultado = await notificacao.EnviarPorEmailAsync(id, lojaId.Value);
+        if (!resultado.Enviado)
+            return BadRequest(new { erro = resultado.Erro });
+
+        return Ok(new { mensagem = "Orçamento enviado por e-mail." });
     }
 
     // ── Excluir (só se ainda pendente) ─────────────────────────────
