@@ -102,7 +102,9 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         {
             LojaId = lojaId.Value,
             Nome = req.Nome.Trim(),
-            ComissaoPadraoPercentual = req.TipoRemuneracao == "comissao" ? req.ComissaoPadraoPercentual : null,
+            // Não zera mais em salario_fixo — um funcionário pode ter salário fixo E ainda
+            // ganhar comissão em cima de Ordem de Serviço/Agendamento (ex: Anderson).
+            ComissaoPadraoPercentual = req.ComissaoPadraoPercentual,
             DiaPagamentoPadrao = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao : null,
             Ativo = req.Ativo,
             TipoRemuneracao = req.TipoRemuneracao,
@@ -170,7 +172,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         var tipoAnterior = profissional.TipoRemuneracao;
 
         profissional.Nome = req.Nome.Trim();
-        profissional.ComissaoPadraoPercentual = req.TipoRemuneracao == "comissao" ? req.ComissaoPadraoPercentual : null;
+        profissional.ComissaoPadraoPercentual = req.ComissaoPadraoPercentual;
         profissional.DiaPagamentoPadrao = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao : null;
         profissional.Ativo = req.Ativo;
         profissional.TipoRemuneracao = req.TipoRemuneracao;
