@@ -24,6 +24,12 @@ public class Profissional
     [Column(TypeName = "decimal(10,2)")]
     public decimal? SalarioFixo { get; set; }
 
+    // Base de cálculo da comissão em Ordem de Serviço: "total" (peça+serviço, comportamento
+    // padrão) ou "servico" (só mão de obra, ignora peça). Não afeta comissão de Agendamento,
+    // que já é só sobre o preço do serviço em si.
+    [MaxLength(20)]
+    public string ComissaoBaseCalculo { get; set; } = "total";
+
     [MaxLength(20)]
     public string? Telefone { get; set; }
 

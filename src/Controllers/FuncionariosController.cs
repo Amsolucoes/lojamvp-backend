@@ -63,6 +63,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
                 p.Telefone,
                 p.Cep,
                 p.Endereco,
+                p.ComissaoBaseCalculo,
                 comissoesPorServico = p.ComissoesPorServico.Select(c => new { c.Id, c.ServicoId, c.ComissaoPercentual }),
             })
             .ToListAsync();
@@ -80,7 +81,8 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         Guid? ContaBancariaId = null,
         string? Telefone = null,
         string? Cep = null,
-        string? Endereco = null
+        string? Endereco = null,
+        string ComissaoBaseCalculo = "total"
     );
 
     [HttpPost]
@@ -108,6 +110,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             Telefone = req.Telefone,
             Cep = req.Cep,
             Endereco = req.Endereco,
+            ComissaoBaseCalculo = req.ComissaoBaseCalculo == "servico" ? "servico" : "total",
         };
         db.Profissionais.Add(profissional);
         await db.SaveChangesAsync();
@@ -149,6 +152,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.Telefone,
             profissional.Cep,
             profissional.Endereco,
+            profissional.ComissaoBaseCalculo,
         });
     }
 
@@ -174,6 +178,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         profissional.Telefone = req.Telefone;
         profissional.Cep = req.Cep;
         profissional.Endereco = req.Endereco;
+        profissional.ComissaoBaseCalculo = req.ComissaoBaseCalculo == "servico" ? "servico" : "total";
 
         // Saiu do salário fixo — desativa o lançamento fixo antigo, se existir
         if (tipoAnterior == "salario_fixo" && req.TipoRemuneracao != "salario_fixo" && profissional.LancamentoFixoId.HasValue)
@@ -239,6 +244,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.Telefone,
             profissional.Cep,
             profissional.Endereco,
+            profissional.ComissaoBaseCalculo,
         });
     }
 

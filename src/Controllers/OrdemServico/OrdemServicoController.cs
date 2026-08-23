@@ -503,7 +503,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         var lojaId = await GetLojaId();
         var orcamento = await db.OrcamentosServico
             .Include(o => o.Itens)
-            .Include(o => o.Mecanicos)
+            .Include(o => o.Mecanicos).ThenInclude(m => m.Profissional)
             .FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
 
         if (orcamento is null) return NotFound();
@@ -560,18 +560,26 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         orcamento.LancamentoFinanceiroId = lancamento.Id;
 
         // ── Gera a comissão de cada mecânico vinculado ──
+        // Base de cálculo depende do cadastro do funcionário: "total" (peça+serviço) ou
+        // "servico" (só mão de obra — ignora o valor das peças usadas na ordem).
+        var valorSomenteServicos = orcamento.Itens.Where(i => i.Tipo == "servico").Sum(i => i.ValorTotal);
+
         foreach (var mecanico in orcamento.Mecanicos)
         {
             if (mecanico.ComissaoPercentual <= 0) continue;
 
-            var valorComissao = Math.Round(orcamento.ValorTotal * (mecanico.ComissaoPercentual / 100m), 2);
+            var baseCalculo = mecanico.Profissional?.ComissaoBaseCalculo == "servico"
+                ? valorSomenteServicos
+                : orcamento.ValorTotal;
+
+            var valorComissao = Math.Round(baseCalculo * (mecanico.ComissaoPercentual / 100m), 2);
             db.ComissoesFuncionario.Add(new ComissaoFuncionario
             {
                 LojaId = lojaId.Value,
                 ProfissionalId = mecanico.ProfissionalId,
                 OrigemTipo = "ordem_servico",
                 OrigemId = orcamento.Id,
-                ValorServico = orcamento.ValorTotal,
+                ValorServico = baseCalculo,
                 ComissaoPercentual = mecanico.ComissaoPercentual,
                 ValorComissao = valorComissao,
             });
