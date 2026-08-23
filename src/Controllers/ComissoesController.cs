@@ -1,6 +1,7 @@
 ﻿using LojaApi.Data;
 using LojaApi.Models;
 using LojaApi.src.Models.Funcionarios;
+using LojaApi.src.Models.OrdemServico;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -61,27 +62,65 @@ public class ComissoesController(AppDbContext db) : ControllerBase
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
-        var lista = await db.ComissoesFuncionario
+        var comissoes = await db.ComissoesFuncionario
             .Where(c => c.LojaId == lojaId && c.ProfissionalId == profissionalId && c.Status == status)
             .Include(c => c.Agendamento)
             .OrderByDescending(c => c.CriadoEm)
-            .Select(c => new
-            {
-                c.Id,
-                c.ValorServico,
-                c.ComissaoPercentual,
-                c.ValorComissao,
-                c.Status,
-                c.PagoEm,
-                c.CriadoEm,
-                nomeServico = c.Agendamento != null ? c.Agendamento.NomeServico : null,
-                nomeCliente = c.Agendamento != null ? c.Agendamento.NomeCliente : null,
-                dataAtendimento = c.Agendamento != null ? c.Agendamento.DataHora : (DateTime?)null,
-            })
             .ToListAsync();
+
+        // Resolve nome/cliente/data para as comissões de Ordem de Serviço, cujo Agendamento é
+        // sempre null — busca em lote pra não fazer 1 query por comissão.
+        var orcamentoIds = comissoes
+            .Where(c => c.OrigemTipo == "ordem_servico")
+            .Select(c => c.OrigemId)
+            .Distinct()
+            .ToList();
+
+        var orcamentos = orcamentoIds.Count == 0
+            ? new List<OrcamentoServico>()
+            : await db.OrcamentosServico.Where(o => orcamentoIds.Contains(o.Id)).ToListAsync();
+
+        var clienteIds = orcamentos.Select(o => o.ClienteId).Distinct().ToList();
+        var clientes = clienteIds.Count == 0
+            ? new List<Cliente>()
+            : await db.Clientes.Where(cl => clienteIds.Contains(cl.Id)).ToListAsync();
+
+        var lista = comissoes.Select(c =>
+        {
+            if (c.OrigemTipo == "ordem_servico")
+            {
+                var orcamento = orcamentos.FirstOrDefault(o => o.Id == c.OrigemId);
+                var cliente = orcamento != null ? clientes.FirstOrDefault(cl => cl.Id == orcamento.ClienteId) : null;
+                var veiculo = orcamento != null
+                    ? string.Join(" · ", new[] { orcamento.VeiculoDescricao, orcamento.Placa }.Where(s => !string.IsNullOrWhiteSpace(s)))
+                    : null;
+
+                string? nomeServicoOs = string.IsNullOrEmpty(veiculo) ? "Ordem de Serviço" : $"Ordem de Serviço — {veiculo}";
+
+                return new ComissaoDetalheDto(
+                    c.Id, c.ValorServico, c.ComissaoPercentual, c.ValorComissao,
+                    c.Status, c.PagoEm, c.CriadoEm,
+                    nomeServicoOs, cliente?.Nome, orcamento?.ConcluidoEm
+                );
+            }
+
+            return new ComissaoDetalheDto(
+                c.Id, c.ValorServico, c.ComissaoPercentual, c.ValorComissao,
+                c.Status, c.PagoEm, c.CriadoEm,
+                c.Agendamento != null ? c.Agendamento.NomeServico : null,
+                c.Agendamento != null ? c.Agendamento.NomeCliente : null,
+                c.Agendamento != null ? c.Agendamento.DataHora : (DateTime?)null
+            );
+        }).ToList();
 
         return Ok(lista);
     }
+
+    public record ComissaoDetalheDto(
+        Guid Id, decimal ValorServico, decimal ComissaoPercentual, decimal ValorComissao,
+        string Status, DateTime? PagoEm, DateTime CriadoEm,
+        string? NomeServico, string? NomeCliente, DateTime? DataAtendimento
+    );
 
     // ── Fechar e pagar as comissões pendentes de um profissional num período ──
     public record FecharComissaoRequest(Guid ProfissionalId, DateTime PeriodoInicio, DateTime PeriodoFim, Guid? ContaBancariaId, DateTime? Vencimento);
