@@ -473,6 +473,76 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         return Ok(new { orcamento.Id, orcamento.Status });
     }
 
+    // ── Desfazer conclusão — reverte estoque, financeiro e comissão ──
+    [HttpPatch("orcamentos/{id:guid}/desfazer-conclusao")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> DesfazerConclusao(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico
+            .Include(o => o.Itens)
+            .FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status != "concluido")
+            return BadRequest(new { erro = "Só é possível desfazer uma ordem concluída." });
+
+        // Trava de segurança: se o lançamento financeiro já foi pago, ou alguma comissão
+        // já foi paga, não desfaz sozinho — o dinheiro pode já ter saído/entrado de verdade.
+        if (orcamento.LancamentoFinanceiroId.HasValue)
+        {
+            var lancamento = await db.LancamentosFinanceiros.FindAsync(orcamento.LancamentoFinanceiroId.Value);
+            if (lancamento != null && lancamento.Status == "pago")
+                return BadRequest(new { erro = "O lançamento financeiro desta ordem já foi marcado como pago. Reverta o pagamento no Financeiro antes de desfazer a conclusão." });
+        }
+
+        var comissoes = await db.ComissoesFuncionario
+            .Where(c => c.OrigemTipo == "ordem_servico" && c.OrigemId == orcamento.Id)
+            .ToListAsync();
+
+        if (comissoes.Any(c => c.Status == "pago"))
+            return BadRequest(new { erro = "Uma ou mais comissões geradas por esta ordem já foram pagas. Reverta o pagamento em Comissões antes de desfazer a conclusão." });
+
+        // 1) Repõe o estoque das peças que vieram do estoque
+        foreach (var item in orcamento.Itens.Where(i => i.Tipo == "peca" && i.ProdutoId.HasValue))
+        {
+            var produto = await db.Produtos.FindAsync(item.ProdutoId!.Value);
+            if (produto is null) continue;
+
+            produto.Estoque += item.Quantidade;
+            produto.AtualizadoEm = DateTime.UtcNow;
+
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = produto.Id,
+                Tipo = "entrada",
+                Quantidade = item.Quantidade,
+                Observacao = $"Estorno — desfeita conclusão da Ordem de Serviço #{orcamento.Id.ToString()[..8]} - {item.Descricao}",
+                LojaId = lojaId,
+            });
+        }
+
+        // 2) Remove o lançamento financeiro (ainda pendente, já validado acima)
+        if (orcamento.LancamentoFinanceiroId.HasValue)
+        {
+            var lancamento = await db.LancamentosFinanceiros.FindAsync(orcamento.LancamentoFinanceiroId.Value);
+            if (lancamento != null) db.LancamentosFinanceiros.Remove(lancamento);
+            orcamento.LancamentoFinanceiroId = null;
+        }
+
+        // 3) Remove as comissões geradas (ainda pendentes, já validado acima)
+        db.ComissoesFuncionario.RemoveRange(comissoes);
+
+        // 4) Volta status — fica em_andamento, pronta pra editar e concluir de novo
+        orcamento.Status = "em_andamento";
+        orcamento.ConcluidoEm = null;
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.Status, mensagem = "Conclusão desfeita — estoque, financeiro e comissão foram revertidos." });
+    }
+
     // ── Reabrir uma ordem cancelada — volta pra "em andamento" ─────
     [HttpPatch("orcamentos/{id:guid}/reabrir")]
     [Authorize(Roles = "admin,superadmin")]
