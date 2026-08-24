@@ -29,16 +29,30 @@ public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, ILo
 
         var veiculo = string.Join(" · ", new[] { orcamento.VeiculoDescricao, orcamento.Placa }.Where(s => !string.IsNullOrWhiteSpace(s)));
 
+        var logoHtml = string.IsNullOrWhiteSpace(loja.LogoUrl)
+            ? $"<h2 style='color:#2f7d4f'>{loja.Nome}</h2>"
+            : $"<img src='{loja.LogoUrl}' alt='{loja.Nome}' style='max-height:60px;max-width:220px;margin-bottom:8px' />";
+
+        var contatoLinhas = string.Join("", new[]
+        {
+            !string.IsNullOrWhiteSpace(loja.Endereco) ? $"<div>{loja.Endereco}</div>" : "",
+            !string.IsNullOrWhiteSpace(loja.Telefone) ? $"<div>Tel/WhatsApp: {loja.Telefone}</div>" : "",
+        });
+
         var html = $@"
             <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
-                <h2 style='color:#2f7d4f'>Orçamento — {loja.Nome}</h2>
+                <div style='text-align:center;margin-bottom:12px'>{logoHtml}</div>
+                <h3 style='color:#2f7d4f;margin-bottom:4px'>Orçamento</h3>
                 <p>Olá, {cliente.Nome}! Segue o orçamento{(string.IsNullOrEmpty(veiculo) ? "" : $" referente ao veículo <strong>{veiculo}</strong>")}.</p>
                 <table style='width:100%;border-collapse:collapse;margin-top:12px'>{linhas}</table>
                 <table style='width:100%;border-collapse:collapse;margin-top:8px'>
                     <tr><td style='padding:6px 10px;font-weight:600'>Total</td><td style='padding:6px 10px;text-align:right;font-weight:600'>R$ {orcamento.ValorTotal:N2}</td></tr>
                 </table>
                 {(string.IsNullOrWhiteSpace(orcamento.Observacoes) ? "" : $"<p style='margin-top:16px;font-size:13px;color:#666'><strong>Observações:</strong> {orcamento.Observacoes}</p>")}
-                <p style='margin-top:20px;font-size:13px;color:#888'>Qualquer dúvida, entre em contato com {loja.Nome}.</p>
+                <div style='margin-top:20px;padding-top:12px;border-top:1px solid #eee;font-size:13px;color:#888;text-align:center'>
+                    <div style='font-weight:600;color:#555'>{loja.Nome}</div>
+                    {contatoLinhas}
+                </div>
             </div>";
 
         try
