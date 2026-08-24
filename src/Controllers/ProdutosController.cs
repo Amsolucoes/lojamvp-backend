@@ -81,6 +81,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
             Ativo = req.Ativo,
             TipoVenda = req.TipoVenda,
             UnidadeMedida = req.UnidadeMedida,
+            Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim(),
             LojaId = lojaId,
         };
         db.Produtos.Add(produto);
@@ -120,6 +121,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         produto.CodigoBarras = req.CodigoBarras; produto.Ativo = req.Ativo;
         produto.TipoVenda = req.TipoVenda;
         produto.UnidadeMedida = req.UnidadeMedida;
+        produto.Marca = string.IsNullOrWhiteSpace(req.Marca) ? null : req.Marca.Trim();
         produto.AtualizadoEm = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
@@ -279,6 +281,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         p.TipoVenda, p.UnidadeMedida,
         p.Variacoes.Where(v => v.Ativo).Select(v => new ProdutoVariacaoDto(
             v.Id, v.Tamanho, v.Cor, v.OutroCampo, v.CodigoBarras,
-            v.Estoque, v.EstoqueMinimo, v.Ativo)).ToList()
+            v.Estoque, v.EstoqueMinimo, v.Ativo)).ToList(),
+        p.Marca
         );
 }
