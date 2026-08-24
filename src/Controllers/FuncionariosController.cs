@@ -60,6 +60,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
                 p.DiaPagamentoPadrao,
                 p.TipoRemuneracao,
                 p.SalarioFixo,
+                p.ValorDiaria,
                 p.Telefone,
                 p.Cep,
                 p.Endereco,
@@ -82,7 +83,8 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         string? Telefone = null,
         string? Cep = null,
         string? Endereco = null,
-        string ComissaoBaseCalculo = "total"
+        string ComissaoBaseCalculo = "total",
+        decimal? ValorDiaria = null
     );
 
     [HttpPost]
@@ -98,17 +100,21 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         if (req.TipoRemuneracao == "salario_fixo" && (!req.SalarioFixo.HasValue || req.SalarioFixo <= 0))
             return BadRequest(new { erro = "Informe o valor do salário fixo." });
 
+        if (req.TipoRemuneracao == "diaria" && (!req.ValorDiaria.HasValue || req.ValorDiaria <= 0))
+            return BadRequest(new { erro = "Informe o valor da diária." });
+
         var profissional = new Profissional
         {
             LojaId = lojaId.Value,
             Nome = req.Nome.Trim(),
-            // Não zera mais em salario_fixo — um funcionário pode ter salário fixo E ainda
-            // ganhar comissão em cima de Ordem de Serviço/Agendamento (ex: Anderson).
+            // Não zera mais em salario_fixo/diaria — um funcionário pode ter salário fixo/diária
+            // E ainda ganhar comissão em cima de Ordem de Serviço/Agendamento (ex: Anderson).
             ComissaoPadraoPercentual = req.ComissaoPadraoPercentual,
             DiaPagamentoPadrao = req.DiaPagamentoPadrao is >= 1 and <= 28 ? req.DiaPagamentoPadrao : null,
             Ativo = req.Ativo,
             TipoRemuneracao = req.TipoRemuneracao,
             SalarioFixo = req.TipoRemuneracao == "salario_fixo" ? req.SalarioFixo : null,
+            ValorDiaria = req.TipoRemuneracao == "diaria" ? req.ValorDiaria : null,
             Telefone = req.Telefone,
             Cep = req.Cep,
             Endereco = req.Endereco,
@@ -151,6 +157,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.DiaPagamentoPadrao,
             profissional.TipoRemuneracao,
             profissional.SalarioFixo,
+            profissional.ValorDiaria,
             profissional.Telefone,
             profissional.Cep,
             profissional.Endereco,
@@ -169,6 +176,9 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         if (req.TipoRemuneracao == "salario_fixo" && (!req.SalarioFixo.HasValue || req.SalarioFixo <= 0))
             return BadRequest(new { erro = "Informe o valor do salário fixo." });
 
+        if (req.TipoRemuneracao == "diaria" && (!req.ValorDiaria.HasValue || req.ValorDiaria <= 0))
+            return BadRequest(new { erro = "Informe o valor da diária." });
+
         var tipoAnterior = profissional.TipoRemuneracao;
 
         profissional.Nome = req.Nome.Trim();
@@ -177,6 +187,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         profissional.Ativo = req.Ativo;
         profissional.TipoRemuneracao = req.TipoRemuneracao;
         profissional.SalarioFixo = req.TipoRemuneracao == "salario_fixo" ? req.SalarioFixo : null;
+        profissional.ValorDiaria = req.TipoRemuneracao == "diaria" ? req.ValorDiaria : null;
         profissional.Telefone = req.Telefone;
         profissional.Cep = req.Cep;
         profissional.Endereco = req.Endereco;
@@ -243,6 +254,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.DiaPagamentoPadrao,
             profissional.TipoRemuneracao,
             profissional.SalarioFixo,
+            profissional.ValorDiaria,
             profissional.Telefone,
             profissional.Cep,
             profissional.Endereco,

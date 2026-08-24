@@ -19,10 +19,15 @@ public class Profissional
     public int? DiaPagamentoPadrao { get; set; } // dia do mês sugerido pra pagar comissão ou salário (ex: 5)
 
     [MaxLength(20)]
-    public string TipoRemuneracao { get; set; } = "comissao"; // comissao | salario_fixo
+    public string TipoRemuneracao { get; set; } = "comissao"; // comissao | salario_fixo | diaria
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal? SalarioFixo { get; set; }
+
+    // Valor da diária, usado quando TipoRemuneracao = "diaria" — pago junto com a comissão
+    // no fechamento (ex: R$100/dia + comissão sobre serviço), sem virar lançamento fixo mensal.
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? ValorDiaria { get; set; }
 
     // Base de cálculo da comissão em Ordem de Serviço: "total" (peça+serviço, comportamento
     // padrão) ou "servico" (só mão de obra, ignora peça). Não afeta comissão de Agendamento,
@@ -99,8 +104,14 @@ public class FechamentoComissao
     public DateTime PeriodoInicio { get; set; }
     public DateTime PeriodoFim { get; set; }
     [Column(TypeName = "decimal(10,2)")]
-    public decimal ValorTotal { get; set; }
+    public decimal ValorTotal { get; set; } // comissão + diárias, já somado
     public int QtdAtendimentos { get; set; }
+
+    // Diárias incluídas manualmente neste fechamento (funcionário tipo "diaria")
+    public int QtdDiarias { get; set; } = 0;
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal ValorDiarias { get; set; } = 0;
+
     public DateTime PagoEm { get; set; } = DateTime.UtcNow;
     // Vínculo opcional com o Financeiro (lançamento "a pagar" gerado, se a loja tiver módulo Financeiro)
     public Guid? LancamentoFinanceiroId { get; set; }
