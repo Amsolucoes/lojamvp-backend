@@ -47,6 +47,8 @@ public class ComissoesController(AppDbContext db) : ControllerBase
                 profissionalId = pid,
                 profissionalNome = prof?.Nome ?? "—",
                 diaPagamentoPadrao = prof?.DiaPagamentoPadrao,
+                tipoRemuneracao = prof?.TipoRemuneracao ?? "comissao",
+                valorDiaria = prof?.ValorDiaria,
                 qtdAtendimentos = doProfissional.Count,
                 valorTotal = doProfissional.Sum(c => c.ValorComissao),
             };
@@ -122,8 +124,8 @@ public class ComissoesController(AppDbContext db) : ControllerBase
         string? NomeServico, string? NomeCliente, DateTime? DataAtendimento
     );
 
-    // ── Fechar e pagar as comissões pendentes de um profissional num período ──
-    public record FecharComissaoRequest(Guid ProfissionalId, DateTime PeriodoInicio, DateTime PeriodoFim, Guid? ContaBancariaId, DateTime? Vencimento);
+    // ── Fechar e pagar as comissões (+ diárias, se houver) de um profissional num período ──
+    public record FecharComissaoRequest(Guid ProfissionalId, DateTime PeriodoInicio, DateTime PeriodoFim, Guid? ContaBancariaId, DateTime? Vencimento, int QtdDiarias = 0);
 
     [HttpPost("fechar")]
     [Authorize(Roles = "admin,superadmin")]
@@ -135,6 +137,12 @@ public class ComissoesController(AppDbContext db) : ControllerBase
         var profissional = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == req.ProfissionalId && p.LojaId == lojaId);
         if (profissional is null) return NotFound(new { erro = "Profissional não encontrado." });
 
+        if (req.QtdDiarias < 0)
+            return BadRequest(new { erro = "Quantidade de diárias inválida." });
+
+        if (req.QtdDiarias > 0 && (!profissional.ValorDiaria.HasValue || profissional.ValorDiaria <= 0))
+            return BadRequest(new { erro = "Este profissional não tem valor de diária cadastrado." });
+
         var inicio = DateTime.SpecifyKind(req.PeriodoInicio.Date, DateTimeKind.Utc);
         var fim = DateTime.SpecifyKind(req.PeriodoFim.Date, DateTimeKind.Utc).AddDays(1);
 
@@ -143,10 +151,12 @@ public class ComissoesController(AppDbContext db) : ControllerBase
                 && c.Status == "pendente" && c.CriadoEm >= inicio && c.CriadoEm < fim)
             .ToListAsync();
 
-        if (comissoesPendentes.Count == 0)
-            return BadRequest(new { erro = "Nenhuma comissão pendente encontrada nesse período." });
+        if (comissoesPendentes.Count == 0 && req.QtdDiarias == 0)
+            return BadRequest(new { erro = "Nenhuma comissão pendente encontrada nesse período, e nenhuma diária informada." });
 
-        var valorTotal = comissoesPendentes.Sum(c => c.ValorComissao);
+        var valorComissoes = comissoesPendentes.Sum(c => c.ValorComissao);
+        var valorDiarias = req.QtdDiarias * (profissional.ValorDiaria ?? 0);
+        var valorTotal = valorComissoes + valorDiarias;
 
         var fechamento = new FechamentoComissao
         {
@@ -156,6 +166,8 @@ public class ComissoesController(AppDbContext db) : ControllerBase
             PeriodoFim = DateTime.SpecifyKind(req.PeriodoFim.Date, DateTimeKind.Utc),
             ValorTotal = valorTotal,
             QtdAtendimentos = comissoesPendentes.Count,
+            QtdDiarias = req.QtdDiarias,
+            ValorDiarias = valorDiarias,
         };
         db.FechamentosComissao.Add(fechamento);
         await db.SaveChangesAsync();
@@ -175,13 +187,14 @@ public class ComissoesController(AppDbContext db) : ControllerBase
                 ? DateTime.SpecifyKind(req.Vencimento.Value.Date, DateTimeKind.Utc).AddHours(12)
                 : DateTime.SpecifyKind(req.PeriodoFim.Date, DateTimeKind.Utc).AddDays(5).AddHours(12);
 
+            var descricaoDiaria = req.QtdDiarias > 0 ? $" + {req.QtdDiarias} diária(s)" : "";
             var lancamento = new LancamentoFinanceiro
             {
                 LojaId = lojaId.Value,
                 ContaBancariaId = req.ContaBancariaId.Value,
                 Tipo = "pagar",
                 Modo = "avulsa",
-                Descricao = $"Comissão — {profissional.Nome} ({req.PeriodoInicio:dd/MM} a {req.PeriodoFim:dd/MM})",
+                Descricao = $"Comissão{descricaoDiaria} — {profissional.Nome} ({req.PeriodoInicio:dd/MM} a {req.PeriodoFim:dd/MM})",
                 CategoriaId = categoriaId,
                 Valor = valorTotal,
                 Vencimento = vencimento,
@@ -200,6 +213,8 @@ public class ComissoesController(AppDbContext db) : ControllerBase
             fechamento.Id,
             fechamento.ValorTotal,
             fechamento.QtdAtendimentos,
+            fechamento.QtdDiarias,
+            fechamento.ValorDiarias,
             profissionalNome = profissional.Nome,
         });
     }
