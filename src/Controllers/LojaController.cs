@@ -43,6 +43,9 @@ public class LojaController(AppDbContext db) : ControllerBase
             trialAte = loja.TrialAte,
             proximoVencimento = loja.ProximoVencimento,
             nomeLoja = loja.Nome,
+            enderecoLoja = loja.Endereco,
+            telefoneLoja = loja.Telefone,
+            logoUrlLoja = loja.LogoUrl,
             tipoPlano = loja.TipoPlano,
             modulosAtivos = loja.ModulosAtivos
              .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
