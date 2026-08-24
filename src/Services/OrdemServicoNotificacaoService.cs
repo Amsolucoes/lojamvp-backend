@@ -36,7 +36,7 @@ public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, ILo
         var contatoLinhas = string.Join("", new[]
         {
             !string.IsNullOrWhiteSpace(loja.Endereco) ? $"<div>{loja.Endereco}</div>" : "",
-            !string.IsNullOrWhiteSpace(loja.Telefone) ? $"<div>Tel/WhatsApp: {loja.Telefone}</div>" : "",
+            !string.IsNullOrWhiteSpace(loja.Telefone) ? $"<div>Tel/WhatsApp: {FormatarTelefone(loja.Telefone)}</div>" : "",
         });
 
         var html = $@"
@@ -73,5 +73,18 @@ public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, ILo
             logger.LogError(ex, "Erro ao enviar orçamento {OrcamentoId} por e-mail.", orcamento.Id);
             return new ResultadoEnvio(false, "Falha ao enviar o e-mail. Tente novamente.");
         }
+    }
+
+    // Formata telefone só para exibição — não altera o valor salvo no banco.
+    // Aceita 10 dígitos (fixo, com DDD) ou 11 dígitos (celular, com DDD).
+    private static string FormatarTelefone(string telefone)
+    {
+        var digitos = new string(telefone.Where(char.IsDigit).ToArray());
+        return digitos.Length switch
+        {
+            11 => $"({digitos[..2]}) {digitos[2..7]}-{digitos[7..]}",
+            10 => $"({digitos[..2]}) {digitos[2..6]}-{digitos[6..]}",
+            _ => telefone, // formato inesperado — mostra como veio, sem quebrar
+        };
     }
 }
