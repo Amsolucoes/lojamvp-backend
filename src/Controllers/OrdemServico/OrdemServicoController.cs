@@ -213,6 +213,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
                 o.AprovadoEm,
                 o.ConcluidoEm,
                 qtdMecanicos = o.Mecanicos.Count,
+                nomesMecanicos = o.Mecanicos.Select(m => m.Profissional!.Nome).ToList(),
             })
             .ToListAsync();
 
