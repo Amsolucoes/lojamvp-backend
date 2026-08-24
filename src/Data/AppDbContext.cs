@@ -81,6 +81,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ItemOrcamentoServico> ItensOrcamentoServico => Set<ItemOrcamentoServico>();
     public DbSet<MecanicoOrcamento> MecanicosOrcamento => Set<MecanicoOrcamento>();
     public DbSet<ChecklistRespostaItem> ChecklistRespostasItem => Set<ChecklistRespostaItem>();
+    public DbSet<ItemPatrimonio> ItensPatrimonio => Set<ItemPatrimonio>();
+    public DbSet<ContagemPatrimonio> ContagensPatrimonio => Set<ContagemPatrimonio>();
+    public DbSet<ItemContagemPatrimonio> ItensContagemPatrimonio => Set<ItemContagemPatrimonio>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -451,6 +454,21 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<OrcamentoServico>()
             .HasIndex(o => new { o.LojaId, o.Placa });
+
+        // ── Patrimônio ──────────────────────────────────────────────
+        mb.Entity<ItemPatrimonio>()
+            .HasIndex(i => new { i.LojaId, i.Ativo });
+
+        mb.Entity<ContagemPatrimonio>()
+            .HasIndex(c => new { c.LojaId, c.DataContagem });
+
+        mb.Entity<ItemContagemPatrimonio>()
+            .HasOne(i => i.Contagem).WithMany(c => c.Itens)
+            .HasForeignKey(i => i.ContagemId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<ItemContagemPatrimonio>()
+            .HasOne(i => i.ItemPatrimonio).WithMany()
+            .HasForeignKey(i => i.ItemPatrimonioId).OnDelete(DeleteBehavior.Restrict);
 
         // Snake_case para PostgreSQL
         foreach (var entity in mb.Model.GetEntityTypes())
