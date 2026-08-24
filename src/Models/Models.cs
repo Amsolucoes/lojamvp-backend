@@ -1,3 +1,4 @@
+using LojaApi.src.Models;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -39,10 +40,10 @@ public class Produto
     [Required, MaxLength(30)]
     public string Categoria { get; set; } = "outro"; // semi-joias | maquiagem | acessorios | outro
 
-    // Campo opcional — só exibido no formulário quando a loja tem o módulo ordem_servico
-    // ativo (peça de oficina: marca do pneu, da pastilha, etc.)
-    [MaxLength(80)]
-    public string? Marca { get; set; }
+    // Vínculo opcional com Marca — só exibido no formulário quando a loja tem o módulo
+    // ordem_servico ativo (peça de oficina: marca do pneu, da pastilha, etc.)
+    public Guid? MarcaId { get; set; }
+    public Marca? Marca { get; set; }
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal PrecoCusto { get; set; }

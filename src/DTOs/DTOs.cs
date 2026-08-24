@@ -37,7 +37,8 @@ public record ProdutoDto(
     DateTime CriadoEm, DateTime AtualizadoEm,
     string TipoVenda, string UnidadeMedida,
     List<ProdutoVariacaoDto>? Variacoes = null,
-    string? Marca = null
+    Guid? MarcaId = null,
+    string? NomeMarca = null
 );
 
 public record SalvarProdutoRequest(
@@ -46,7 +47,7 @@ public record SalvarProdutoRequest(
     decimal Estoque, decimal EstoqueMinimo,
     string? CodigoBarras, bool Ativo,
     string TipoVenda, string UnidadeMedida,
-    string? Marca = null
+    Guid? MarcaId = null
 );
 
 // ── Cliente ───────────────────────────────────────────────────────

@@ -75,6 +75,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AvaliacaoAcessorio> AvaliacoesAcessorio => Set<AvaliacaoAcessorio>();
     public DbSet<AvaliacaoChacara> AvaliacoesChacara => Set<AvaliacaoChacara>();
     public DbSet<ConfiguracaoEtiqueta> ConfiguracoesEtiqueta => Set<ConfiguracaoEtiqueta>();
+    public DbSet<Marca> Marcas => Set<Marca>();
     public DbSet<ChecklistCategoria> ChecklistCategorias => Set<ChecklistCategoria>();
     public DbSet<ChecklistItem> ChecklistItens => Set<ChecklistItem>();
     public DbSet<OrcamentoServico> OrcamentosServico => Set<OrcamentoServico>();
@@ -94,6 +95,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .IsUnique()
             .HasDatabaseName("ix_produtos_codigo_barras")
             .HasFilter("codigo_barras IS NOT NULL AND codigo_barras <> ''");
+
+        mb.Entity<Produto>()
+            .HasOne(p => p.Marca).WithMany()
+            .HasForeignKey(p => p.MarcaId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<Marca>()
+            .HasIndex(m => new { m.LojaId, m.Nome });
 
         // Relacionamentos
         mb.Entity<ItemVenda>()
