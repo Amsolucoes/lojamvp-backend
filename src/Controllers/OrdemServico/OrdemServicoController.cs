@@ -680,6 +680,38 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         return Ok(new { mensagem = "Orçamento enviado por e-mail." });
     }
 
+    // ── Ajustar manualmente a data/hora de entrada (aprovação) e saída (conclusão) ──
+    public record AjustarDatasRequest(DateTime? AprovadoEm, DateTime? ConcluidoEm);
+
+    [HttpPatch("orcamentos/{id:guid}/datas")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AjustarDatas(Guid id, [FromBody] AjustarDatasRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var orcamento = await db.OrcamentosServico.FirstOrDefaultAsync(o => o.Id == id && o.LojaId == lojaId);
+        if (orcamento is null) return NotFound();
+
+        if (orcamento.Status == "pendente" || orcamento.Status == "cancelado")
+            return BadRequest(new { erro = "Só é possível ajustar entrada/saída de uma ordem aprovada ou concluída." });
+
+        DateTime? aprovadoEm = req.AprovadoEm.HasValue
+            ? DateTime.SpecifyKind(req.AprovadoEm.Value, DateTimeKind.Utc)
+            : orcamento.AprovadoEm;
+
+        DateTime? concluidoEm = req.ConcluidoEm.HasValue
+            ? DateTime.SpecifyKind(req.ConcluidoEm.Value, DateTimeKind.Utc)
+            : orcamento.ConcluidoEm;
+
+        if (aprovadoEm.HasValue && concluidoEm.HasValue && concluidoEm.Value < aprovadoEm.Value)
+            return BadRequest(new { erro = "A data/hora de saída não pode ser antes da entrada." });
+
+        orcamento.AprovadoEm = aprovadoEm;
+        orcamento.ConcluidoEm = concluidoEm;
+        await db.SaveChangesAsync();
+
+        return Ok(new { orcamento.Id, orcamento.AprovadoEm, orcamento.ConcluidoEm });
+    }
+
     // ── Excluir (só se ainda pendente) ─────────────────────────────
     [HttpDelete("orcamentos/{id:guid}")]
     [Authorize(Roles = "admin,superadmin")]
