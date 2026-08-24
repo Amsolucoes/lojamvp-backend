@@ -77,7 +77,8 @@ public class ClienteController(AppDbContext db, TenantService tenantService) : C
             loja.LogoUrl, loja.Status.ToString(),
             loja.Status == StatusLoja.Bloqueado
                 ? "Acesso bloqueado por inadimplência."
-                : null
+                : null,
+            loja.Endereco, loja.Telefone
         ));
     }
 
@@ -88,9 +89,11 @@ public class ClienteController(AppDbContext db, TenantService tenantService) : C
         var loja = await GetMinhaLoja();
         if (loja is null) return NotFound();
 
-        loja.Nome        = req.Nome ?? loja.Nome;
+        loja.Nome = req.Nome ?? loja.Nome;
         loja.CorPrimaria = req.CorPrimaria ?? loja.CorPrimaria;
-        loja.LogoUrl     = req.LogoUrl ?? loja.LogoUrl;
+        loja.LogoUrl = req.LogoUrl ?? loja.LogoUrl;
+        if (req.Endereco is not null) loja.Endereco = req.Endereco;
+        if (req.Telefone is not null) loja.Telefone = req.Telefone;
         loja.AtualizadoEm = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
@@ -151,4 +154,4 @@ public class ClienteController(AppDbContext db, TenantService tenantService) : C
 }
 
 // DTO local
-public record AtualizarConfigRequest(string? Nome, string? CorPrimaria, string? LogoUrl);
+public record AtualizarConfigRequest(string? Nome, string? CorPrimaria, string? LogoUrl, string? Endereco, string? Telefone);

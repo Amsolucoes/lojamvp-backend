@@ -61,7 +61,8 @@ public record LojaResumoDto(
 public record LojaConfigDto(
     Guid Id, string Nome,
     string CorPrimaria, string? LogoUrl,
-    string Status, string? MotivoBloqueo
+    string Status, string? MotivoBloqueo,
+    string? Endereco, string? Telefone
 );
 
 public record AlterarStatusLojaRequest(string Status, string? Motivo);
