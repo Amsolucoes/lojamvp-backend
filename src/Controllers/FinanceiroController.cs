@@ -1608,8 +1608,17 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     foreach (var antiga in parcelasAntigasParaSomar)
                     {
                         antiga.Status = "pago";
-                        antiga.PagoEm = DateTime.UtcNow;
-                        antiga.Descricao = $"{antiga.Descricao} (absorvida no refinanciamento de {DateTime.UtcNow:dd/MM/yyyy})";
+                        antiga.PagoEm = dataPagamentoFinal;
+
+                        // Remove qualquer sufixo de uma absorção anterior (ex: tentativa desfeita)
+                        // antes de acrescentar o novo, pra nunca ficar empilhando texto sem limite.
+                        var descricaoBase = System.Text.RegularExpressions.Regex.Replace(
+                            antiga.Descricao, @"\s*\(absorvida no refinanciamento de \d{2}/\d{2}/\d{4}\)$", "");
+                        var sufixo = $" (absorvida no refinanciamento de {dataPagamentoFinal:dd/MM/yyyy})";
+                        var espacoDisponivel = 150 - sufixo.Length;
+                        if (descricaoBase.Length > espacoDisponivel)
+                            descricaoBase = descricaoBase.Substring(0, Math.Max(0, espacoDisponivel));
+                        antiga.Descricao = $"{descricaoBase}{sufixo}";
                     }
 
                     for (int i = 0; i < parcelas; i++)
