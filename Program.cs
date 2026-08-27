@@ -1,5 +1,6 @@
 using LojaApi.Data;
 using LojaApi.Services;
+using LojaApi.src.Middleware;
 using LojaApi.src.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -112,6 +113,7 @@ internal class Program
 
         app.UseHttpsRedirection();
         app.UseCors();
+        app.UseMiddleware<ErrorHandlingMiddleware>();
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
