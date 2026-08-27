@@ -169,6 +169,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
         var q = db.LancamentosFinanceiros.Where(l => l.LojaId == lojaId && l.Tipo == tipo);
 
         if (ano.HasValue && mes.HasValue)
@@ -925,6 +927,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(new { });
 
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
         var inicio = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
         var fim = inicio.AddMonths(1);
 
@@ -1278,6 +1282,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
         if (cartao is null) return NotFound();
 
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId!.Value);
+
         var vencimento = CalcularVencimentoFatura(cartao, ano, mes);
         var (inicio, fim) = CicloDaFatura(cartao, vencimento);
 
@@ -1623,6 +1629,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
         var inicio = new DateTime(ano, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var fim = inicio.AddYears(1);
 
@@ -1695,6 +1703,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
         var hoje = DateTime.UtcNow.Date;
         var limite = hoje.AddDays(dias);
 
@@ -1750,6 +1760,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
+
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
 
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         var resultado = new List<object>();
