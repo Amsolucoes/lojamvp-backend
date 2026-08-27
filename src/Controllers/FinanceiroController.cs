@@ -618,6 +618,13 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 var faturaExistente = await db.FaturasCartao
                     .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == anoC && f.MesReferencia.Month == mesC);
 
+                // Fatura já resolvida via parcelamento ("financiada") ou pagamento parcial
+                // ("parcial" — o saldo virou compra no próximo ciclo com juros) — não mostra
+                // mais como pendência deste ciclo, senão o valor aparece duplicado/fantasma.
+                // Mesma regra que o resumo-mensal (dashboard) já aplica.
+                if (faturaExistente?.Status == "financiada" || faturaExistente?.Status == "parcial")
+                    continue;
+
                 if (modo == "detalhado")
                 {
                     foreach (var item in itensCiclo)
