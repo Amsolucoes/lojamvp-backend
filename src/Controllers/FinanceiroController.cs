@@ -831,6 +831,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(new { });
 
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
         var inicio = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
         var fim = inicio.AddMonths(1);
         var hoje = DateTime.UtcNow.Date;
