@@ -1350,7 +1350,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         });
     }
 
-    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela, Guid? ContaBancariaId = null);
+    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela, Guid? ContaBancariaId = null, DateTime? DataPagamento = null);
     public record AntecipadoFaturaRequest(decimal Valor, DateTime Data, Guid ContaBancariaId, string? Observacao);
 
     [HttpPost("cartoes/{id:guid}/fatura/antecipado")]
@@ -1462,6 +1462,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .SumAsync(p => (decimal?)p.Valor) ?? 0;
         var totalDevido = total - totalAntecipado;
 
+        // Data real do pagamento informada pelo usuário — se não vier, usa o momento atual.
+        var dataPagamentoFinal = req.DataPagamento.HasValue
+            ? DateTime.SpecifyKind(req.DataPagamento.Value.Date, DateTimeKind.Utc).AddHours(12)
+            : DateTime.UtcNow;
+
         if (req.Modo != "desfazer" && req.ContaBancariaId.HasValue)
         {
             var contaEscolhidaValida = await db.ContasBancarias.AnyAsync(c => c.Id == req.ContaBancariaId.Value && c.LojaId == lojaId);
@@ -1498,21 +1503,26 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 break;
 
             case "total":
-                fatura.Status = "pago";
-                fatura.ValorPago = totalDevido;
-                fatura.PagoEm = DateTime.UtcNow;
-
-                // Marca junto as parcelas de refinanciamento deste mesmo ciclo, já que
-                // o valor delas foi somado no total pago acima.
-                var parcelasDoMesParaPagar = await db.LancamentosFinanceiros
-                    .Where(l => l.CartaoOrigemId == id && l.Status == "pendente" && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
-                    .ToListAsync();
-                foreach (var p in parcelasDoMesParaPagar)
                 {
-                    p.Status = "pago";
-                    p.PagoEm = DateTime.UtcNow;
+                    // Parcelas de financiamento antigo que vencem neste mesmo mês — o valor
+                    // delas NÃO está incluído em "total" (que só soma LancamentosCartao), então
+                    // precisa ser somado aqui manualmente pra refletir o valor real pago.
+                    var parcelasDoMesParaPagar = await db.LancamentosFinanceiros
+                        .Where(l => l.CartaoOrigemId == id && l.Status == "pendente" && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
+                        .ToListAsync();
+                    var valorParcelasAntigas = parcelasDoMesParaPagar.Sum(p => p.Valor);
+
+                    fatura.Status = "pago";
+                    fatura.ValorPago = totalDevido + valorParcelasAntigas;
+                    fatura.PagoEm = dataPagamentoFinal;
+
+                    foreach (var p in parcelasDoMesParaPagar)
+                    {
+                        p.Status = "pago";
+                        p.PagoEm = dataPagamentoFinal;
+                    }
+                    break;
                 }
-                break;
 
             case "parcial":
                 {
@@ -1539,7 +1549,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
                     fatura.Status = "parcial";
                     fatura.ValorPago = pago;
-                    fatura.PagoEm = DateTime.UtcNow;
+                    fatura.PagoEm = dataPagamentoFinal;
                     break;
                 }
 
@@ -1549,11 +1559,21 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     if (parcelas < 2 || parcelas > 24)
                         return BadRequest(new { erro = "Escolha entre 2 e 24 parcelas." });
 
+                    // Parcelas de financiamento antigo que vencem neste mesmo mês — precisam
+                    // entrar no valor total sendo financiado agora, já que "totalDevido" (baseado
+                    // só em LancamentosCartao) não inclui esse valor.
+                    var parcelasAntigasParaSomar = await db.LancamentosFinanceiros
+                        .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente"
+                            && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
+                        .ToListAsync();
+                    var valorAntigoNesteMes = parcelasAntigasParaSomar.Sum(p => p.Valor);
+                    var totalParaFinanciar = totalDevido + valorAntigoNesteMes;
+
                     var entrada = req.ValorEntrada ?? 0;
-                    if (entrada < 0 || entrada >= totalDevido)
+                    if (entrada < 0 || entrada >= totalParaFinanciar)
                         return BadRequest(new { erro = "O valor de entrada deve ser maior ou igual a zero e menor que o total (já descontado o que foi antecipado)." });
 
-                    var valorFinanciar = totalDevido - entrada;
+                    var valorFinanciar = totalParaFinanciar - entrada;
                     var comJuros = valorFinanciar * (1 + (cartao.TaxaJurosMensal / 100m) * parcelas);
                     var valorParcela = Math.Round(comJuros / parcelas, 2);
                     var grupoId = Guid.NewGuid();
@@ -1583,16 +1603,9 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         }
                     }
 
-                    // Se essa fatura já continha parcela(s) de um financiamento anterior
-                    // (refinanciamento em cima de refinanciamento), o total que está sendo
-                    // parcelado agora JÁ INCLUI esse valor — então a parcela antiga precisa
-                    // ser encerrada aqui, senão ela continua contando dobrado em "A Pagar".
-                    var parcelasAntigasAbsorvidas = await db.LancamentosFinanceiros
-                        .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente"
-                            && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
-                        .ToListAsync();
-
-                    foreach (var antiga in parcelasAntigasAbsorvidas)
+                    // Encerra a(s) parcela(s) antiga(s) já somada(s) acima no valor financiado,
+                    // senão elas continuam contando dobrado em "A Pagar".
+                    foreach (var antiga in parcelasAntigasParaSomar)
                     {
                         antiga.Status = "pago";
                         antiga.PagoEm = DateTime.UtcNow;
@@ -1623,7 +1636,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
                     fatura.Status = "financiada";
                     fatura.ValorPago = entrada;
-                    fatura.PagoEm = DateTime.UtcNow;
+                    fatura.PagoEm = dataPagamentoFinal;
                     break;
                 }
 
