@@ -649,28 +649,18 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         {
                             linhasCartao.Add(new
                             {
-                                id = cartao.Id,
-                                descricao = descricaoBase,
-                                categoriaNome = (string?)null,
-                                valor = totalRestanteLinha,
+                                id = item.Id,
+                                descricao = $"{cartao.Nome} — {item.Descricao}",
+                                categoriaNome = item.Categoria?.Nome,
+                                valor = item.Valor,
                                 vencimento = vencimentoFatura,
                                 status = "pendente",
                                 pagoEm = (DateTime?)null,
                                 numeroParcela = (int?)null,
                                 totalParcelas = (int?)null,
-                                origem = "cartao_fatura",
+                                origem = "cartao_item",
                                 cartaoId = cartao.Id,
                                 cartaoNome = cartao.Nome,
-                                // DIAGNÓSTICO TEMPORÁRIO — remover depois de identificar a causa
-                                debugParcelas = parcelasFinanciamentoMes.Where(l => l.Status == "pendente").Select(l => new
-                                {
-                                    l.Id,
-                                    l.Descricao,
-                                    l.Vencimento,
-                                    l.CriadoEm,
-                                    l.NumeroParcela,
-                                    l.TotalParcelas,
-                                }),
                             });
                         }
                     }
@@ -713,6 +703,16 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         origem = "cartao_fatura",
                         cartaoId = cartao.Id,
                         cartaoNome = cartao.Nome,
+                        // DIAGNÓSTICO TEMPORÁRIO — remover depois de identificar a causa
+                        debugParcelas = parcelasFinanciamentoMes.Where(l => l.Status == "pendente").Select(l => new
+                        {
+                            l.Id,
+                            l.Descricao,
+                            l.Vencimento,
+                            l.CriadoEm,
+                            l.NumeroParcela,
+                            l.TotalParcelas,
+                        }),
                     });
                 }
             }
