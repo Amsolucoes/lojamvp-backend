@@ -546,6 +546,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(Array.Empty<object>());
 
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
         DateTime inicioMes, fimMes;
         if (de.HasValue && ate.HasValue)
         {
@@ -1194,6 +1196,51 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         if (!fixo.Ativo) await financeiroService.LimparFuturosCartaoAsync(id);
         await db.SaveChangesAsync();
         return Ok(new { fixo.Id, fixo.Ativo });
+    }
+
+    // ── Autocorreção: se uma parcela de financiamento nasceu com vencimento num ciclo
+    // que já tinha fechado ANTES dela ser criada (bug corrigido em novos parcelamentos,
+    // mas que já deixou registros antigos errados), empurra ela — e as parcelas pendentes
+    // seguintes do mesmo grupo — um mês pra frente, pro ciclo certo. Roda toda vez que a
+    // tela "A Pagar" é aberta, então corrige sozinho sem precisar de ação manual.
+    private async Task CorrigirParcelasFinanciamentoEmCicloFechadoAsync(Guid lojaId)
+    {
+        var grupos = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.CartaoOrigemId != null && l.Status == "pendente")
+            .GroupBy(l => l.GrupoParcelamentoId)
+            .Select(g => g.Key)
+            .ToListAsync();
+
+        foreach (var grupoId in grupos)
+        {
+            if (grupoId is null) continue;
+
+            var parcelas = await db.LancamentosFinanceiros
+                .Where(l => l.GrupoParcelamentoId == grupoId && l.Status == "pendente")
+                .OrderBy(l => l.NumeroParcela)
+                .ToListAsync();
+
+            if (parcelas.Count == 0) continue;
+
+            var primeira = parcelas[0];
+            var cartao = await db.CartoesCredito.FindAsync(primeira.CartaoOrigemId!.Value);
+            if (cartao is null) continue;
+
+            var (_, cicloFim) = CicloDaFatura(cartao, CalcularVencimentoFatura(cartao, primeira.Vencimento.Year, primeira.Vencimento.Month));
+
+            // Se o ciclo já tinha fechado ANTES da parcela ter sido criada, ela nasceu no
+            // mês errado — desloca essa e todas as pendentes seguintes do grupo um mês.
+            if (cicloFim.Date < primeira.CriadoEm.Date)
+            {
+                foreach (var p in parcelas)
+                {
+                    var novoMes = new DateTime(p.Vencimento.Year, p.Vencimento.Month, 1).AddMonths(1);
+                    p.Vencimento = CalcularVencimentoFatura(cartao, novoMes.Year, novoMes.Month);
+                }
+            }
+        }
+
+        if (grupos.Count > 0) await db.SaveChangesAsync();
     }
 
     // ── Calcula a fatura de um mês (sob demanda, sem precisar de job) ──
