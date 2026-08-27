@@ -974,7 +974,12 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var despesasPorCategoria = doMes
             .Where(l => l.Tipo == "pagar")
-            .GroupBy(l => new { Nome = l.Categoria?.Nome ?? "Sem categoria", Icone = l.Categoria?.Icone ?? "📁" })
+            // Parcelas de financiamento de fatura de cartão (CartaoOrigemId preenchido)
+            // nascem sem categoria própria — agrupa direto como "Cartão de Crédito",
+            // igual às compras normais do cartão, em vez de cair em "Sem categoria".
+            .GroupBy(l => l.CartaoOrigemId.HasValue
+                ? new { Nome = "Cartão de Crédito", Icone = "💳" }
+                : new { Nome = l.Categoria?.Nome ?? "Sem categoria", Icone = l.Categoria?.Icone ?? "📁" })
             .Select(g => new { nome = g.Key.Nome, icone = g.Key.Icone, valor = g.Sum(x => x.Valor) })
             .ToList();
 
