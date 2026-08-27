@@ -561,7 +561,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
 
         var lancamentos = await db.LancamentosFinanceiros
-            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes && l.CartaoOrigemId == null)
+            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes)
             .Include(l => l.Categoria)
             .Select(l => new
             {
@@ -652,13 +652,10 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         .Where(p => p.FaturaCartaoId == faturaExistente.Id)
                         .SumAsync(p => (decimal?)p.Valor) ?? 0;
 
-                    // Parcelas de financiamento (refinanciamento de fatura anterior) que caem
-                    // neste mesmo ciclo entram somadas aqui, pra não aparecerem como linha separada.
-                    var totalFinanciamentoLinha = await db.LancamentosFinanceiros
-                        .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente" && l.Vencimento.Year == anoC && l.Vencimento.Month == mesC)
-                        .SumAsync(l => (decimal?)l.Valor) ?? 0;
-
-                    var totalRestanteLinha = total - totalAntecipadoLinha + totalFinanciamentoLinha;
+                    // Parcelas de financiamento de fatura antiga agora aparecem como linha própria
+                    // (via a query principal de lancamentos, lá em cima) — não somamos mais aqui,
+                    // senão duplicaria o valor.
+                    var totalRestanteLinha = total - totalAntecipadoLinha;
                     if (totalRestanteLinha <= 0) continue;
 
                     linhasCartao.Add(new
