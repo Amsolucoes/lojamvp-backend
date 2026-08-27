@@ -1583,6 +1583,22 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         }
                     }
 
+                    // Se essa fatura já continha parcela(s) de um financiamento anterior
+                    // (refinanciamento em cima de refinanciamento), o total que está sendo
+                    // parcelado agora JÁ INCLUI esse valor — então a parcela antiga precisa
+                    // ser encerrada aqui, senão ela continua contando dobrado em "A Pagar".
+                    var parcelasAntigasAbsorvidas = await db.LancamentosFinanceiros
+                        .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente"
+                            && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
+                        .ToListAsync();
+
+                    foreach (var antiga in parcelasAntigasAbsorvidas)
+                    {
+                        antiga.Status = "pago";
+                        antiga.PagoEm = DateTime.UtcNow;
+                        antiga.Descricao = $"{antiga.Descricao} (absorvida no refinanciamento de {DateTime.UtcNow:dd/MM/yyyy})";
+                    }
+
                     for (int i = 0; i < parcelas; i++)
                     {
                         var mesParcela = mesInicioParcelas.AddMonths(i);
