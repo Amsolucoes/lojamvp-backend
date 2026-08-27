@@ -1473,6 +1473,23 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         ? new DateTime(req.PrimeiraParcela.Value.Year, req.PrimeiraParcela.Value.Month, 1)
                         : mesReferencia.AddMonths(1);
 
+                    // Garante que a 1ª parcela caia num ciclo que AINDA NÃO FECHOU — se o
+                    // parcelamento foi feito depois que o ciclo seguinte já tinha fechado (ex:
+                    // fatura de julho financiada só em agosto, mas o ciclo de agosto já fechou
+                    // sem compra nova), avança pro próximo ciclo aberto. Sem isso, a parcela
+                    // nasce com vencimento já no passado.
+                    if (!req.PrimeiraParcela.HasValue)
+                    {
+                        var hoje = DateTime.UtcNow.Date;
+                        for (int tentativa = 0; tentativa < 6; tentativa++)
+                        {
+                            var vencimentoTeste = CalcularVencimentoFatura(cartao, mesInicioParcelas.Year, mesInicioParcelas.Month);
+                            var (_, fimTeste) = CicloDaFatura(cartao, vencimentoTeste);
+                            if (hoje <= fimTeste.Date) break; // ciclo ainda não fechou — pode usar
+                            mesInicioParcelas = mesInicioParcelas.AddMonths(1);
+                        }
+                    }
+
                     for (int i = 0; i < parcelas; i++)
                     {
                         var mesParcela = mesInicioParcelas.AddMonths(i);
