@@ -561,7 +561,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
 
         var lancamentos = await db.LancamentosFinanceiros
-            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes)
+            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.Vencimento >= inicioMes && l.Vencimento < fimMes && l.CartaoOrigemId == null)
             .Include(l => l.Categoria)
             .Select(l => new
             {
@@ -612,34 +612,69 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 .OrderBy(l => l.DataCompra)
                 .ToListAsync();
 
-                if (itensCiclo.Count == 0) continue;
+                // Parcelas de financiamento de uma fatura antiga que vencem justamente neste
+                // ciclo — SEMPRE entram dentro da fatura deste cartão/mês, nunca como linha
+                // avulsa separada, mesmo que o cartão não tenha nenhuma compra nova este mês.
+                var parcelasFinanciamentoMes = await db.LancamentosFinanceiros
+                    .Where(l => l.CartaoOrigemId == cartao.Id && l.Vencimento.Year == anoC && l.Vencimento.Month == mesC)
+                    .ToListAsync();
+
+                if (itensCiclo.Count == 0 && parcelasFinanciamentoMes.Count == 0) continue;
 
                 var total = itensCiclo.Sum(i => i.Valor);
                 var faturaExistente = await db.FaturasCartao
                     .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == anoC && f.MesReferencia.Month == mesC);
 
-                // Fatura já resolvida via parcelamento ("financiada") ou pagamento parcial
-                // ("parcial" — o saldo virou compra no próximo ciclo com juros) — não mostra
-                // mais como pendência deste ciclo, senão o valor aparece duplicado/fantasma.
-                // Mesma regra que o resumo-mensal (dashboard) já aplica.
-                if (faturaExistente?.Status == "financiada" || faturaExistente?.Status == "parcial")
-                    continue;
+                // As compras deste ciclo específico já foram resolvidas (pagas, ou a própria
+                // fatura virou financiamento/pagamento parcial) — não contam mais como pendência.
+                var comprasResolvidas = faturaExistente?.Status == "pago" || faturaExistente?.Status == "financiada" || faturaExistente?.Status == "parcial";
+
+                var totalAntecipadoLinha = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
+                    .Where(p => p.FaturaCartaoId == faturaExistente.Id)
+                    .SumAsync(p => (decimal?)p.Valor) ?? 0;
+
+                var totalComprasPendente = comprasResolvidas ? 0 : Math.Max(0, total - totalAntecipadoLinha);
+                var financiamentoPendente = parcelasFinanciamentoMes.Where(l => l.Status == "pendente").Sum(l => l.Valor);
+
+                var totalRestanteLinha = totalComprasPendente + financiamentoPendente;
+                if (totalRestanteLinha <= 0) continue;
 
                 if (modo == "detalhado")
                 {
-                    foreach (var item in itensCiclo)
+                    if (!comprasResolvidas)
+                    {
+                        foreach (var item in itensCiclo)
+                        {
+                            linhasCartao.Add(new
+                            {
+                                id = item.Id,
+                                descricao = $"{cartao.Nome} — {item.Descricao}",
+                                categoriaNome = item.Categoria?.Nome,
+                                valor = item.Valor,
+                                vencimento = vencimentoFatura,
+                                status = "pendente",
+                                pagoEm = (DateTime?)null,
+                                numeroParcela = (int?)null,
+                                totalParcelas = (int?)null,
+                                origem = "cartao_item",
+                                cartaoId = cartao.Id,
+                                cartaoNome = cartao.Nome,
+                            });
+                        }
+                    }
+                    foreach (var parcela in parcelasFinanciamentoMes.Where(l => l.Status == "pendente"))
                     {
                         linhasCartao.Add(new
                         {
-                            id = item.Id,
-                            descricao = $"{cartao.Nome} — {item.Descricao}",
-                            categoriaNome = item.Categoria?.Nome,
-                            valor = item.Valor,
+                            id = parcela.Id,
+                            descricao = $"{cartao.Nome} — {parcela.Descricao}",
+                            categoriaNome = (string?)null,
+                            valor = parcela.Valor,
                             vencimento = vencimentoFatura,
-                            status = faturaExistente?.Status ?? "pendente",
-                            pagoEm = faturaExistente?.PagoEm,
-                            numeroParcela = (int?)null,
-                            totalParcelas = (int?)null,
+                            status = "pendente",
+                            pagoEm = (DateTime?)null,
+                            numeroParcela = parcela.NumeroParcela,
+                            totalParcelas = parcela.TotalParcelas,
                             origem = "cartao_item",
                             cartaoId = cartao.Id,
                             cartaoNome = cartao.Nome,
@@ -648,35 +683,29 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 }
                 else
                 {
-                    var totalAntecipadoLinha = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
-                        .Where(p => p.FaturaCartaoId == faturaExistente.Id)
-                        .SumAsync(p => (decimal?)p.Valor) ?? 0;
-
-                    // Parcelas de financiamento de fatura antiga agora aparecem como linha própria
-                    // (via a query principal de lancamentos, lá em cima) — não somamos mais aqui,
-                    // senão duplicaria o valor.
-                    var totalRestanteLinha = total - totalAntecipadoLinha;
-                    if (totalRestanteLinha <= 0) continue;
+                    var descricaoBase = totalComprasPendente > 0
+                        ? $"Fatura {cartao.Nome}" + (totalAntecipadoLinha > 0 ? $" (já antecipado {totalAntecipadoLinha:C})" : "")
+                        : $"Fatura {cartao.Nome} (parcela de financiamento)";
 
                     linhasCartao.Add(new
                     {
                         id = cartao.Id,
-                        descricao = $"Fatura {cartao.Nome}" + (totalAntecipadoLinha > 0 ? $" (já antecipado {totalAntecipadoLinha:C})" : ""),
+                        descricao = descricaoBase,
                         categoriaNome = (string?)null,
                         valor = totalRestanteLinha,
                         vencimento = vencimentoFatura,
-                        status = faturaExistente?.Status ?? "pendente",
-                        pagoEm = faturaExistente?.PagoEm,
+                        status = "pendente",
+                        pagoEm = (DateTime?)null,
                         numeroParcela = (int?)null,
                         totalParcelas = (int?)null,
-                        origem = faturaExistente?.Status == "financiada" ? "cartao_fatura_financiada" : "cartao_fatura",
+                        origem = "cartao_fatura",
                         cartaoId = cartao.Id,
                         cartaoNome = cartao.Nome,
                     });
                 }
             }
 
-                var unificado = lancamentos.Cast<object>().Concat(linhasCartao)
+        var unificado = lancamentos.Cast<object>().Concat(linhasCartao)
             .OrderBy(x => ((dynamic)x).vencimento)
             .ToList();
 
