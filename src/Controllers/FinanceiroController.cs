@@ -870,6 +870,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
 
         var detalheCartoesPagar = new List<object>();
+        decimal totalContribuicaoCartoes = 0;
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         foreach (var cartao in cartoes)
         {
@@ -890,8 +891,9 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 .Where(p => p.FaturaCartaoId == faturaExistente.Id)
                 .SumAsync(p => (decimal?)p.Valor) ?? 0;
             var totalFaturaRestante = totalFatura - totalAntecipadoResumo;
+            var faturaResolvida = faturaExistente?.Status == "pago" || faturaExistente?.Status == "parcial" || faturaExistente?.Status == "financiada";
 
-            if (faturaExistente?.Status == "pago" || faturaExistente?.Status == "parcial" || faturaExistente?.Status == "financiada")
+            if (faturaResolvida)
             {
                 // Fatura resolvida (paga, parcialmente paga ou financiada em parcelas) — não conta como pendente/vencida
                 pagarPago += totalFaturaRestante; pagarQtdPago++;
@@ -903,10 +905,18 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFaturaRestante; pagarQtdVencido++; }
             else { pagarPendente += totalFaturaRestante; pagarQtdPendente++; }
 
-            detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = totalFaturaRestante > 0 ? totalFaturaRestante : totalFatura, status = totalFaturaRestante <= 0 ? "pago" : (faturaExistente?.Status ?? "pendente") });
+            totalContribuicaoCartoes += totalFaturaRestante > 0 ? totalFaturaRestante : totalFatura;
+
+            // Só entra na lista visível de "cartões" do resumo se ainda sobrar valor em
+            // aberto — uma vez que a fatura foi paga, parcialmente paga ou financiada,
+            // ela some daqui, igual já acontece em /pagar-unificado (usado pelo mobile).
+            if (!faturaResolvida && totalFaturaRestante > 0)
+            {
+                detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = totalFaturaRestante });
+            }
         }
 
-        var totalLancamentosPagar = pagarPago + pagarPendente + pagarVencido - detalheCartoesPagar.Sum(c => (decimal)((dynamic)c).valor);
+        var totalLancamentosPagar = pagarPago + pagarPendente + pagarVencido - totalContribuicaoCartoes;
 
         var previstoReceita = receberPago + receberPendente + receberVencido;
         var previstoDespesa = pagarPago + pagarPendente + pagarVencido;
