@@ -703,16 +703,6 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                         origem = "cartao_fatura",
                         cartaoId = cartao.Id,
                         cartaoNome = cartao.Nome,
-                        // DIAGNÓSTICO TEMPORÁRIO — remover depois de identificar a causa
-                        debugParcelas = parcelasFinanciamentoMes.Where(l => l.Status == "pendente").Select(l => new
-                        {
-                            l.Id,
-                            l.Descricao,
-                            l.Vencimento,
-                            l.CriadoEm,
-                            l.NumeroParcela,
-                            l.TotalParcelas,
-                        }),
                     });
                 }
             }
@@ -1236,15 +1226,26 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             var cartao = await db.CartoesCredito.FindAsync(primeira.CartaoOrigemId!.Value);
             if (cartao is null) continue;
 
-            var (_, cicloFim) = CicloDaFatura(cartao, CalcularVencimentoFatura(cartao, primeira.Vencimento.Year, primeira.Vencimento.Month));
-
-            // Se o ciclo já tinha fechado ANTES da parcela ter sido criada, ela nasceu no
-            // mês errado — desloca essa e todas as pendentes seguintes do grupo um mês.
-            if (cicloFim.Date < primeira.CriadoEm.Date)
+            // Avança mês a mês, a partir do mês atualmente gravado, até achar um ciclo que
+            // ainda NEM TINHA COMEÇADO na data em que a parcela foi criada — um ciclo já em
+            // andamento (mesmo que ainda não fechado) não é válido pra receber a 1ª parcela
+            // de um financiamento.
+            var mesAtual = new DateTime(primeira.Vencimento.Year, primeira.Vencimento.Month, 1);
+            var mesCorrigido = mesAtual;
+            for (int tentativa = 0; tentativa < 12; tentativa++)
             {
+                var vencimentoTeste = CalcularVencimentoFatura(cartao, mesCorrigido.Year, mesCorrigido.Month);
+                var (inicioTeste, _) = CicloDaFatura(cartao, vencimentoTeste);
+                if (inicioTeste.Date >= primeira.CriadoEm.Date) break;
+                mesCorrigido = mesCorrigido.AddMonths(1);
+            }
+
+            if (mesCorrigido != mesAtual)
+            {
+                var deltaMeses = ((mesCorrigido.Year - mesAtual.Year) * 12) + (mesCorrigido.Month - mesAtual.Month);
                 foreach (var p in parcelas)
                 {
-                    var novoMes = new DateTime(p.Vencimento.Year, p.Vencimento.Month, 1).AddMonths(1);
+                    var novoMes = new DateTime(p.Vencimento.Year, p.Vencimento.Month, 1).AddMonths(deltaMeses);
                     p.Vencimento = CalcularVencimentoFatura(cartao, novoMes.Year, novoMes.Month);
                 }
             }
@@ -1567,11 +1568,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     if (!req.PrimeiraParcela.HasValue)
                     {
                         var hoje = DateTime.UtcNow.Date;
-                        for (int tentativa = 0; tentativa < 6; tentativa++)
+                        for (int tentativa = 0; tentativa < 12; tentativa++)
                         {
                             var vencimentoTeste = CalcularVencimentoFatura(cartao, mesInicioParcelas.Year, mesInicioParcelas.Month);
-                            var (_, fimTeste) = CicloDaFatura(cartao, vencimentoTeste);
-                            if (hoje <= fimTeste.Date) break; // ciclo ainda não fechou — pode usar
+                            var (inicioTeste, _) = CicloDaFatura(cartao, vencimentoTeste);
+                            if (inicioTeste.Date >= hoje) break; // ciclo ainda nem começou — pode usar
                             mesInicioParcelas = mesInicioParcelas.AddMonths(1);
                         }
                     }
