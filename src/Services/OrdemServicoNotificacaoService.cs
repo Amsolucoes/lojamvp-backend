@@ -1,6 +1,8 @@
 ﻿using LojaApi.Data;
-using LojaApi.src.Models.OrdemServico;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using Resend;
 
 namespace LojaApi.src.Services;
@@ -73,6 +75,101 @@ public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, ILo
             logger.LogError(ex, "Erro ao enviar orçamento {OrcamentoId} por e-mail.", orcamento.Id);
             return new ResultadoEnvio(false, "Falha ao enviar o e-mail. Tente novamente.");
         }
+    }
+
+    // ── PDF do orçamento, formato A4 — usado pelo botão "Baixar PDF" ──
+    // Obs: não embute logo (evita depender de download de imagem externa dentro
+    // da geração do PDF); usa o nome da loja como cabeçalho, igual o e-mail faz
+    // quando não há logo cadastrada.
+    public async Task<byte[]?> GerarPdfAsync(Guid orcamentoId, Guid lojaId)
+    {
+        var orcamento = await db.OrcamentosServico
+            .Include(o => o.Itens)
+            .FirstOrDefaultAsync(o => o.Id == orcamentoId && o.LojaId == lojaId);
+        if (orcamento is null) return null;
+
+        var cliente = await db.Clientes.FindAsync(orcamento.ClienteId);
+        var loja = await db.Lojas.FindAsync(lojaId);
+        if (loja is null) return null;
+
+        var veiculo = string.Join(" · ", new[] { orcamento.VeiculoDescricao, orcamento.Placa }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        var documento = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(2, Unit.Centimetre);
+                page.DefaultTextStyle(x => x.FontSize(11));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().Text(loja.Nome).FontSize(18).Bold();
+                    if (!string.IsNullOrWhiteSpace(loja.Endereco))
+                        col.Item().Text(loja.Endereco!).FontSize(9).FontColor(Colors.Grey.Darken1);
+                    if (!string.IsNullOrWhiteSpace(loja.Telefone))
+                        col.Item().Text($"Tel/WhatsApp: {FormatarTelefone(loja.Telefone!)}").FontSize(9).FontColor(Colors.Grey.Darken1);
+                    col.Item().PaddingTop(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                });
+
+                page.Content().PaddingVertical(14).Column(col =>
+                {
+                    col.Item().Text("Orçamento").FontSize(16).Bold();
+                    col.Item().PaddingTop(4).Text($"Cliente: {cliente?.Nome ?? "—"}");
+                    if (cliente != null && !string.IsNullOrWhiteSpace(cliente.Telefone))
+                        col.Item().Text($"Telefone: {cliente.Telefone}");
+                    if (!string.IsNullOrEmpty(veiculo))
+                        col.Item().Text($"Veículo: {veiculo}");
+                    col.Item().Text($"Data: {orcamento.CriadoEm:dd/MM/yyyy}");
+
+                    col.Item().PaddingTop(14).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.RelativeColumn(4);
+                            columns.RelativeColumn(1);
+                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(2);
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().Text("Descrição").Bold();
+                            header.Cell().Text("Qtd").Bold();
+                            header.Cell().Text("Valor unit.").Bold();
+                            header.Cell().Text("Total").Bold();
+                            header.Cell().ColumnSpan(4).PaddingTop(4).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                        });
+
+                        foreach (var item in orcamento.Itens)
+                        {
+                            table.Cell().PaddingVertical(4).Text(item.Descricao);
+                            table.Cell().PaddingVertical(4).Text(item.Quantidade.ToString());
+                            table.Cell().PaddingVertical(4).Text($"R$ {item.ValorUnitario:N2}");
+                            table.Cell().PaddingVertical(4).Text($"R$ {item.ValorTotal:N2}");
+                        }
+                    });
+
+                    col.Item().PaddingTop(10).AlignRight().Text($"Total: R$ {orcamento.ValorTotal:N2}").FontSize(14).Bold();
+
+                    if (!string.IsNullOrWhiteSpace(orcamento.Observacoes))
+                    {
+                        col.Item().PaddingTop(16).Text("Observações").Bold();
+                        col.Item().Text(orcamento.Observacoes);
+                    }
+                });
+
+                page.Footer().AlignCenter().Text(text =>
+                {
+                    text.Span("Página ");
+                    text.CurrentPageNumber();
+                    text.Span(" de ");
+                    text.TotalPages();
+                });
+            });
+        });
+
+        return documento.GeneratePdf();
     }
 
     // Formata telefone só para exibição — não altera o valor salvo no banco.

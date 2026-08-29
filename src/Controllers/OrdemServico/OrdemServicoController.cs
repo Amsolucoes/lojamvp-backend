@@ -743,6 +743,19 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         return Ok(new { mensagem = "Orçamento enviado por e-mail." });
     }
 
+    // ── Baixar orçamento em PDF (A4) ────────────────────────────────
+    [HttpGet("orcamentos/{id:guid}/pdf")]
+    public async Task<IActionResult> BaixarPdf(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var pdf = await notificacao.GerarPdfAsync(id, lojaId.Value);
+        if (pdf is null) return NotFound();
+
+        return File(pdf, "application/pdf", $"orcamento-{id.ToString()[..8]}.pdf");
+    }
+
     // ── Ajustar manualmente a data/hora de entrada (aprovação) e saída (conclusão) ──
     public record AjustarDatasRequest(DateTime? AprovadoEm, DateTime? ConcluidoEm);
 
