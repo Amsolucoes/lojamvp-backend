@@ -244,7 +244,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
             o.CriadoEm,
             o.AprovadoEm,
             o.ConcluidoEm,
-            itens = o.Itens.Select(i => new { i.Id, i.Tipo, i.ProdutoId, i.Descricao, i.Quantidade, i.ValorUnitario, i.ValorTotal }),
+            itens = o.Itens.Select(i => new { i.Id, i.Tipo, i.ProdutoId, i.ServicoId, i.Descricao, i.Quantidade, i.ValorUnitario, i.ValorTotal }),
             mecanicos = o.Mecanicos.Select(m => new { m.Id, m.ProfissionalId, NomeProfissional = m.Profissional!.Nome, m.ComissaoPercentual }),
             checklist = o.ChecklistRespostas.Select(r => new { r.Id, r.ChecklistItemId, NomeItem = r.ChecklistItem!.Nome, r.Estado, r.Observacao }),
         });
@@ -300,7 +300,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         return Ok(resumo);
     }
 
-    public record ItemOrcamentoRequest(string Tipo, Guid? ProdutoId, string Descricao, int Quantidade, decimal ValorUnitario);
+    public record ItemOrcamentoRequest(string Tipo, Guid? ProdutoId, Guid? ServicoId, string Descricao, int Quantidade, decimal ValorUnitario);
     public record MecanicoOrcamentoRequest(Guid ProfissionalId, decimal ComissaoPercentual);
     public record ChecklistRespostaRequest(Guid ChecklistItemId, string Estado, string? Observacao);
 
@@ -350,6 +350,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
                 LojaId = lojaId.Value,
                 Tipo = i.Tipo,
                 ProdutoId = i.ProdutoId,
+                ServicoId = i.ServicoId,
                 Descricao = i.Descricao.Trim(),
                 Quantidade = i.Quantidade,
                 ValorUnitario = i.ValorUnitario,
@@ -442,6 +443,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
                 OrcamentoId = orcamento.Id,
                 Tipo = i.Tipo,
                 ProdutoId = i.ProdutoId,
+                ServicoId = i.ServicoId,
                 Descricao = i.Descricao.Trim(),
                 Quantidade = i.Quantidade,
                 ValorUnitario = i.ValorUnitario,
@@ -696,25 +698,62 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         // ── Gera a comissão de cada mecânico vinculado ──
         // Base de cálculo depende do cadastro do funcionário: "total" (peça+serviço) ou
         // "servico" (só mão de obra — ignora o valor das peças usadas na ordem).
-        var valorSomenteServicos = orcamento.Itens.Where(i => i.Tipo == "servico").Sum(i => i.ValorTotal);
+        // Dentro da base, cada item de "serviço" vinculado ao catálogo de Serviços pode
+        // ter uma exceção de comissão cadastrada pro mecânico (ex: 0% pra um serviço
+        // específico) — nesse caso, o percentual do item vence o percentual padrão da
+        // ordem só naquele item. Peças e serviços avulsos (sem ServicoId) sempre usam
+        // o percentual padrão do mecânico na ordem.
+        var idsServicoUsados = orcamento.Itens
+            .Where(i => i.Tipo == "servico" && i.ServicoId.HasValue)
+            .Select(i => i.ServicoId!.Value)
+            .Distinct()
+            .ToList();
+        var idsMecanicos = orcamento.Mecanicos.Select(m => m.ProfissionalId).ToList();
+
+        var excecoes = idsServicoUsados.Count == 0
+            ? new List<ComissaoServicoProfissional>()
+            : await db.ComissoesServicoProfissional
+                .Where(e => idsServicoUsados.Contains(e.ServicoId) && idsMecanicos.Contains(e.ProfissionalId))
+                .ToListAsync();
 
         foreach (var mecanico in orcamento.Mecanicos)
         {
             if (mecanico.ComissaoPercentual <= 0) continue;
 
-            var baseCalculo = mecanico.Profissional?.ComissaoBaseCalculo == "servico"
-                ? valorSomenteServicos
-                : orcamento.ValorTotal;
+            var itensBase = mecanico.Profissional?.ComissaoBaseCalculo == "servico"
+                ? orcamento.Itens.Where(i => i.Tipo == "servico")
+                : orcamento.Itens;
 
-            var valorComissao = Math.Round(baseCalculo * (mecanico.ComissaoPercentual / 100m), 2);
+            decimal valorBase = 0;
+            decimal valorComissao = 0;
+
+            foreach (var item in itensBase)
+            {
+                var excecao = item.Tipo == "servico" && item.ServicoId.HasValue
+                    ? excecoes.FirstOrDefault(e => e.ProfissionalId == mecanico.ProfissionalId && e.ServicoId == item.ServicoId.Value)
+                    : null;
+
+                var percentualItem = excecao?.ComissaoPercentual ?? mecanico.ComissaoPercentual;
+
+                valorBase += item.ValorTotal;
+                valorComissao += item.ValorTotal * (percentualItem / 100m);
+            }
+
+            valorComissao = Math.Round(valorComissao, 2);
+            if (valorComissao <= 0) continue; // nada a comissionar (ex: todo item tinha exceção 0%)
+
+            // Percentual "efetivo" registrado — média ponderada do que foi de fato aplicado,
+            // útil pra conferência depois já que pode ter ficado misto por causa de exceções.
+            var percentualEfetivo = valorBase > 0 ? Math.Round((valorComissao / valorBase) * 100m, 2) : mecanico.ComissaoPercentual;
+
             db.ComissoesFuncionario.Add(new ComissaoFuncionario
             {
                 LojaId = lojaId.Value,
                 ProfissionalId = mecanico.ProfissionalId,
                 OrigemTipo = "ordem_servico",
                 OrigemId = orcamento.Id,
-                ValorServico = baseCalculo,
-                ComissaoPercentual = mecanico.ComissaoPercentual,
+                ValorServico = valorBase,
+                ComissaoPercentual = percentualEfetivo,
                 ValorComissao = valorComissao,
             });
         }

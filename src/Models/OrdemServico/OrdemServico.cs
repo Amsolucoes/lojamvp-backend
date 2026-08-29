@@ -89,8 +89,14 @@ public class ItemOrcamentoServico
     public Guid? ProdutoId { get; set; }
     public Produto? Produto { get; set; }
 
+    // Se o serviço vier do catálogo de Serviços, aponta pro Servico — permite que exceções
+    // de comissão por serviço (cadastradas em Funcionários) se apliquem a este item
+    // específico. Se for serviço avulso (fora do catálogo), fica null.
+    public Guid? ServicoId { get; set; }
+    public Servico? Servico { get; set; }
+
     [Required, MaxLength(150)]
-    public string Descricao { get; set; } = ""; // nome da peça/serviço no momento (avulso ou copiado do produto)
+    public string Descricao { get; set; } = ""; // nome da peça/serviço no momento (avulso ou copiado do produto/serviço)
 
     public int Quantidade { get; set; } = 1;
 
