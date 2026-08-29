@@ -7,7 +7,7 @@ using Resend;
 
 namespace LojaApi.src.Services;
 
-public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, ILogger<OrdemServicoNotificacaoService> logger)
+public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, IHttpClientFactory httpClientFactory, ILogger<OrdemServicoNotificacaoService> logger)
 {
     public record ResultadoEnvio(bool Enviado, string? Erro);
 
@@ -85,6 +85,8 @@ public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, ILo
     {
         var orcamento = await db.OrcamentosServico
             .Include(o => o.Itens)
+            .Include(o => o.Mecanicos).ThenInclude(m => m.Profissional)
+            .Include(o => o.ChecklistRespostas).ThenInclude(r => r.ChecklistItem)
             .FirstOrDefaultAsync(o => o.Id == orcamentoId && o.LojaId == lojaId);
         if (orcamento is null) return null;
 
@@ -92,74 +94,147 @@ public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, ILo
         var loja = await db.Lojas.FindAsync(lojaId);
         if (loja is null) return null;
 
+        // Baixa a logo da loja pra embutir no cabeçalho. Se falhar (rede, URL
+        // inválida etc.), segue sem logo em vez de quebrar a geração do PDF.
+        byte[]? logoBytes = null;
+        if (!string.IsNullOrWhiteSpace(loja.LogoUrl))
+        {
+            try
+            {
+                var client = httpClientFactory.CreateClient();
+                logoBytes = await client.GetByteArrayAsync(loja.LogoUrl);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Não foi possível baixar a logo da loja {LojaId} para o PDF.", lojaId);
+            }
+        }
+
         var veiculo = string.Join(" · ", new[] { orcamento.VeiculoDescricao, orcamento.Placa }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+        // Enquanto está "pendente" ainda é um orçamento; a partir do momento que
+        // é aprovado (em_andamento/concluído/cancelado) já virou ordem de serviço —
+        // é o mesmo critério que você descreveu no fluxo do sistema.
+        var ehOrcamento = orcamento.Status == "pendente";
 
         var documento = Document.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(2, Unit.Centimetre);
+                page.Margin(0);
                 page.DefaultTextStyle(x => x.FontSize(11));
 
-                page.Header().Column(col =>
+                page.Header().Background(Colors.Grey.Darken4).Padding(16).Row(row =>
                 {
-                    col.Item().Text(loja.Nome).FontSize(18).Bold();
-                    if (!string.IsNullOrWhiteSpace(loja.Endereco))
-                        col.Item().Text(loja.Endereco!).FontSize(9).FontColor(Colors.Grey.Darken1);
-                    if (!string.IsNullOrWhiteSpace(loja.Telefone))
-                        col.Item().Text($"Tel/WhatsApp: {FormatarTelefone(loja.Telefone!)}").FontSize(9).FontColor(Colors.Grey.Darken1);
-                    col.Item().PaddingTop(10).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                    if (logoBytes != null)
+                    {
+                        row.ConstantItem(70).Height(50).Image(logoBytes).FitArea();
+                        row.ConstantItem(12);
+                    }
+                    row.RelativeItem().AlignMiddle().Text(loja.Nome).FontColor(Colors.White).FontSize(20).Bold();
+                    row.AutoItem().Column(col =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(loja.Telefone))
+                            col.Item().AlignRight().Text($"Tel/WhatsApp: {FormatarTelefone(loja.Telefone!)}").FontColor(Colors.White).FontSize(9);
+                        if (!string.IsNullOrWhiteSpace(loja.Endereco))
+                            col.Item().AlignRight().Text(loja.Endereco!).FontColor(Colors.White).FontSize(9);
+                    });
                 });
 
-                page.Content().PaddingVertical(14).Column(col =>
+                page.Content().Padding(20).Column(col =>
                 {
-                    col.Item().Text("Orçamento").FontSize(16).Bold();
-                    col.Item().PaddingTop(4).Text($"Cliente: {cliente?.Nome ?? "—"}");
-                    if (cliente != null && !string.IsNullOrWhiteSpace(cliente.Telefone))
-                        col.Item().Text($"Telefone: {cliente.Telefone}");
-                    if (!string.IsNullOrEmpty(veiculo))
-                        col.Item().Text($"Veículo: {veiculo}");
-                    col.Item().Text($"Data: {orcamento.CriadoEm:dd/MM/yyyy}");
+                    col.Item().PaddingBottom(12).Row(row =>
+                    {
+                        row.AutoItem().Width(12).Height(12).Border(1).BorderColor(Colors.Black)
+                            .Background(ehOrcamento ? Colors.Black : Colors.White);
+                        row.AutoItem().PaddingLeft(4).PaddingRight(16).AlignMiddle().Text("Orçamento").FontSize(10);
+                        row.AutoItem().Width(12).Height(12).Border(1).BorderColor(Colors.Black)
+                            .Background(!ehOrcamento ? Colors.Black : Colors.White);
+                        row.AutoItem().PaddingLeft(4).AlignMiddle().Text("Ordem de Serviço").FontSize(10).Bold();
+                        row.RelativeItem();
+                        row.AutoItem().AlignMiddle().Text($"Data: {orcamento.CriadoEm:dd/MM/yyyy}").FontSize(10);
+                    });
 
-                    col.Item().PaddingTop(14).Table(table =>
+                    col.Item().PaddingBottom(4).Text($"Nome: {cliente?.Nome ?? "—"}").FontSize(11);
+                    if (cliente != null && !string.IsNullOrWhiteSpace(cliente.Telefone))
+                        col.Item().PaddingBottom(4).Text($"Telefone: {cliente.Telefone}").FontSize(11);
+                    if (!string.IsNullOrEmpty(veiculo))
+                        col.Item().PaddingBottom(4).Text($"Veículo: {veiculo}").FontSize(11);
+
+                    col.Item().PaddingTop(10).Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
                         {
-                            columns.RelativeColumn(4);
                             columns.RelativeColumn(1);
-                            columns.RelativeColumn(2);
+                            columns.RelativeColumn(5);
                             columns.RelativeColumn(2);
                         });
 
                         table.Header(header =>
                         {
-                            header.Cell().Text("Descrição").Bold();
-                            header.Cell().Text("Qtd").Bold();
-                            header.Cell().Text("Valor unit.").Bold();
-                            header.Cell().Text("Total").Bold();
-                            header.Cell().ColumnSpan(4).PaddingTop(4).LineHorizontal(1).LineColor(Colors.Grey.Lighten2);
+                            header.Cell().Background(Colors.Orange.Medium).Padding(6).Text("Quant.").FontColor(Colors.White).Bold();
+                            header.Cell().Background(Colors.Orange.Medium).Padding(6).Text("Descrição de peças/serviços").FontColor(Colors.White).Bold();
+                            header.Cell().Background(Colors.Orange.Medium).Padding(6).AlignRight().Text("Total").FontColor(Colors.White).Bold();
                         });
 
                         foreach (var item in orcamento.Itens)
                         {
-                            table.Cell().PaddingVertical(4).Text(item.Descricao);
-                            table.Cell().PaddingVertical(4).Text(item.Quantidade.ToString());
-                            table.Cell().PaddingVertical(4).Text($"R$ {item.ValorUnitario:N2}");
-                            table.Cell().PaddingVertical(4).Text($"R$ {item.ValorTotal:N2}");
+                            table.Cell().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Text(item.Quantidade.ToString());
+                            table.Cell().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Text(item.Descricao);
+                            table.Cell().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).AlignRight().Text($"R$ {item.ValorTotal:N2}");
+                        }
+
+                        // Linhas em branco no fim, pra lembrar o modelo em papel —
+                        // espaço pra anotação manual se precisar.
+                        for (int i = 0; i < 3; i++)
+                        {
+                            table.Cell().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Text(" ");
+                            table.Cell().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Text(" ");
+                            table.Cell().Border(1).BorderColor(Colors.Grey.Lighten2).Padding(6).Text(" ");
                         }
                     });
 
-                    col.Item().PaddingTop(10).AlignRight().Text($"Total: R$ {orcamento.ValorTotal:N2}").FontSize(14).Bold();
+                    col.Item().PaddingTop(10).AlignRight().Border(1).BorderColor(Colors.Black)
+                        .Padding(8).Text($"TOTAL R$ {orcamento.ValorTotal:N2}").FontSize(14).Bold();
+
+                    if (orcamento.Mecanicos.Count > 0)
+                    {
+                        col.Item().PaddingTop(16).Text("Mecânico(s)").Bold().FontSize(11);
+                        foreach (var m in orcamento.Mecanicos)
+                            col.Item().Text(m.Profissional?.Nome ?? "—").FontSize(10);
+                    }
+
+                    if (orcamento.ChecklistRespostas.Count > 0)
+                    {
+                        col.Item().PaddingTop(16).Text("Checklist").Bold().FontSize(11);
+                        foreach (var r in orcamento.ChecklistRespostas)
+                            col.Item().Text($"{r.ChecklistItem?.Nome}: {r.Estado}").FontSize(10);
+                    }
 
                     if (!string.IsNullOrWhiteSpace(orcamento.Observacoes))
                     {
-                        col.Item().PaddingTop(16).Text("Observações").Bold();
-                        col.Item().Text(orcamento.Observacoes);
+                        col.Item().PaddingTop(16).Text("Observações").Bold().FontSize(11);
+                        col.Item().Text(orcamento.Observacoes).FontSize(10);
                     }
+
+                    col.Item().PaddingTop(40).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().PaddingBottom(4).LineHorizontal(1).LineColor(Colors.Black);
+                            c.Item().AlignCenter().Text("Técnico").FontSize(10);
+                        });
+                        row.ConstantItem(30);
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().PaddingBottom(4).LineHorizontal(1).LineColor(Colors.Black);
+                            c.Item().AlignCenter().Text("Cliente").FontSize(10);
+                        });
+                    });
                 });
 
-                page.Footer().AlignCenter().Text(text =>
+                page.Footer().AlignCenter().PaddingVertical(6).Text(text =>
                 {
                     text.Span("Página ");
                     text.CurrentPageNumber();

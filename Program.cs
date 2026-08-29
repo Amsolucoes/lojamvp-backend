@@ -50,6 +50,7 @@ internal class Program
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
         builder.Services.AddScoped<ReservaChacaraNotificacaoService>();
         builder.Services.AddScoped<OrdemServicoNotificacaoService>();
+        builder.Services.AddHttpClient();
 
         // ── Controllers + Swagger ─────────────────────────────────────────
         builder.Services.AddControllers();
