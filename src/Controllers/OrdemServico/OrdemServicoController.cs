@@ -615,7 +615,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
     }
 
     // ── Concluir: gera Financeiro (a receber) + comissão por mecânico + baixa estoque ──
-    public record ConcluirOrcamentoRequest(Guid ContaBancariaId, DateTime? Vencimento);
+    public record ConcluirOrcamentoRequest(Guid ContaBancariaId, DateTime? Vencimento, bool JaPago = false, string? FormaPagamento = null, int? Parcelas = null);
 
     [HttpPatch("orcamentos/{id:guid}/concluir")]
     [Authorize(Roles = "admin,superadmin")]
@@ -665,6 +665,16 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         var vencimento = req.Vencimento.HasValue
             ? DateTime.SpecifyKind(req.Vencimento.Value.Date, DateTimeKind.Utc).AddHours(12)
             : DateTime.UtcNow;
+        if (req.JaPago && string.IsNullOrWhiteSpace(req.FormaPagamento))
+            return BadRequest(new { erro = "Informe a forma de pagamento." });
+
+        // Guarda a forma de pagamento (e parcelas, se for cartão) como observação —
+        // o LancamentoFinanceiro não tem um campo próprio pra isso hoje, diferente
+        // da Venda do Caixa.
+        string? observacaoPagamento = req.JaPago
+            ? $"Pago via {req.FormaPagamento}" + (req.Parcelas is > 1 ? $" em {req.Parcelas}x" : "")
+            : null;
+
         var lancamento = new LancamentoFinanceiro
         {
             LojaId = lojaId.Value,
@@ -675,6 +685,9 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
             CategoriaId = categoriaId,
             Valor = orcamento.ValorTotal,
             Vencimento = vencimento,
+            Status = req.JaPago ? "pago" : "pendente",
+            PagoEm = req.JaPago ? DateTime.UtcNow : null,
+            Observacao = observacaoPagamento,
         };
         db.LancamentosFinanceiros.Add(lancamento);
 
