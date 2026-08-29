@@ -277,6 +277,24 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         return Ok(lista);
     }
 
+    // ── Resumo agregado (qtd + total) de ordens CONCLUÍDAS por cliente — usado
+    // nos cards da lista de Clientes, pra sinalizar rapidamente quem já teve OS.
+    // Conta só concluídas (mesmo critério de "vendas" já ser sempre finalizada).
+    [HttpGet("resumo-clientes")]
+    public async Task<IActionResult> ResumoClientes()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var resumo = await db.OrcamentosServico
+            .Where(o => o.LojaId == lojaId && o.Status == "concluido")
+            .GroupBy(o => o.ClienteId)
+            .Select(g => new { ClienteId = g.Key, Qtd = g.Count(), Total = g.Sum(o => o.ValorTotal) })
+            .ToListAsync();
+
+        return Ok(resumo);
+    }
+
     public record ItemOrcamentoRequest(string Tipo, Guid? ProdutoId, string Descricao, int Quantidade, decimal ValorUnitario);
     public record MecanicoOrcamentoRequest(Guid ProfissionalId, decimal ComissaoPercentual);
     public record ChecklistRespostaRequest(Guid ChecklistItemId, string Estado, string? Observacao);
