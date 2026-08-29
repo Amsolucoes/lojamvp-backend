@@ -287,7 +287,7 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         if (lojaId is null) return Ok(Array.Empty<object>());
 
         var resumo = await db.OrcamentosServico
-            .Where(o => o.LojaId == lojaId && o.Status == "concluido")
+            .Where(o => o.LojaId == lojaId && o.Status != "cancelado")
             .GroupBy(o => o.ClienteId)
             .Select(g => new { ClienteId = g.Key, Qtd = g.Count(), Total = g.Sum(o => o.ValorTotal) })
             .ToListAsync();
