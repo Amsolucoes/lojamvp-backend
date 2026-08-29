@@ -250,6 +250,33 @@ public class OrdemServicoController(AppDbContext db, OrdemServicoNotificacaoServ
         });
     }
 
+    // ── Histórico de ordens de serviço de um cliente (usado na tela de Clientes) ──
+    [HttpGet("orcamentos/cliente/{clienteId:guid}")]
+    public async Task<IActionResult> ListarPorCliente(Guid clienteId)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var lista = await db.OrcamentosServico
+            .Where(o => o.LojaId == lojaId && o.ClienteId == clienteId)
+            .Include(o => o.Itens)
+            .OrderByDescending(o => o.CriadoEm)
+            .Select(o => new
+            {
+                o.Id,
+                o.VeiculoDescricao,
+                o.Placa,
+                o.Status,
+                o.ValorTotal,
+                o.CriadoEm,
+                o.ConcluidoEm,
+                itens = o.Itens.Select(i => new { i.Descricao, i.Quantidade, i.ValorTotal }),
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
     public record ItemOrcamentoRequest(string Tipo, Guid? ProdutoId, string Descricao, int Quantidade, decimal ValorUnitario);
     public record MecanicoOrcamentoRequest(Guid ProfissionalId, decimal ComissaoPercentual);
     public record ChecklistRespostaRequest(Guid ChecklistItemId, string Estado, string? Observacao);
