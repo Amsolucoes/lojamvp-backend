@@ -874,6 +874,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var detalheCartoesPagar = new List<object>();
         decimal totalContribuicaoCartoes = 0;
+        decimal totalCartoesVisiveis = 0;
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         foreach (var cartao in cartoes)
         {
@@ -886,11 +887,16 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             totalContribuicaoCartoes += pagoCartao + pendenteCartao + vencidoCartao;
 
             var valorVisivelCartao = pendenteCartao + vencidoCartao;
+            totalCartoesVisiveis += valorVisivelCartao;
             if (valorVisivelCartao > 0)
                 detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = valorVisivelCartao });
         }
 
-        var totalLancamentosPagar = pagarPago + pagarPendente + pagarVencido - totalContribuicaoCartoes;
+        // "Contas" no detalhamento reflete só o que ainda está em aberto (pendente + vencido),
+        // igual cada linha de cartão já mostra — nunca inclui o que já foi pago. Assim a soma
+        // de "Contas" + cada cartão bate exatamente com o "A Pagar" mostrado em cima, em vez
+        // de bater com o "Total do mês" (que inclui o que já foi pago).
+        var totalLancamentosPagar = pagarPendente + pagarVencido - totalCartoesVisiveis;
 
         var previstoReceita = receberPago + receberPendente + receberVencido;
         var previstoDespesa = pagarPago + pagarPendente + pagarVencido;
