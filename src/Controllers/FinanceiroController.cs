@@ -973,13 +973,13 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .ToList();
 
         var despesasPorCategoria = doMes
-            .Where(l => l.Tipo == "pagar")
-            // Parcelas de financiamento de fatura de cartão (CartaoOrigemId preenchido)
-            // nascem sem categoria própria — agrupa direto como "Cartão de Crédito",
-            // igual às compras normais do cartão, em vez de cair em "Sem categoria".
-            .GroupBy(l => l.CartaoOrigemId.HasValue
-                ? new { Nome = "Cartão de Crédito", Icone = "💳" }
-                : new { Nome = l.Categoria?.Nome ?? "Sem categoria", Icone = l.Categoria?.Icone ?? "📁" })
+            .Where(l => l.Tipo == "pagar" && !l.CartaoOrigemId.HasValue)
+            // Parcelas de financiamento de cartão (CartaoOrigemId preenchido) ficam de fora
+            // de propósito: o valor da compra original já foi contado como despesa no mês em
+            // que a fatura dela venceu (via totalCartoesMes, logo abaixo). Contar de novo cada
+            // parcela no mês em que ela vence duplicaria a mesma dívida — e triplicaria (ou
+            // mais) se essa fatura já financiada for refinanciada de novo depois.
+            .GroupBy(l => new { Nome = l.Categoria?.Nome ?? "Sem categoria", Icone = l.Categoria?.Icone ?? "📁" })
             .Select(g => new { nome = g.Key.Nome, icone = g.Key.Icone, valor = g.Sum(x => x.Valor) })
             .ToList();
 
@@ -1728,8 +1728,10 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var meses = Enumerable.Range(1, 12).Select(mes =>
         {
-            // Previsão: soma TUDO previsto pra esse mês (pago + pendente), não só o pago
-            var pagarLancamentos = doAno.Where(l => l.Tipo == "pagar" && l.Vencimento.Month == mes).Sum(l => l.Valor);
+            // Previsão: soma TUDO previsto pra esse mês (pago + pendente), não só o pago.
+            // Parcelas de financiamento de cartão ficam de fora (mesmo motivo do Balanço
+            // Mensal): o valor já está em totalCartaoPorMes, no mês da compra original.
+            var pagarLancamentos = doAno.Where(l => l.Tipo == "pagar" && l.Vencimento.Month == mes && l.CartaoOrigemId == null).Sum(l => l.Valor);
             var pagar = pagarLancamentos + totalCartaoPorMes[mes];
 
             var receberLancamentos = doAno.Where(l => l.Tipo == "receber" && l.Vencimento.Month == mes).Sum(l => l.Valor);
