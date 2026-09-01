@@ -843,12 +843,15 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             .Where(l => l.LojaId == lojaId && l.Vencimento >= inicio && l.Vencimento < fim)
             .ToListAsync();
 
-        decimal pagarPago = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pago").Sum(l => l.Valor);
-        int pagarQtdPago = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pago");
-        decimal pagarPendente = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date >= hoje).Sum(l => l.Valor);
-        int pagarQtdPendente = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date >= hoje);
-        decimal pagarVencido = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date < hoje).Sum(l => l.Valor);
-        int pagarQtdVencido = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date < hoje);
+        // Parcelas de financiamento de cartão (CartaoOrigemId preenchido) ficam de fora
+        // daqui — são tratadas à parte no loop de cartões abaixo, pra serem atribuídas
+        // ao cartão de origem certo em vez de vazarem pro balde de "Contas" avulsas.
+        decimal pagarPago = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pago" && l.CartaoOrigemId == null).Sum(l => l.Valor);
+        int pagarQtdPago = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pago" && l.CartaoOrigemId == null);
+        decimal pagarPendente = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date >= hoje && l.CartaoOrigemId == null).Sum(l => l.Valor);
+        int pagarQtdPendente = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date >= hoje && l.CartaoOrigemId == null);
+        decimal pagarVencido = doMes.Where(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date < hoje && l.CartaoOrigemId == null).Sum(l => l.Valor);
+        int pagarQtdVencido = doMes.Count(l => l.Tipo == "pagar" && l.Status == "pendente" && l.Vencimento.Date < hoje && l.CartaoOrigemId == null);
 
         decimal receberPago = doMes.Where(l => l.Tipo == "receber" && l.Status == "pago").Sum(l => l.Valor);
         int receberQtdPago = doMes.Count(l => l.Tipo == "receber" && l.Status == "pago");
@@ -875,44 +878,62 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         foreach (var cartao in cartoes)
         {
             var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
-            if (vencimentoFatura < inicio || vencimentoFatura >= fim) continue;
+            var cicloNesteMes = vencimentoFatura >= inicio && vencimentoFatura < fim;
 
-            var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
-            var totalFatura = await db.LancamentosCartao
-                .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cInicio.Date && l.DataCompra.Date <= cFim.Date)
-                .SumAsync(l => (decimal?)l.Valor) ?? 0;
+            decimal totalFatura = 0, totalFaturaRestante = 0;
+            bool faturaResolvida = false;
 
-            if (totalFatura <= 0) continue;
-
-            var faturaExistente = await db.FaturasCartao
-                .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
-
-            var totalAntecipadoResumo = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
-                .Where(p => p.FaturaCartaoId == faturaExistente.Id)
-                .SumAsync(p => (decimal?)p.Valor) ?? 0;
-            var totalFaturaRestante = totalFatura - totalAntecipadoResumo;
-            var faturaResolvida = faturaExistente?.Status == "pago" || faturaExistente?.Status == "parcial" || faturaExistente?.Status == "financiada";
-
-            if (faturaResolvida)
+            if (cicloNesteMes)
             {
-                // Fatura resolvida (paga, parcialmente paga ou financiada em parcelas) — não conta como pendente/vencida
-                pagarPago += totalFaturaRestante; pagarQtdPago++;
+                var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
+                totalFatura = await db.LancamentosCartao
+                    .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cInicio.Date && l.DataCompra.Date <= cFim.Date)
+                    .SumAsync(l => (decimal?)l.Valor) ?? 0;
+
+                var faturaExistente = await db.FaturasCartao
+                    .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
+
+                var totalAntecipadoResumo = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
+                    .Where(p => p.FaturaCartaoId == faturaExistente.Id)
+                    .SumAsync(p => (decimal?)p.Valor) ?? 0;
+                totalFaturaRestante = totalFatura - totalAntecipadoResumo;
+                faturaResolvida = faturaExistente?.Status == "pago" || faturaExistente?.Status == "parcial" || faturaExistente?.Status == "financiada";
+
+                if (totalFatura > 0)
+                {
+                    if (faturaResolvida) { pagarPago += totalFaturaRestante; pagarQtdPago++; }
+                    else if (totalFaturaRestante <= 0) { pagarPago += totalFatura; pagarQtdPago++; }
+                    else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFaturaRestante; pagarQtdVencido++; }
+                    else { pagarPendente += totalFaturaRestante; pagarQtdPendente++; }
+
+                    totalContribuicaoCartoes += totalFaturaRestante > 0 ? totalFaturaRestante : totalFatura;
+                }
             }
-            else if (totalFaturaRestante <= 0)
+
+            // Parcelas de financiamento de fatura antiga (já refinanciada) que vencem
+            // justamente neste cartão/mês — somadas e atribuídas AO CARTÃO CERTO aqui,
+            // igual /pagar-unificado já faz. Sem isso, esse valor vazava pro "Contas".
+            var parcelasFinanciamentoMes = await db.LancamentosFinanceiros
+                .Where(l => l.CartaoOrigemId == cartao.Id && l.Vencimento.Year == ano && l.Vencimento.Month == mes)
+                .ToListAsync();
+
+            decimal parcelasPendentesVisiveis = 0;
+            foreach (var p in parcelasFinanciamentoMes)
             {
-                pagarPago += totalFatura; pagarQtdPago++;
+                totalContribuicaoCartoes += p.Valor;
+                if (p.Status == "pago") { pagarPago += p.Valor; pagarQtdPago++; }
+                else
+                {
+                    parcelasPendentesVisiveis += p.Valor;
+                    if (p.Vencimento.Date < hoje) { pagarVencido += p.Valor; pagarQtdVencido++; }
+                    else { pagarPendente += p.Valor; pagarQtdPendente++; }
+                }
             }
-            else if (vencimentoFatura.Date < hoje) { pagarVencido += totalFaturaRestante; pagarQtdVencido++; }
-            else { pagarPendente += totalFaturaRestante; pagarQtdPendente++; }
 
-            totalContribuicaoCartoes += totalFaturaRestante > 0 ? totalFaturaRestante : totalFatura;
-
-            // Só entra na lista visível de "cartões" do resumo se ainda sobrar valor em
-            // aberto — uma vez que a fatura foi paga, parcialmente paga ou financiada,
-            // ela some daqui, igual já acontece em /pagar-unificado (usado pelo mobile).
-            if (!faturaResolvida && totalFaturaRestante > 0)
+            var valorVisivelCartao = (cicloNesteMes && !faturaResolvida ? Math.Max(0, totalFaturaRestante) : 0) + parcelasPendentesVisiveis;
+            if (valorVisivelCartao > 0)
             {
-                detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = totalFaturaRestante });
+                detalheCartoesPagar.Add(new { nome = cartao.Nome, valor = valorVisivelCartao });
             }
         }
 
