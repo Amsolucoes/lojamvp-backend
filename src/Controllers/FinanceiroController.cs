@@ -151,7 +151,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var faturasCartaoPagas = await db.FaturasCartao
             .Include(f => f.CartaoCredito)
-            .Where(f => (f.ContaBancariaId ?? f.CartaoCredito!.ContaBancariaId) == contaId && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada"))
+            .Where(f => !f.NaoAfetaSaldo && (f.ContaBancariaId ?? f.CartaoCredito!.ContaBancariaId) == contaId && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada"))
             .SumAsync(f => (decimal?)f.ValorPago) ?? 0;
 
         var antecipadosPagos = await db.PagamentosAntecipadosFatura
@@ -1402,8 +1402,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         });
     }
 
-    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela, Guid? ContaBancariaId = null, DateTime? DataPagamento = null);
-    public record AntecipadoFaturaRequest(decimal Valor, DateTime Data, Guid ContaBancariaId, string? Observacao);
+    public record PagarFaturaRequest(string Modo, decimal? ValorPago, int? TotalParcelas, decimal? ValorEntrada, DateTime? PrimeiraParcela, Guid? ContaBancariaId = null, DateTime? DataPagamento = null, bool NaoAfetaSaldo = false); public record AntecipadoFaturaRequest(decimal Valor, DateTime Data, Guid ContaBancariaId, string? Observacao);
 
     [HttpPost("cartoes/{id:guid}/fatura/antecipado")]
     public async Task<IActionResult> AdicionarAntecipadoFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes, [FromBody] AntecipadoFaturaRequest req)
@@ -1526,10 +1525,14 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             fatura.ContaBancariaId = req.ContaBancariaId.Value;
         }
 
+        if (req.Modo != "desfazer")
+            fatura.NaoAfetaSaldo = req.NaoAfetaSaldo;
+
         switch (req.Modo)
         {
             case "desfazer":
                 fatura.ContaBancariaId = null;
+                fatura.NaoAfetaSaldo = false;
                 // Se era um financiamento, remove todas as parcelas geradas (só as ainda não pagas, por segurança)
                 if (fatura.Status == "financiada")
                 {
@@ -1572,6 +1575,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     {
                         p.Status = "pago";
                         p.PagoEm = dataPagamentoFinal;
+                        if (req.NaoAfetaSaldo) p.NaoAfetaSaldo = true;
                     }
                     break;
                 }

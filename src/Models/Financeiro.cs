@@ -294,5 +294,11 @@ public class FaturaCartao
     public string Status { get; set; } = "pendente"; // pendente | parcial | pago | financiada
     public DateTime? PagoEm { get; set; }
 
+    // Igual ao LancamentoFinanceiro: marca que esse pagamento foi resolvido "por fora"
+    // (negociação com o banco, absorção em outra dívida etc.) e não deve afetar saldo de
+    // nenhuma conta — mesmo se ContaBancariaId ficar nulo, sem cair no fallback pra conta
+    // padrão do cartão.
+    public bool NaoAfetaSaldo { get; set; } = false;
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
