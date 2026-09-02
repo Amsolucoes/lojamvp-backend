@@ -108,6 +108,12 @@ public class LancamentoFinanceiro
 
     public bool Avisar { get; set; } = true;
 
+    // Marca que esse lançamento foi resolvido "por fora" (ex: negociação com o banco,
+    // dívida absorvida em outro financiamento) — não representa dinheiro que de fato
+    // saiu/entrou da ContaBancariaId vinculada, então o cálculo de saldo da conta deve
+    // ignorá-lo completamente, mesmo estando marcado como "pago".
+    public bool NaoAfetaSaldo { get; set; } = false;
+
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
 

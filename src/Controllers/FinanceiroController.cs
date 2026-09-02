@@ -130,11 +130,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         if (conta is null) return 0;
 
         var recebidos = await db.LancamentosFinanceiros
-            .Where(l => l.ContaBancariaId == contaId && l.Tipo == "receber" && l.Status == "pago")
-            .SumAsync(l => (decimal?)l.Valor) ?? 0;
+           .Where(l => l.ContaBancariaId == contaId && l.Tipo == "receber" && l.Status == "pago" && !l.NaoAfetaSaldo)
+           .SumAsync(l => (decimal?)l.Valor) ?? 0;
 
         var pagos = await db.LancamentosFinanceiros
-            .Where(l => l.ContaBancariaId == contaId && l.Tipo == "pagar" && l.Status == "pago")
+            .Where(l => l.ContaBancariaId == contaId && l.Tipo == "pagar" && l.Status == "pago" && !l.NaoAfetaSaldo)
             .SumAsync(l => (decimal?)l.Valor) ?? 0;
 
         var entradasAjuste = await db.AjustesContaBancaria
@@ -443,6 +443,14 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         lanc.Status = req.Pago ? "pago" : "pendente";
         lanc.PagoEm = req.Pago ? DateTime.UtcNow : null;
+
+        // "Absorvida sem conta": o lançamento continua vinculado a uma conta (o campo é
+        // obrigatório no banco), mas o cálculo de saldo passa a ignorá-lo — usado quando
+        // o valor não saiu de fato dessa conta (ex: dívida negociada/consolidada com o
+        // banco), evitando reduzir o saldo por um pagamento que nunca aconteceu de verdade.
+        if (req.Pago && req.AbsorvidaSemConta)
+            lanc.NaoAfetaSaldo = true;
+
         await db.SaveChangesAsync();
 
         return Ok(new { lanc.Id, lanc.Status });
@@ -2237,5 +2245,5 @@ public record AjusteSaldoRequest(string Tipo, decimal? Valor, decimal NovoSaldo,
 public record SalvarLancamentoAvulsoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, DateTime Vencimento, string? Observacao, bool JaPago = false, bool Avisar = true);
 public record SalvarLancamentoParceladoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal ValorParcela, int? TotalParcelas, DateTime PrimeiroVencimento, DateTime? DataFim, string? Observacao, bool JaPago = false, bool Avisar = true);
 public record SalvarLancamentoFixoRequest(Guid ContaBancariaId, string Tipo, string Descricao, Guid? CategoriaId, decimal Valor, int DiaVencimento, string? Observacao, DateTime? DataInicio = null, bool JaPago = false, bool Avisar = true);
-public record MarcarPagamentoRequest(bool Pago);
+public record MarcarPagamentoRequest(bool Pago, bool AbsorvidaSemConta = false);
 public record EditarLancamentoRequest(string Descricao, Guid? CategoriaId, Guid ContaBancariaId, decimal Valor, DateTime Vencimento, string? Observacao);
