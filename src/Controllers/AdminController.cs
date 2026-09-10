@@ -205,16 +205,22 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         var loja = await db.Lojas.FindAsync(id);
         if (loja is null) return NotFound();
 
+        // AsNoTracking em tudo: sem isso, o EF faz "relationship fixup" automático entre
+        // entidades carregadas na mesma instância de contexto (ex: liga ItemVenda.Produto
+        // ao Produto já carregado antes, e vice-versa), criando um grafo muito mais profundo
+        // e ramificado do que os Include() pedem — e estourando o limite de profundidade do
+        // serializador JSON (64 níveis), mesmo com IgnoreCycles configurado. Sem rastreamento,
+        // esse encaixe automático não acontece, e cada entidade fica isolada.
         var produtos = await db.Produtos.Where(p => p.LojaId == id)
-            .Include(p => p.Variacoes).ToListAsync();
-        var clientes = await db.Clientes.Where(c => c.LojaId == id).ToListAsync();
+            .Include(p => p.Variacoes).AsNoTracking().ToListAsync();
+        var clientes = await db.Clientes.Where(c => c.LojaId == id).AsNoTracking().ToListAsync();
         var vendas = await db.Vendas.Where(v => v.LojaId == id)
-            .Include(v => v.Itens).ToListAsync();
+            .Include(v => v.Itens).AsNoTracking().ToListAsync();
         var trocas = await db.Trocas.Where(t => t.LojaId == id)
-            .Include(t => t.Itens).ToListAsync();
-        var movimentos = await db.Movimentos.Where(m => m.LojaId == id).ToListAsync();
-        var categorias = await db.CategoriasLoja.Where(c => c.LojaId == id).ToListAsync();
-        var pagamentos = await db.Pagamentos.Where(p => p.LojaId == id).ToListAsync();
+            .Include(t => t.Itens).AsNoTracking().ToListAsync();
+        var movimentos = await db.Movimentos.Where(m => m.LojaId == id).AsNoTracking().ToListAsync();
+        var categorias = await db.CategoriasLoja.Where(c => c.LojaId == id).AsNoTracking().ToListAsync();
+        var pagamentos = await db.Pagamentos.Where(p => p.LojaId == id).AsNoTracking().ToListAsync();
 
         var backup = new
         {
