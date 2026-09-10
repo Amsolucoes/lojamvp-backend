@@ -295,7 +295,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         return Ok(new { mensagem = "Loja e todos os dados foram removidos." });
     }
 
-    // ── Deletar apenas produtos, vendas e trocas (mantém clientes, usuários e a loja) ──
+    // ── Deletar apenas produtos, vendas, trocas e ajustes de caixa (mantém clientes, usuários e a loja) ──
     [HttpDelete("lojas/{id:guid}/produtos-e-vendas")]
     public async Task<IActionResult> DeletarProdutosEVendas(Guid id)
     {
@@ -310,6 +310,17 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         await db.ProdutoVariacoes.Where(v => produtos.Contains(v.ProdutoId)).ExecuteDeleteAsync();
         await db.Movimentos.Where(m => m.LojaId == id).ExecuteDeleteAsync();
         await db.NfProdutoMapeamentos.Where(m => produtos.Contains(m.ProdutoId)).ExecuteDeleteAsync();
+
+        // Ajustes de caixa (reforço/sangria) e o espelho no Financeiro, se algum ajuste
+        // tiver sido feito com conta bancária vinculada (AjusteContaBancariaId não é FK
+        // de verdade no banco, então precisa limpar manual — mesma lógica do Excluir() do
+        // MovimentosCaixaController, só que em lote aqui)
+        var ajustesContaVinculados = await db.MovimentosCaixa
+            .Where(m => m.LojaId == id && m.AjusteContaBancariaId.HasValue)
+            .Select(m => m.AjusteContaBancariaId!.Value)
+            .ToListAsync();
+        await db.AjustesContaBancaria.Where(a => ajustesContaVinculados.Contains(a.Id)).ExecuteDeleteAsync();
+        await db.MovimentosCaixa.Where(m => m.LojaId == id).ExecuteDeleteAsync();
 
         // Itens de troca e trocas
         var trocas = await db.Trocas.Where(t => t.LojaId == id).Select(t => t.Id).ToListAsync();
@@ -329,7 +340,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         // mantendo a descrição/nome já salvos na própria linha (histórico de OS e
         // agendamentos não é afetado). Clientes, Usuários e a Loja permanecem intactos.
 
-        return Ok(new { mensagem = "Produtos, vendas e trocas foram removidos. Clientes e usuários foram mantidos." });
+        return Ok(new { mensagem = "Produtos, vendas, trocas e ajustes de caixa foram removidos. Clientes e usuários foram mantidos." });
     }
 
     // ── Acessar loja como suporte (gera token do admin da loja) ───
