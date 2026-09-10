@@ -295,6 +295,43 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
         return Ok(new { mensagem = "Loja e todos os dados foram removidos." });
     }
 
+    // ── Deletar apenas produtos, vendas e trocas (mantém clientes, usuários e a loja) ──
+    [HttpDelete("lojas/{id:guid}/produtos-e-vendas")]
+    public async Task<IActionResult> DeletarProdutosEVendas(Guid id)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        var produtos = await db.Produtos.Where(p => p.LojaId == id).Select(p => p.Id).ToListAsync();
+
+        // Variações, movimentos de estoque e mapeamentos de NF importada dos produtos.
+        // (produto_variacoes, movimentos e nf_produto_mapeamentos já são ON DELETE CASCADE
+        // no banco, mas deletamos explícito aqui pra manter o mesmo padrão do Deletar() da loja inteira)
+        await db.ProdutoVariacoes.Where(v => produtos.Contains(v.ProdutoId)).ExecuteDeleteAsync();
+        await db.Movimentos.Where(m => m.LojaId == id).ExecuteDeleteAsync();
+        await db.NfProdutoMapeamentos.Where(m => produtos.Contains(m.ProdutoId)).ExecuteDeleteAsync();
+
+        // Itens de troca e trocas
+        var trocas = await db.Trocas.Where(t => t.LojaId == id).Select(t => t.Id).ToListAsync();
+        await db.ItensTroca.Where(i => trocas.Contains(i.TrocaId)).ExecuteDeleteAsync();
+        await db.Trocas.Where(t => t.LojaId == id).ExecuteDeleteAsync();
+
+        // Itens de venda e vendas
+        var vendas = await db.Vendas.Where(v => v.LojaId == id).Select(v => v.Id).ToListAsync();
+        await db.ItensVenda.Where(i => vendas.Contains(i.VendaId)).ExecuteDeleteAsync();
+        await db.Vendas.Where(v => v.LojaId == id).ExecuteDeleteAsync();
+
+        // Produtos
+        await db.Produtos.Where(p => p.LojaId == id).ExecuteDeleteAsync();
+
+        // Observação: itens_orcamento_servico.produto_id e agendamentos.venda_id são
+        // ON DELETE SET NULL no banco — ficam com produto/venda nulos automaticamente,
+        // mantendo a descrição/nome já salvos na própria linha (histórico de OS e
+        // agendamentos não é afetado). Clientes, Usuários e a Loja permanecem intactos.
+
+        return Ok(new { mensagem = "Produtos, vendas e trocas foram removidos. Clientes e usuários foram mantidos." });
+    }
+
     // ── Acessar loja como suporte (gera token do admin da loja) ───
     [HttpPost("lojas/{id:guid}/acessar")]
     public async Task<IActionResult> AcessarComoSuporte(Guid id)
