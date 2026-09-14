@@ -136,6 +136,32 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         return Ok(ToDto(produtoComMarca));
     }
 
+    // ── Atualização de custo/venda em lote (tela de Precificação) ──────
+    [HttpPut("precos-em-lote")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarPrecosEmLote([FromBody] AtualizarPrecosEmLoteRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (req.Produtos.Count == 0) return Ok(new { atualizados = 0 });
+
+        var ids = req.Produtos.Select(p => p.Id).ToList();
+        var produtos = await db.Produtos
+            .Where(p => ids.Contains(p.Id) && (!lojaId.HasValue || p.LojaId == lojaId))
+            .ToListAsync();
+
+        var porId = req.Produtos.ToDictionary(p => p.Id);
+        foreach (var produto in produtos)
+        {
+            var item = porId[produto.Id];
+            produto.PrecoCusto = item.PrecoCusto;
+            produto.PrecoVenda = item.PrecoVenda;
+            produto.AtualizadoEm = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { atualizados = produtos.Count });
+    }
+
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "admin,superadmin")]
     public async Task<IActionResult> Deletar(Guid id)

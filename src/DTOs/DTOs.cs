@@ -50,6 +50,9 @@ public record SalvarProdutoRequest(
     Guid? MarcaId = null
 );
 
+public record ProdutoPrecoItem(Guid Id, decimal PrecoCusto, decimal PrecoVenda);
+public record AtualizarPrecosEmLoteRequest(List<ProdutoPrecoItem> Produtos);
+
 // ── Cliente ───────────────────────────────────────────────────────
 public record ClienteDto(
     Guid Id, string Nome, string Telefone,
