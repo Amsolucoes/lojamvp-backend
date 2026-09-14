@@ -162,6 +162,23 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         return Ok(new { atualizados = produtos.Count });
     }
 
+    // ── Ativar/inativar em lote (seleção múltipla na lista de Produtos) ──
+    [HttpPut("status-em-lote")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarStatusEmLote([FromBody] AtualizarStatusEmLoteRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (req.Ids.Count == 0) return Ok(new { atualizados = 0 });
+
+        var atualizados = await db.Produtos
+            .Where(p => req.Ids.Contains(p.Id) && (!lojaId.HasValue || p.LojaId == lojaId))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Ativo, req.Ativo)
+                .SetProperty(p => p.AtualizadoEm, DateTime.UtcNow));
+
+        return Ok(new { atualizados });
+    }
+
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "admin,superadmin")]
     public async Task<IActionResult> Deletar(Guid id)

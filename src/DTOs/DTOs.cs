@@ -53,6 +53,8 @@ public record SalvarProdutoRequest(
 public record ProdutoPrecoItem(Guid Id, decimal PrecoCusto, decimal PrecoVenda);
 public record AtualizarPrecosEmLoteRequest(List<ProdutoPrecoItem> Produtos);
 
+public record AtualizarStatusEmLoteRequest(List<Guid> Ids, bool Ativo);
+
 // ── Cliente ───────────────────────────────────────────────────────
 public record ClienteDto(
     Guid Id, string Nome, string Telefone,
