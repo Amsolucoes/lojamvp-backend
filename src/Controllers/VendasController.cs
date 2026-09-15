@@ -130,6 +130,7 @@ public class VendasController(AppDbContext db) : ControllerBase
             LojaId = lojaId,
             OrigemVendaId = req.OrigemVendaId,
             OrigemNome = origemNome,
+            CreditoUsado = req.CreditoUsado,
         };
         if (dataVendaFinal.HasValue) venda.CriadaEm = dataVendaFinal.Value;
         db.Vendas.Add(venda);
@@ -242,6 +243,68 @@ public class VendasController(AppDbContext db) : ControllerBase
         return CreatedAtAction(nameof(Buscar), new { id = venda.Id }, ToDto(vendaSalva));
     }
 
+    // ── Excluir venda (só do dia, com estorno de estoque/agendamento/plano/crédito) ──
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Excluir(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var venda = await db.Vendas
+            .Include(v => v.Itens)
+            .FirstOrDefaultAsync(v => v.Id == id);
+
+        if (venda is null || (lojaId.HasValue && venda.LojaId != lojaId)) return NotFound();
+
+        if (venda.CriadaEm.Date != DateTime.UtcNow.Date)
+            return BadRequest(new { erro = "Só é possível excluir vendas feitas hoje." });
+
+        // Estorna estoque. Observação: o ItemVenda não guarda qual variação
+        // (tamanho/cor) foi vendida quando o produto tem grade — só o produto
+        // pai. Por isso, pra produtos com grade, o estorno soma no total do
+        // produto, mas não sabe em qual variação específica devolver.
+        foreach (var item in venda.Itens.Where(i => i.ProdutoId.HasValue))
+        {
+            var produto = await db.Produtos.FindAsync(item.ProdutoId!.Value);
+            if (produto is null) continue;
+
+            produto.Estoque += item.Quantidade;
+            produto.AtualizadoEm = DateTime.UtcNow;
+
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = produto.Id,
+                Tipo = "entrada",
+                Quantidade = item.Quantidade,
+                Observacao = $"Estorno da venda #{venda.Id.ToString()[..8]} (excluída) - {item.NomeProduto}",
+                LojaId = lojaId,
+            });
+        }
+
+        // Reverte agendamentos marcados como pagos por essa venda
+        var agendamentos = await db.Agendamentos.Where(a => a.VendaId == venda.Id).ToListAsync();
+        foreach (var ag in agendamentos)
+        {
+            ag.Pago = false;
+            ag.VendaId = null;
+        }
+
+        // Remove consumos de plano gerados por essa venda (devolve o uso do plano)
+        await db.ConsumosPlano.Where(c => c.VendaId == venda.Id).ExecuteDeleteAsync();
+
+        // Devolve crédito de loja usado pelo cliente nessa venda
+        if (venda.CreditoUsado.HasValue && venda.CreditoUsado.Value > 0 && venda.ClienteId.HasValue)
+        {
+            var cliente = await db.Clientes.FindAsync(venda.ClienteId.Value);
+            if (cliente != null) cliente.CreditoLoja += venda.CreditoUsado.Value;
+        }
+
+        db.ItensVenda.RemoveRange(venda.Itens);
+        db.Vendas.Remove(venda);
+
+        await db.SaveChangesAsync();
+        return Ok(new { mensagem = "Venda excluída. Estoque, agendamento e crédito foram estornados." });
+    }
+
     private static VendaDto ToDto(Venda v) => new(
         v.Id, v.ClienteId, v.Cliente?.Nome,
         v.Total, v.Desconto, v.TotalFinal,
@@ -252,6 +315,7 @@ public class VendasController(AppDbContext db) : ControllerBase
             i.Quantidade, i.PrecoUnitario, i.Subtotal,
             i.ServicoId
         )).ToList(),
-        v.OrigemNome
+        v.OrigemNome,
+        v.CreditoUsado
     );
 }

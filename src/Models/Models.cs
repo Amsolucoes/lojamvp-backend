@@ -154,6 +154,9 @@ public class Venda
     [MaxLength(50)]
     public string? OrigemNome { get; set; } // snapshot — não quebra se a origem for excluída depois
 
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? CreditoUsado { get; set; }
+
     // Navegação
     public ICollection<ItemVenda> Itens { get; set; } = [];
 }

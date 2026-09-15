@@ -109,7 +109,8 @@ public record VendaDto(
     decimal? Troco,
     DateTime CriadaEm,
     List<ItemVendaDto> Itens,
-    string? OrigemNome
+    string? OrigemNome,
+    decimal? CreditoUsado = null
 );
 
 // ── Estoque ───────────────────────────────────────────────────────
