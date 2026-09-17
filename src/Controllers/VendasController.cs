@@ -118,6 +118,14 @@ public class VendasController(AppDbContext db) : ControllerBase
             origemNome = origem?.Nome;
         }
 
+        string? nomeFuncionario = null;
+        if (req.FuncionarioId.HasValue)
+        {
+            var funcionario = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == req.FuncionarioId.Value && p.LojaId == lojaId);
+            if (funcionario is null) return BadRequest(new { erro = "Funcionário não encontrado." });
+            nomeFuncionario = funcionario.Nome;
+        }
+
         var venda = new Venda
         {
             ClienteId = req.ClienteId,
@@ -130,6 +138,8 @@ public class VendasController(AppDbContext db) : ControllerBase
             LojaId = lojaId,
             OrigemVendaId = req.OrigemVendaId,
             OrigemNome = origemNome,
+            FuncionarioId = req.FuncionarioId,
+            NomeFuncionario = nomeFuncionario,
             CreditoUsado = req.CreditoUsado,
         };
         if (dataVendaFinal.HasValue) venda.CriadaEm = dataVendaFinal.Value;
@@ -316,6 +326,8 @@ public class VendasController(AppDbContext db) : ControllerBase
             i.ServicoId
         )).ToList(),
         v.OrigemNome,
-        v.CreditoUsado
+        v.CreditoUsado,
+        v.FuncionarioId,
+        v.NomeFuncionario
     );
 }

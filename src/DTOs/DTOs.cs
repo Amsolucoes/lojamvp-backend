@@ -92,7 +92,8 @@ public record CriarVendaRequest(
     decimal? Troco,
     decimal? CreditoUsado,
     DateTime? DataVenda,
-    Guid? OrigemVendaId
+    Guid? OrigemVendaId,
+    Guid? FuncionarioId = null
 );
 
 public record ItemVendaDto(
@@ -110,7 +111,9 @@ public record VendaDto(
     DateTime CriadaEm,
     List<ItemVendaDto> Itens,
     string? OrigemNome,
-    decimal? CreditoUsado = null
+    decimal? CreditoUsado = null,
+    Guid? FuncionarioId = null,
+    string? NomeFuncionario = null
 );
 
 // ── Estoque ───────────────────────────────────────────────────────
