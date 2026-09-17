@@ -1,4 +1,5 @@
 using LojaApi.src.Models;
+using LojaApi.src.Models.Funcionarios;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -153,6 +154,12 @@ public class Venda
 
     [MaxLength(50)]
     public string? OrigemNome { get; set; } // snapshot — não quebra se a origem for excluída depois
+
+    public Guid? FuncionarioId { get; set; }
+    public Profissional? Funcionario { get; set; }
+
+    [MaxLength(100)]
+    public string? NomeFuncionario { get; set; } // snapshot — não quebra se o funcionário for excluído depois
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal? CreditoUsado { get; set; }
