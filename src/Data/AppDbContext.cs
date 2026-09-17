@@ -76,6 +76,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AvaliacaoChacara> AvaliacoesChacara => Set<AvaliacaoChacara>();
     public DbSet<ConfiguracaoEtiqueta> ConfiguracoesEtiqueta => Set<ConfiguracaoEtiqueta>();
     public DbSet<Marca> Marcas => Set<Marca>();
+    public DbSet<Fornecedor> Fornecedores => Set<Fornecedor>();
     public DbSet<ChecklistCategoria> ChecklistCategorias => Set<ChecklistCategoria>();
     public DbSet<ChecklistItem> ChecklistItens => Set<ChecklistItem>();
     public DbSet<OrcamentoServico> OrcamentosServico => Set<OrcamentoServico>();
@@ -102,6 +103,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<Marca>()
             .HasIndex(m => new { m.LojaId, m.Nome });
+
+        mb.Entity<Produto>()
+            .HasOne(p => p.Fornecedor).WithMany(f => f.Produtos)
+            .HasForeignKey(p => p.FornecedorId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<Fornecedor>()
+            .HasIndex(f => new { f.LojaId, f.Nome });
 
         // Relacionamentos
         mb.Entity<ItemVenda>()
