@@ -46,6 +46,10 @@ public class Produto
     public Guid? MarcaId { get; set; }
     public Marca? Marca { get; set; }
 
+    // Vínculo opcional com Fornecedor — de quem a loja compra o produto.
+    public Guid? FornecedorId { get; set; }
+    public Fornecedor? Fornecedor { get; set; }
+
     [Column(TypeName = "decimal(10,2)")]
     public decimal PrecoCusto { get; set; }
 
@@ -79,6 +83,40 @@ public class Produto
     public ICollection<MovimentoEstoque> Movimentos { get; set; } = [];
     public ICollection<ItemVenda> ItensVenda { get; set; } = [];
     public ICollection<ProdutoVariacao> Variacoes { get; set; } = [];
+}
+
+// ── Fornecedor ────────────────────────────────────────────────────
+public class Fornecedor
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+
+    [Required, MaxLength(150)]
+    public string Nome { get; set; } = "";
+
+    [MaxLength(18)]
+    public string? CnpjCpf { get; set; }
+
+    [MaxLength(20)]
+    public string? Telefone { get; set; }
+
+    [MaxLength(150)]
+    public string? Email { get; set; }
+
+    [MaxLength(300)]
+    public string? Endereco { get; set; }
+
+    [MaxLength(500)]
+    public string? Observacoes { get; set; }
+
+    public bool Ativo { get; set; } = true;
+
+    public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
+
+    public Guid? LojaId { get; set; }
+    public Loja? Loja { get; set; }
+
+    // Navegação
+    public ICollection<Produto> Produtos { get; set; } = [];
 }
 
 // ── Cliente ───────────────────────────────────────────────────────

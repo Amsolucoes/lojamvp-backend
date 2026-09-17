@@ -31,7 +31,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         [FromQuery] Guid? marcaId)
     {
         var lojaId = await GetLojaId();
-        var q = db.Produtos.Include(p => p.Variacoes).Include(p => p.Marca).AsQueryable();
+        var q = db.Produtos.Include(p => p.Variacoes).Include(p => p.Marca).Include(p => p.Fornecedor).AsQueryable();
 
         if (lojaId.HasValue)
             q = q.Where(p => p.LojaId == lojaId);
@@ -54,7 +54,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
     public async Task<IActionResult> Buscar(Guid id)
     {
         var lojaId = await GetLojaId();
-        var p = await db.Produtos.Include(x => x.Variacoes).Include(x => x.Marca).FirstOrDefaultAsync(x => x.Id == id);
+        var p = await db.Produtos.Include(x => x.Variacoes).Include(x => x.Marca).Include(x => x.Fornecedor).FirstOrDefaultAsync(x => x.Id == id);
         if (p is null || (lojaId.HasValue && p.LojaId != lojaId)) return NotFound();
         return Ok(ToDto(p));
     }
@@ -86,6 +86,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
             TipoVenda = req.TipoVenda,
             UnidadeMedida = req.UnidadeMedida,
             MarcaId = req.MarcaId,
+            FornecedorId = req.FornecedorId,
             LojaId = lojaId,
         };
         db.Produtos.Add(produto);
@@ -102,7 +103,7 @@ public class ProdutosController(AppDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
 
-        var produtoComMarca = await db.Produtos.Include(p => p.Marca).FirstAsync(p => p.Id == produto.Id);
+        var produtoComMarca = await db.Produtos.Include(p => p.Marca).Include(p => p.Fornecedor).FirstAsync(p => p.Id == produto.Id);
         return CreatedAtAction(nameof(Buscar), new { id = produto.Id }, ToDto(produtoComMarca));
     }
 
@@ -128,11 +129,12 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         produto.TipoVenda = req.TipoVenda;
         produto.UnidadeMedida = req.UnidadeMedida;
         produto.MarcaId = req.MarcaId;
+        produto.FornecedorId = req.FornecedorId;
         produto.AtualizadoEm = DateTime.UtcNow;
 
         await db.SaveChangesAsync();
 
-        var produtoComMarca = await db.Produtos.Include(p => p.Variacoes).Include(p => p.Marca).FirstAsync(p => p.Id == produto.Id);
+        var produtoComMarca = await db.Produtos.Include(p => p.Variacoes).Include(p => p.Marca).Include(p => p.Fornecedor).FirstAsync(p => p.Id == produto.Id);
         return Ok(ToDto(produtoComMarca));
     }
 
@@ -334,6 +336,8 @@ public class ProdutosController(AppDbContext db) : ControllerBase
             v.Id, v.Tamanho, v.Cor, v.OutroCampo, v.CodigoBarras,
             v.Estoque, v.EstoqueMinimo, v.Ativo)).ToList(),
         p.MarcaId,
-        p.Marca?.Nome
+        p.Marca?.Nome,
+        p.FornecedorId,
+        p.Fornecedor?.Nome
         );
 }

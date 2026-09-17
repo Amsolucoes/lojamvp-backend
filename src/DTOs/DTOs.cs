@@ -38,7 +38,9 @@ public record ProdutoDto(
     string TipoVenda, string UnidadeMedida,
     List<ProdutoVariacaoDto>? Variacoes = null,
     Guid? MarcaId = null,
-    string? NomeMarca = null
+    string? NomeMarca = null,
+    Guid? FornecedorId = null,
+    string? NomeFornecedor = null
 );
 
 public record SalvarProdutoRequest(
@@ -47,7 +49,21 @@ public record SalvarProdutoRequest(
     decimal Estoque, decimal EstoqueMinimo,
     string? CodigoBarras, bool Ativo,
     string TipoVenda, string UnidadeMedida,
-    Guid? MarcaId = null
+    Guid? MarcaId = null,
+    Guid? FornecedorId = null
+);
+
+// ── Fornecedor ────────────────────────────────────────────────────
+public record FornecedorDto(
+    Guid Id, string Nome, string? CnpjCpf, string? Telefone,
+    string? Email, string? Endereco, string? Observacoes,
+    bool Ativo, DateTime CriadoEm, int QtdProdutos
+);
+
+public record SalvarFornecedorRequest(
+    string Nome, string? CnpjCpf, string? Telefone,
+    string? Email, string? Endereco, string? Observacoes,
+    bool Ativo = true
 );
 
 public record ProdutoPrecoItem(Guid Id, decimal PrecoCusto, decimal PrecoVenda);
