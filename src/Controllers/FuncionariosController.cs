@@ -65,6 +65,8 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
                 p.Cep,
                 p.Endereco,
                 p.ComissaoBaseCalculo,
+                p.ComissaoVendasAtiva,
+                p.ComissaoVendasPercentual,
                 comissoesPorServico = p.ComissoesPorServico.Select(c => new { c.Id, c.ServicoId, c.ComissaoPercentual }),
             })
             .ToListAsync();
@@ -84,7 +86,9 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         string? Cep = null,
         string? Endereco = null,
         string ComissaoBaseCalculo = "total",
-        decimal? ValorDiaria = null
+        decimal? ValorDiaria = null,
+        bool ComissaoVendasAtiva = false,
+        decimal? ComissaoVendasPercentual = null
     );
 
     [HttpPost]
@@ -103,6 +107,9 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         if (req.TipoRemuneracao == "diaria" && (!req.ValorDiaria.HasValue || req.ValorDiaria <= 0))
             return BadRequest(new { erro = "Informe o valor da diária." });
 
+        if (req.ComissaoVendasAtiva && (!req.ComissaoVendasPercentual.HasValue || req.ComissaoVendasPercentual <= 0))
+            return BadRequest(new { erro = "Informe o percentual de comissão em vendas." });
+
         var profissional = new Profissional
         {
             LojaId = lojaId.Value,
@@ -119,6 +126,8 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             Cep = req.Cep,
             Endereco = req.Endereco,
             ComissaoBaseCalculo = req.ComissaoBaseCalculo == "servico" ? "servico" : "total",
+            ComissaoVendasAtiva = req.ComissaoVendasAtiva,
+            ComissaoVendasPercentual = req.ComissaoVendasAtiva ? req.ComissaoVendasPercentual : null,
         };
         db.Profissionais.Add(profissional);
         await db.SaveChangesAsync();
@@ -162,6 +171,8 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.Cep,
             profissional.Endereco,
             profissional.ComissaoBaseCalculo,
+            profissional.ComissaoVendasAtiva,
+            profissional.ComissaoVendasPercentual,
         });
     }
 
@@ -179,6 +190,9 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         if (req.TipoRemuneracao == "diaria" && (!req.ValorDiaria.HasValue || req.ValorDiaria <= 0))
             return BadRequest(new { erro = "Informe o valor da diária." });
 
+        if (req.ComissaoVendasAtiva && (!req.ComissaoVendasPercentual.HasValue || req.ComissaoVendasPercentual <= 0))
+            return BadRequest(new { erro = "Informe o percentual de comissão em vendas." });
+
         var tipoAnterior = profissional.TipoRemuneracao;
 
         profissional.Nome = req.Nome.Trim();
@@ -192,6 +206,8 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         profissional.Cep = req.Cep;
         profissional.Endereco = req.Endereco;
         profissional.ComissaoBaseCalculo = req.ComissaoBaseCalculo == "servico" ? "servico" : "total";
+        profissional.ComissaoVendasAtiva = req.ComissaoVendasAtiva;
+        profissional.ComissaoVendasPercentual = req.ComissaoVendasAtiva ? req.ComissaoVendasPercentual : null;
 
         // Saiu do salário fixo — desativa o lançamento fixo antigo, se existir
         if (tipoAnterior == "salario_fixo" && req.TipoRemuneracao != "salario_fixo" && profissional.LancamentoFixoId.HasValue)
@@ -259,6 +275,8 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.Cep,
             profissional.Endereco,
             profissional.ComissaoBaseCalculo,
+            profissional.ComissaoVendasAtiva,
+            profissional.ComissaoVendasPercentual,
         });
     }
 

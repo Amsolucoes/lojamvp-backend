@@ -82,7 +82,21 @@ public class ComissoesController(AppDbContext db) : ControllerBase
             ? new List<OrcamentoServico>()
             : await db.OrcamentosServico.Where(o => orcamentoIds.Contains(o.Id)).ToListAsync();
 
-        var clienteIds = orcamentos.Select(o => o.ClienteId).Distinct().ToList();
+        // Idem para comissões de Venda (Caixa)
+        var vendaIds = comissoes
+            .Where(c => c.OrigemTipo == "venda")
+            .Select(c => c.OrigemId)
+            .Distinct()
+            .ToList();
+
+        var vendas = vendaIds.Count == 0
+            ? new List<Venda>()
+            : await db.Vendas.Where(v => vendaIds.Contains(v.Id)).ToListAsync();
+
+        var clienteIds = orcamentos.Select(o => o.ClienteId)
+            .Concat(vendas.Where(v => v.ClienteId.HasValue).Select(v => v.ClienteId!.Value))
+            .Distinct()
+            .ToList();
         var clientes = clienteIds.Count == 0
             ? new List<Cliente>()
             : await db.Clientes.Where(cl => clienteIds.Contains(cl.Id)).ToListAsync();
@@ -103,6 +117,18 @@ public class ComissoesController(AppDbContext db) : ControllerBase
                     c.Id, c.ValorServico, c.ComissaoPercentual, c.ValorComissao,
                     c.Status, c.PagoEm, c.CriadoEm,
                     nomeServicoOs, cliente?.Nome, orcamento?.ConcluidoEm
+                );
+            }
+
+            if (c.OrigemTipo == "venda")
+            {
+                var venda = vendas.FirstOrDefault(v => v.Id == c.OrigemId);
+                var cliente = venda?.ClienteId.HasValue == true ? clientes.FirstOrDefault(cl => cl.Id == venda.ClienteId) : null;
+
+                return new ComissaoDetalheDto(
+                    c.Id, c.ValorServico, c.ComissaoPercentual, c.ValorComissao,
+                    c.Status, c.PagoEm, c.CriadoEm,
+                    "Venda", cliente?.Nome, venda?.CriadaEm
                 );
             }
 
