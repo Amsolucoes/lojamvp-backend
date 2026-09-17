@@ -5,6 +5,7 @@ using System.Security.Claims;
 using LojaApi.Data;
 using LojaApi.DTOs;
 using LojaApi.Models;
+using LojaApi.src.Models.Funcionarios;
 
 namespace LojaApi.Controllers;
 
@@ -118,13 +119,13 @@ public class VendasController(AppDbContext db) : ControllerBase
             origemNome = origem?.Nome;
         }
 
-        string? nomeFuncionario = null;
+        Profissional? funcionario = null;
         if (req.FuncionarioId.HasValue)
         {
-            var funcionario = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == req.FuncionarioId.Value && p.LojaId == lojaId);
+            funcionario = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == req.FuncionarioId.Value && p.LojaId == lojaId);
             if (funcionario is null) return BadRequest(new { erro = "Funcionário não encontrado." });
-            nomeFuncionario = funcionario.Nome;
         }
+        string? nomeFuncionario = funcionario?.Nome;
 
         var venda = new Venda
         {
@@ -243,6 +244,31 @@ public class VendasController(AppDbContext db) : ControllerBase
             }
         }
 
+        // Comissão do funcionário sobre a venda — só itens que não vieram de um
+        // agendamento (esses já geram comissão própria quando o agendamento é
+        // concluído; comissionar de novo aqui duplicaria o valor).
+        if (funcionario != null && funcionario.ComissaoVendasAtiva && funcionario.ComissaoVendasPercentual is > 0)
+        {
+            decimal baseComissao = req.Itens
+                .Where(i => !i.AgendamentoId.HasValue)
+                .Sum(i => i.Quantidade * i.PrecoUnitario);
+
+            if (baseComissao > 0)
+            {
+                var valorComissaoVenda = Math.Round(baseComissao * (funcionario.ComissaoVendasPercentual.Value / 100m), 2);
+                db.ComissoesFuncionario.Add(new ComissaoFuncionario
+                {
+                    LojaId = lojaId!.Value,
+                    ProfissionalId = funcionario.Id,
+                    OrigemTipo = "venda",
+                    OrigemId = venda.Id,
+                    ValorServico = baseComissao,
+                    ComissaoPercentual = funcionario.ComissaoVendasPercentual.Value,
+                    ValorComissao = valorComissaoVenda,
+                });
+            }
+        }
+
         await db.SaveChangesAsync();
 
         var vendaSalva = await db.Vendas
@@ -267,6 +293,17 @@ public class VendasController(AppDbContext db) : ControllerBase
 
         if (venda.CriadaEm.Date != DateTime.UtcNow.Date)
             return BadRequest(new { erro = "Só é possível excluir vendas feitas hoje." });
+
+        // Comissão gerada por essa venda: se já foi paga num fechamento, não dá
+        // pra excluir sem bagunçar o fechamento — se ainda tá pendente, estorna junto.
+        var comissaoVenda = await db.ComissoesFuncionario
+            .FirstOrDefaultAsync(c => c.OrigemTipo == "venda" && c.OrigemId == venda.Id);
+        if (comissaoVenda != null)
+        {
+            if (comissaoVenda.Status != "pendente")
+                return BadRequest(new { erro = "Não é possível excluir: a comissão desta venda já foi paga." });
+            db.ComissoesFuncionario.Remove(comissaoVenda);
+        }
 
         // Estorna estoque. Observação: o ItemVenda não guarda qual variação
         // (tamanho/cor) foi vendida quando o produto tem grade — só o produto

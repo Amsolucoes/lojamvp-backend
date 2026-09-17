@@ -35,6 +35,12 @@ public class Profissional
     [MaxLength(20)]
     public string ComissaoBaseCalculo { get; set; } = "total";
 
+    // Comissão sobre vendas registradas no Caixa (produtos e serviços avulsos, sem
+    // agendamento) — independente da comissão de Agendamento/Ordem de Serviço.
+    public bool ComissaoVendasAtiva { get; set; } = false;
+    [Column(TypeName = "decimal(5,2)")]
+    public decimal? ComissaoVendasPercentual { get; set; }
+
     [MaxLength(20)]
     public string? Telefone { get; set; }
 
