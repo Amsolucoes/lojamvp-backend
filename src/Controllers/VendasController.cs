@@ -279,7 +279,7 @@ public class VendasController(AppDbContext db) : ControllerBase
         return CreatedAtAction(nameof(Buscar), new { id = venda.Id }, ToDto(vendaSalva));
     }
 
-    // ── Excluir venda (só do dia, com estorno de estoque/agendamento/plano/crédito) ──
+    // ── Excluir venda (só do mês atual, com estorno de estoque/agendamento/plano/crédito) ──
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "admin,superadmin")]
     public async Task<IActionResult> Excluir(Guid id)
@@ -291,8 +291,10 @@ public class VendasController(AppDbContext db) : ControllerBase
 
         if (venda is null || (lojaId.HasValue && venda.LojaId != lojaId)) return NotFound();
 
-        if (venda.CriadaEm.Date != DateTime.UtcNow.Date)
-            return BadRequest(new { erro = "Só é possível excluir vendas feitas hoje." });
+        var hoje = DateTime.UtcNow.Date;
+        var inicioMes = new DateTime(hoje.Year, hoje.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        if (venda.CriadaEm < inicioMes || venda.CriadaEm.Date > hoje)
+            return BadRequest(new { erro = "Só é possível excluir vendas do mês atual." });
 
         // Comissão gerada por essa venda: se já foi paga num fechamento, não dá
         // pra excluir sem bagunçar o fechamento — se ainda tá pendente, estorna junto.
