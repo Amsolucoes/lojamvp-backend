@@ -417,7 +417,80 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         });
     }
 
-    // ── Histórico de importações ──────────────────────────────────
+    // ── Lançamento manual de nota fiscal (sem XML), vinculado a um Fornecedor ──
+    [HttpPost("manual")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> LancarManual([FromBody] LancarNfManualRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        if (string.IsNullOrWhiteSpace(req.NumeroNf))
+            return BadRequest(new { erro = "Informe o número da nota fiscal." });
+        if (req.Itens.Count == 0)
+            return BadRequest(new { erro = "Adicione ao menos um item." });
+
+        var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(f => f.Id == req.FornecedorId && f.LojaId == lojaId);
+        if (fornecedor is null) return BadRequest(new { erro = "Fornecedor não encontrado." });
+
+        var detalhesParaDesfazer = new List<ItemImportadoDetalhe>();
+
+        foreach (var item in req.Itens)
+        {
+            var produto = await db.Produtos.Include(p => p.Variacoes).FirstOrDefaultAsync(p => p.Id == item.ProdutoId);
+            if (produto is null || produto.LojaId != lojaId)
+                return BadRequest(new { erro = "Produto não encontrado." });
+
+            if (item.VariacaoId.HasValue)
+            {
+                var variacao = produto.Variacoes.FirstOrDefault(v => v.Id == item.VariacaoId.Value);
+                if (variacao is null) return BadRequest(new { erro = $"Variação não encontrada para '{produto.Nome}'." });
+                variacao.Estoque += (int)item.Quantidade;
+                variacao.AtualizadoEm = DateTime.UtcNow;
+            }
+            else
+            {
+                produto.Estoque += item.Quantidade;
+            }
+
+            if (item.PrecoCusto.HasValue) produto.PrecoCusto = item.PrecoCusto.Value;
+            produto.AtualizadoEm = DateTime.UtcNow;
+
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = produto.Id,
+                Tipo = "entrada",
+                Quantidade = item.Quantidade,
+                Observacao = $"Nota fiscal manual {req.NumeroNf}",
+                LojaId = lojaId,
+            });
+
+            detalhesParaDesfazer.Add(new ItemImportadoDetalhe(
+                produto.Id, item.VariacaoId, item.Quantidade,
+                false, false, false, null
+            ));
+        }
+
+        db.NfsImportadas.Add(new NfImportada
+        {
+            LojaId = lojaId.Value,
+            ChaveAcesso = null,
+            NumeroNf = req.NumeroNf.Trim(),
+            NomeFornecedor = fornecedor.Nome,
+            FornecedorId = fornecedor.Id,
+            Origem = "manual",
+            DataEmissao = req.DataEmissao,
+            ValorTotal = req.ValorTotal,
+            QtdItens = req.Itens.Count,
+            ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhesParaDesfazer),
+        });
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Nota fiscal lançada.", produtosAtualizados = req.Itens.Count });
+    }
+
+    // ── Histórico de importações (XML e lançamentos manuais) ───────
     [HttpGet("historico")]
     public async Task<IActionResult> Historico()
     {
@@ -432,6 +505,10 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 n.Id,
                 n.NumeroNf,
                 n.NomeFornecedor,
+                n.FornecedorId,
+                n.Origem,
+                n.DataEmissao,
+                n.ValorTotal,
                 n.QtdItens,
                 n.ImportadoEm,
                 n.Desfeita,
@@ -520,9 +597,11 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 cat.Ativo = false;
         }
 
-        // Remove os movimentos de estoque criados por essa importação (todos com a mesma observação)
+        // Remove os movimentos de estoque criados por essa importação (todos com a mesma observação) —
+        // a tag muda conforme a origem (importação por XML ou lançamento manual).
+        var tagMovimento = nf.Origem == "manual" ? $"Nota fiscal manual {nf.NumeroNf}" : $"Importação NF {nf.NumeroNf}";
         await db.Movimentos
-            .Where(m => m.LojaId == lojaId && m.Observacao == $"Importação NF {nf.NumeroNf}")
+            .Where(m => m.LojaId == lojaId && m.Observacao == tagMovimento)
             .ExecuteDeleteAsync();
 
         // Remove o mapeamento fornecedor->produto criado por essa nota (só se apontar pra produto agora excluído)
@@ -558,6 +637,13 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
     );
 
     public record ConfirmarImportacaoRequest(string CnpjFornecedor, string NumeroNf, string ChaveAcesso, string NomeFornecedor, List<ItemConfirmacao> Itens);
+
+    public record ItemNfManualRequest(Guid ProdutoId, Guid? VariacaoId, decimal Quantidade, decimal? PrecoCusto);
+
+    public record LancarNfManualRequest(
+        Guid FornecedorId, string NumeroNf, DateTime? DataEmissao, decimal? ValorTotal,
+        List<ItemNfManualRequest> Itens
+    );
 
     public record ItemImportadoDetalhe(
     Guid ProdutoId, Guid? VariacaoId, decimal Quantidade,
