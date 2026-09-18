@@ -311,7 +311,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(n => new { n.LojaId, n.ChaveAcesso })
             .IsUnique()
             .HasDatabaseName("ix_nfs_importadas_chave_acesso")
-            .HasFilter("NOT desfeita");
+            .HasFilter("chave_acesso IS NOT NULL AND chave_acesso <> '' AND NOT desfeita");
+
+        mb.Entity<NfImportada>()
+            .HasOne(n => n.Fornecedor).WithMany()
+            .HasForeignKey(n => n.FornecedorId).OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<NfImportada>()
+            .Property(n => n.Origem)
+            .HasDefaultValue("xml");
 
         mb.Entity<Reserva>()
             .HasOne(r => r.Loja).WithMany()
