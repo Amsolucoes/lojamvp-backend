@@ -917,7 +917,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111107"), Chave = "funcionarios", Nome = "Funcionários (comissão e pagamento)", Valor = 39.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111108"), Chave = "cupom_nao_fiscal", Nome = "Cupom não fiscal (impressora térmica)", Valor = 29.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111109"), Chave = "ordem_servico", Nome = "Ordem de Serviço (oficina/auto peças)", Valor = 49.90m, DisponivelParaAtivar = false },
-            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111110"), Chave = "nfce", Nome = "Emissão de Nota Fiscal (NFC-e)", Valor = 49.90m, DisponivelParaAtivar = false }
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111110"), Chave = "nfce", Nome = "Emissão de Nota Fiscal (NFC-e)", Valor = 59.90m, DisponivelParaAtivar = false }
         );
     }
 
