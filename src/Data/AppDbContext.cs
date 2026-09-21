@@ -1,6 +1,7 @@
 using LojaApi.Models;
 using LojaApi.src.Models;
 using LojaApi.src.Models.Etiquetas;
+using LojaApi.src.Models.Fiscal;
 using LojaApi.src.Models.Funcionarios;
 using LojaApi.src.Models.OrdemServico;
 using Microsoft.EntityFrameworkCore;
@@ -77,6 +78,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ConfiguracaoEtiqueta> ConfiguracoesEtiqueta => Set<ConfiguracaoEtiqueta>();
     public DbSet<Marca> Marcas => Set<Marca>();
     public DbSet<Fornecedor> Fornecedores => Set<Fornecedor>();
+    public DbSet<ConfiguracaoFiscal> ConfiguracoesFiscais => Set<ConfiguracaoFiscal>();
+    public DbSet<EmissaoFiscal> EmissoesFiscais => Set<EmissaoFiscal>();
     public DbSet<ChecklistCategoria> ChecklistCategorias => Set<ChecklistCategoria>();
     public DbSet<ChecklistItem> ChecklistItens => Set<ChecklistItem>();
     public DbSet<OrcamentoServico> OrcamentosServico => Set<OrcamentoServico>();
@@ -110,6 +113,17 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<Fornecedor>()
             .HasIndex(f => new { f.LojaId, f.Nome });
+
+        mb.Entity<ConfiguracaoFiscal>()
+            .HasIndex(c => c.LojaId)
+            .IsUnique();
+
+        mb.Entity<EmissaoFiscal>()
+            .HasOne(e => e.Venda).WithMany()
+            .HasForeignKey(e => e.VendaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<EmissaoFiscal>()
+            .HasIndex(e => new { e.LojaId, e.VendaId });
 
         // Relacionamentos
         mb.Entity<ItemVenda>()
@@ -902,7 +916,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111106"), Chave = "chacara_reservas", Nome = "Reservas (Chácara/Temporada)", Valor = 39.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111107"), Chave = "funcionarios", Nome = "Funcionários (comissão e pagamento)", Valor = 39.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111108"), Chave = "cupom_nao_fiscal", Nome = "Cupom não fiscal (impressora térmica)", Valor = 29.90m, DisponivelParaAtivar = true },
-            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111109"), Chave = "ordem_servico", Nome = "Ordem de Serviço (oficina/auto peças)", Valor = 49.90m, DisponivelParaAtivar = false }
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111109"), Chave = "ordem_servico", Nome = "Ordem de Serviço (oficina/auto peças)", Valor = 49.90m, DisponivelParaAtivar = false },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111110"), Chave = "nfce", Nome = "Emissão de Nota Fiscal (NFC-e)", Valor = 49.90m, DisponivelParaAtivar = false }
         );
     }
 
