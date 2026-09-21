@@ -433,6 +433,12 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(f => f.Id == req.FornecedorId && f.LojaId == lojaId);
         if (fornecedor is null) return BadRequest(new { erro = "Fornecedor não encontrado." });
 
+        // Postgres exige DateTimeKind.Utc pra gravar em coluna timestamptz — o valor
+        // desserializado do JSON vem com Kind=Unspecified e quebra o SaveChanges.
+        DateTime? dataEmissaoUtc = req.DataEmissao.HasValue
+            ? DateTime.SpecifyKind(req.DataEmissao.Value.Date, DateTimeKind.Utc)
+            : null;
+
         var detalhesParaDesfazer = new List<ItemImportadoDetalhe>();
 
         foreach (var item in req.Itens)
@@ -479,7 +485,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             NomeFornecedor = fornecedor.Nome,
             FornecedorId = fornecedor.Id,
             Origem = "manual",
-            DataEmissao = req.DataEmissao,
+            DataEmissao = dataEmissaoUtc,
             ValorTotal = req.ValorTotal,
             QtdItens = req.Itens.Count,
             ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhesParaDesfazer),
