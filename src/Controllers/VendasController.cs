@@ -296,6 +296,11 @@ public class VendasController(AppDbContext db) : ControllerBase
         if (venda.CriadaEm < inicioMes || venda.CriadaEm.Date > hoje)
             return BadRequest(new { erro = "Só é possível excluir vendas do mês atual." });
 
+        var temNfceAutorizada = await db.EmissoesFiscais
+            .AnyAsync(e => e.VendaId == venda.Id && e.Status == "autorizada");
+        if (temNfceAutorizada)
+            return BadRequest(new { erro = "Não é possível excluir: já existe uma nota fiscal autorizada para esta venda. Cancele a nota antes." });
+
         // Comissão gerada por essa venda: se já foi paga num fechamento, não dá
         // pra excluir sem bagunçar o fechamento — se ainda tá pendente, estorna junto.
         var comissaoVenda = await db.ComissoesFuncionario

@@ -2,6 +2,7 @@ using LojaApi.Data;
 using LojaApi.Services;
 using LojaApi.src.Middleware;
 using LojaApi.src.Services;
+using LojaApi.src.Services.Fiscal;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -50,6 +51,8 @@ internal class Program
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
         builder.Services.AddScoped<ReservaChacaraNotificacaoService>();
         builder.Services.AddScoped<OrdemServicoNotificacaoService>();
+        // Sem provedor terceirizado contratado ainda — troca fácil quando um for integrado.
+        builder.Services.AddScoped<IProvedorFiscal, ProvedorFiscalNaoConfigurado>();
         builder.Services.AddHttpClient();
 
         // ── Controllers + Swagger ─────────────────────────────────────────
