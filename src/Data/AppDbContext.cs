@@ -724,6 +724,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new CategoriaPerfilLoja { Id = Guid.Parse("18000000-0000-0000-0000-000000000007"), PerfilLojaId = perfilMat, Nome = "Madeiras", Ordem = 6 }
         );
 
+        // ── Perfil: Oficina / Auto Peças ─────────────────────────────────────
+        var perfilOficina = Guid.Parse("10000000-0000-0000-0000-000000000007");
+        mb.Entity<PerfilLoja>().HasData(new PerfilLoja
+        {
+            Id = perfilOficina,
+            Nome = "Oficina / Auto Peças",
+            Descricao = "Para oficinas mecânicas e lojas de autopeças, pneus e acessórios",
+            Icone = "🔧",
+            Ativo = true,
+            CriadoEm = DateTime.UtcNow,
+        });
+        mb.Entity<CategoriaPerfilLoja>().HasData(
+            new CategoriaPerfilLoja { Id = Guid.Parse("19000000-0000-0000-0000-000000000001"), PerfilLojaId = perfilOficina, Nome = "Peças e Autopeças", Ordem = 0 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("19000000-0000-0000-0000-000000000002"), PerfilLojaId = perfilOficina, Nome = "Óleo e Lubrificantes", Ordem = 1 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("19000000-0000-0000-0000-000000000003"), PerfilLojaId = perfilOficina, Nome = "Pneus e Rodas", Ordem = 2 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("19000000-0000-0000-0000-000000000004"), PerfilLojaId = perfilOficina, Nome = "Baterias", Ordem = 3 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("19000000-0000-0000-0000-000000000005"), PerfilLojaId = perfilOficina, Nome = "Acessórios", Ordem = 4 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("19000000-0000-0000-0000-000000000006"), PerfilLojaId = perfilOficina, Nome = "Ferramentas", Ordem = 5 },
+            new CategoriaPerfilLoja { Id = Guid.Parse("19000000-0000-0000-0000-000000000007"), PerfilLojaId = perfilOficina, Nome = "Outro", Ordem = 6 }
+        );
+
         // ══════════════ PERFIS DE SERVIÇO ══════════════
 
         // ── Banho e Tosa (puro) ───────────────────────────────────────────
@@ -916,7 +937,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111106"), Chave = "chacara_reservas", Nome = "Reservas (Chácara/Temporada)", Valor = 39.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111107"), Chave = "funcionarios", Nome = "Funcionários (comissão e pagamento)", Valor = 39.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111108"), Chave = "cupom_nao_fiscal", Nome = "Cupom não fiscal (impressora térmica)", Valor = 29.90m, DisponivelParaAtivar = true },
-            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111109"), Chave = "ordem_servico", Nome = "Ordem de Serviço (oficina/auto peças)", Valor = 49.90m, DisponivelParaAtivar = false },
+            new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111109"), Chave = "ordem_servico", Nome = "Ordem de Serviço (oficina/auto peças)", Valor = 49.90m, DisponivelParaAtivar = true },
             new ModuloPreco { Id = Guid.Parse("11111111-1111-1111-1111-111111111110"), Chave = "nfce", Nome = "Emissão de Nota Fiscal (NFC-e)", Valor = 59.90m, DisponivelParaAtivar = false }
         );
     }
