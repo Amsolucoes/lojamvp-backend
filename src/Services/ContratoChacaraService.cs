@@ -21,6 +21,7 @@ public static class ContratoChacaraService
         var locadorTelefone = info?.LocadorTelefone ?? "(não informado)";
         var cidadeAssinatura = info?.CidadeAssinatura ?? "(cidade não informada)";
         var enderecoImovel = info?.Endereco ?? "(endereço não cadastrado)";
+        var enderecoCliente = MontarEnderecoCliente(reserva);
 
         string formaPagamento;
         if (pagoIntegral)
@@ -70,7 +71,7 @@ public static class ContratoChacaraService
                     {
                         t.Span("LOCATÁRIO: ").Bold();
                         t.Span($"{reserva.ClienteNome}, CPF: {reserva.ClienteDocumento ?? "(não informado)"}, " +
-                            $"CEP: {reserva.ClienteCep ?? "(não informado)"}, reside à {reserva.ClienteEndereco ?? "(não informado)"}. " +
+                            $"CEP: {reserva.ClienteCep ?? "(não informado)"}, reside à {enderecoCliente}. " +
                             $"Telefone: {(string.IsNullOrWhiteSpace(reserva.ClienteTelefone) ? "não informado" : reserva.ClienteTelefone)}");
                     });
 
@@ -195,7 +196,7 @@ public static class ContratoChacaraService
                     col.Item().PaddingTop(20).Text($"LOCADOR: {locadorNome}: ______________________________________");
                     col.Item().PaddingTop(14).Text(
                         $"LOCATÁRIO: {reserva.ClienteNome}, CPF: {reserva.ClienteDocumento ?? "(não informado)"}, " +
-                        $"CEP: {reserva.ClienteCep ?? "(não informado)"}, residente à {reserva.ClienteEndereco ?? "(não informado)"}. " +
+                        $"CEP: {reserva.ClienteCep ?? "(não informado)"}, residente à {enderecoCliente}. " +
                         $"Telefone: {(string.IsNullOrWhiteSpace(reserva.ClienteTelefone) ? "não informado" : reserva.ClienteTelefone)}: ______________________________________");
                     col.Item().PaddingTop(14).Text("TESTEMUNHA: ______________________________________");
                 });
@@ -209,5 +210,15 @@ public static class ContratoChacaraService
         });
 
         return documento.GeneratePdf();
+    }
+
+    private static string MontarEnderecoCliente(Reserva reserva)
+    {
+        if (string.IsNullOrWhiteSpace(reserva.ClienteEndereco)) return "(não informado)";
+
+        var partes = new List<string> { reserva.ClienteEndereco };
+        if (!string.IsNullOrWhiteSpace(reserva.ClienteNumero)) partes.Add($"nº {reserva.ClienteNumero}");
+        if (!string.IsNullOrWhiteSpace(reserva.ClienteCidade)) partes.Add(reserva.ClienteCidade);
+        return string.Join(", ", partes);
     }
 }
