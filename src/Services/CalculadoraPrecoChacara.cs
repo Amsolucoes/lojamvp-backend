@@ -4,7 +4,7 @@ namespace LojaApi.src.Services;
 
 public static class CalculadoraPrecoChacara
 {
-    public record ResultadoCalculo(decimal ValorEstadia, decimal ValorTaxaLimpeza, decimal ValorTotal, List<string> Detalhamento);
+    public record ResultadoCalculo(decimal ValorEstadia, decimal ValorTaxaLimpeza, decimal ValorTotal, List<string> Detalhamento, bool PacoteFechado = false);
 
     public static ResultadoCalculo Calcular(
         DateTime dataInicio, DateTime dataFim, int pessoas,
@@ -27,7 +27,7 @@ public static class CalculadoraPrecoChacara
             var detalhamentoExato = new List<string> { $"{matchExato.Nome} (pacote fechado): {matchExato.ValorTotal:C}" };
             if (taxaLimpezaExata > 0)
                 detalhamentoExato.Add($"Taxa de limpeza (mais de {cfg.LimitePessoasParaTaxaLimpeza} pessoas): {taxaLimpezaExata:C}");
-            return new ResultadoCalculo(matchExato.ValorTotal, taxaLimpezaExata, matchExato.ValorTotal + taxaLimpezaExata, detalhamentoExato);
+            return new ResultadoCalculo(matchExato.ValorTotal, taxaLimpezaExata, matchExato.ValorTotal + taxaLimpezaExata, detalhamentoExato, PacoteFechado: true);
         }
 
         var dias = new List<DateTime>();
