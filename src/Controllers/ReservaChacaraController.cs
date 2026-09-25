@@ -250,6 +250,7 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         DateTime DataInicio, DateTime DataFim, int Pessoas,
         string ClienteNome, string? ClienteEmail, string? ClienteTelefone,
         string? ClienteDocumento, string? ClienteCep, string? ClienteEndereco, string? ClienteNumero, string? ClienteCidade,
+        string? HoraEntrada, string? HoraSaida,
         decimal Valor, decimal? ValorPago
     );
 
@@ -290,6 +291,8 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
             ClienteEndereco = string.IsNullOrWhiteSpace(req.ClienteEndereco) ? null : req.ClienteEndereco.Trim(),
             ClienteNumero = string.IsNullOrWhiteSpace(req.ClienteNumero) ? null : req.ClienteNumero.Trim(),
             ClienteCidade = string.IsNullOrWhiteSpace(req.ClienteCidade) ? null : req.ClienteCidade.Trim(),
+            HoraEntrada = string.IsNullOrWhiteSpace(req.HoraEntrada) ? null : req.HoraEntrada.Trim(),
+            HoraSaida = string.IsNullOrWhiteSpace(req.HoraSaida) ? null : req.HoraSaida.Trim(),
             Valor = req.Valor,
             ValorPago = req.ValorPago ?? req.Valor, // sem informar, assume que já foi pago integralmente
             Status = "confirmada", // já fechado por fora, entra direto como confirmada, sem notificação
@@ -304,7 +307,8 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
 
     public record EditarReservaRequest(
         DateTime DataInicio, DateTime DataFim, int Pessoas, string ClienteNome, string ClienteEmail, string ClienteTelefone,
-        string? ClienteDocumento, string? ClienteCep, string? ClienteEndereco, string? ClienteNumero, string? ClienteCidade, decimal? ValorManual
+        string? ClienteDocumento, string? ClienteCep, string? ClienteEndereco, string? ClienteNumero, string? ClienteCidade,
+        string? HoraEntrada, string? HoraSaida, decimal? ValorManual
     );
 
     [HttpPut("{id:int}")]
@@ -359,7 +363,10 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
             try
             {
                 var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
-                valorFinal = resultado.ValorTotal;
+                var horarios = await db.HorariosChacara.Where(h => h.LojaId == lojaId).ToListAsync();
+                var ajusteEntrada = AjusteHorarioChacaraService.Obter(horarios, "entrada", req.HoraEntrada);
+                var ajusteSaida = AjusteHorarioChacaraService.Obter(horarios, "saida", req.HoraSaida);
+                valorFinal = resultado.ValorTotal + ajusteEntrada + ajusteSaida;
             }
             catch (InvalidOperationException ex)
             {
@@ -385,6 +392,8 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         reserva.ClienteEndereco = string.IsNullOrWhiteSpace(req.ClienteEndereco) ? reserva.ClienteEndereco : req.ClienteEndereco.Trim();
         reserva.ClienteNumero = string.IsNullOrWhiteSpace(req.ClienteNumero) ? reserva.ClienteNumero : req.ClienteNumero.Trim();
         reserva.ClienteCidade = string.IsNullOrWhiteSpace(req.ClienteCidade) ? reserva.ClienteCidade : req.ClienteCidade.Trim();
+        reserva.HoraEntrada = string.IsNullOrWhiteSpace(req.HoraEntrada) ? reserva.HoraEntrada : req.HoraEntrada.Trim();
+        reserva.HoraSaida = string.IsNullOrWhiteSpace(req.HoraSaida) ? reserva.HoraSaida : req.HoraSaida.Trim();
         reserva.Valor = valorFinal;
 
         var eraConfirmada = reserva.Status == "confirmada";

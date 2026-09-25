@@ -22,6 +22,8 @@ public static class ContratoChacaraService
         var cidadeAssinatura = info?.CidadeAssinatura ?? "(cidade não informada)";
         var enderecoImovel = info?.Endereco ?? "(endereço não cadastrado)";
         var enderecoCliente = MontarEnderecoCliente(reserva);
+        var horaEntradaTexto = string.IsNullOrWhiteSpace(reserva.HoraEntrada) ? "08:00" : reserva.HoraEntrada;
+        var horaSaidaTexto = string.IsNullOrWhiteSpace(reserva.HoraSaida) ? "20:00" : reserva.HoraSaida;
 
         string formaPagamento;
         if (pagoIntegral)
@@ -81,9 +83,9 @@ public static class ContratoChacaraService
                     col.Item().Text(t =>
                     {
                         t.Span("INÍCIO: ").Bold();
-                        t.Span($"{reserva.DataInicio:dd/MM/yyyy} às 8h   ");
+                        t.Span($"{reserva.DataInicio:dd/MM/yyyy} às {horaEntradaTexto}   ");
                         t.Span("TÉRMINO: ").Bold();
-                        t.Span($"{reserva.DataFim:dd/MM/yyyy} às 20h");
+                        t.Span($"{reserva.DataFim:dd/MM/yyyy} às {horaSaidaTexto}");
                     });
                     col.Item().Text(t => { t.Span("VALOR DIÁRIO DA LOCAÇÃO: ").Bold(); t.Span($"R$ {valorDiario:N2}"); });
                     col.Item().Text(t => { t.Span("VALOR TOTAL DA LOCAÇÃO: ").Bold(); t.Span($"R$ {reserva.Valor:N2}"); });
@@ -114,7 +116,7 @@ public static class ContratoChacaraService
                     {
                         t.Span("CLÁUSULA SEGUNDA – ").Bold();
                         t.Span($"O prazo do presente contrato de locação é de {dias} dia(s), iniciando-se em " +
-                            $"{reserva.DataInicio:dd/MM/yyyy}, às 8h, e encerrando-se em {reserva.DataFim:dd/MM/yyyy}, às 20h, " +
+                            $"{reserva.DataInicio:dd/MM/yyyy}, às {horaEntradaTexto}, e encerrando-se em {reserva.DataFim:dd/MM/yyyy}, às {horaSaidaTexto}, " +
                             "quando o LOCATÁRIO se obriga a restituir o imóvel locado no estado de conservação em que o recebeu.");
                     });
 
