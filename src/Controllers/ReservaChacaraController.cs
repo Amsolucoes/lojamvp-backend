@@ -363,10 +363,18 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
             try
             {
                 var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
-                var horarios = await db.HorariosChacara.Where(h => h.LojaId == lojaId).ToListAsync();
-                var ajusteEntrada = AjusteHorarioChacaraService.Obter(horarios, "entrada", req.HoraEntrada);
-                var ajusteSaida = AjusteHorarioChacaraService.Obter(horarios, "saida", req.HoraSaida);
-                valorFinal = resultado.ValorTotal + ajusteEntrada + ajusteSaida;
+                if (resultado.PacoteFechado)
+                {
+                    // Datas especiais (pacote fechado) têm preço fixo — horário de entrada/saída não altera o valor.
+                    valorFinal = resultado.ValorTotal;
+                }
+                else
+                {
+                    var horarios = await db.HorariosChacara.Where(h => h.LojaId == lojaId).ToListAsync();
+                    var ajusteEntrada = AjusteHorarioChacaraService.Obter(horarios, "entrada", req.HoraEntrada);
+                    var ajusteSaida = AjusteHorarioChacaraService.Obter(horarios, "saida", req.HoraSaida);
+                    valorFinal = resultado.ValorTotal + ajusteEntrada + ajusteSaida;
+                }
             }
             catch (InvalidOperationException ex)
             {

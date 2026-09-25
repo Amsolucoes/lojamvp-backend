@@ -92,6 +92,8 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
     private async Task<CalculadoraPrecoChacara.ResultadoCalculo> ComAjusteHorarioAsync(
         Guid lojaId, CalculadoraPrecoChacara.ResultadoCalculo resultado, string? horaEntrada, string? horaSaida)
     {
+        // Datas especiais (pacote fechado) têm preço fixo — horário de entrada/saída não altera o valor.
+        if (resultado.PacoteFechado) return resultado;
         if (string.IsNullOrWhiteSpace(horaEntrada) && string.IsNullOrWhiteSpace(horaSaida)) return resultado;
 
         var horarios = await db.HorariosChacara.Where(h => h.LojaId == lojaId).ToListAsync();
