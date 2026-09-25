@@ -59,7 +59,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
     }
 
     [HttpGet("valor")]
-    public async Task<IActionResult> Valor(string slug, [FromQuery] DateTime dataInicio, [FromQuery] DateTime dataFim, [FromQuery] int pessoas)
+    public async Task<IActionResult> Valor(
+        string slug, [FromQuery] DateTime dataInicio, [FromQuery] DateTime dataFim, [FromQuery] int pessoas,
+        [FromQuery] string? horaEntrada = null, [FromQuery] string? horaSaida = null)
     {
         var loja = await db.Lojas.FirstOrDefaultAsync(l => l.Slug == slug);
         if (loja is null) return NotFound(new { erro = "Página não encontrada." });
@@ -84,7 +86,28 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == loja.Id).ToListAsync();
 
         var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, pessoas, cfg, faixas, periodosEspeciais);
-        return Ok(resultado);
+        return Ok(await ComAjusteHorarioAsync(loja.Id, resultado, horaEntrada, horaSaida));
+    }
+
+    private async Task<CalculadoraPrecoChacara.ResultadoCalculo> ComAjusteHorarioAsync(
+        Guid lojaId, CalculadoraPrecoChacara.ResultadoCalculo resultado, string? horaEntrada, string? horaSaida)
+    {
+        if (string.IsNullOrWhiteSpace(horaEntrada) && string.IsNullOrWhiteSpace(horaSaida)) return resultado;
+
+        var horarios = await db.HorariosChacara.Where(h => h.LojaId == lojaId).ToListAsync();
+        var ajusteEntrada = AjusteHorarioChacaraService.Obter(horarios, "entrada", horaEntrada);
+        var ajusteSaida = AjusteHorarioChacaraService.Obter(horarios, "saida", horaSaida);
+        if (ajusteEntrada == 0 && ajusteSaida == 0) return resultado;
+
+        var detalhamento = new List<string>(resultado.Detalhamento);
+        if (ajusteEntrada != 0) detalhamento.Add($"Entrada às {horaEntrada}: R$ {ajusteEntrada:N2}");
+        if (ajusteSaida != 0) detalhamento.Add($"Saída às {horaSaida}: R$ {ajusteSaida:N2}");
+
+        return resultado with
+        {
+            ValorTotal = resultado.ValorTotal + ajusteEntrada + ajusteSaida,
+            Detalhamento = detalhamento,
+        };
     }
 
     [HttpPost("reservar")]
@@ -131,6 +154,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var periodosEspeciais = await db.PeriodosEspeciaisChacara.Where(p => p.LojaId == loja.Id).ToListAsync();
 
         var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
+        resultado = await ComAjusteHorarioAsync(loja.Id, resultado, req.HoraEntrada, req.HoraSaida);
 
         var reserva = new Reserva
         {
@@ -144,6 +168,8 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             ClienteDocumento = string.IsNullOrWhiteSpace(req.ClienteDocumento) ? null : req.ClienteDocumento.Trim(),
             ClienteCep = string.IsNullOrWhiteSpace(req.ClienteCep) ? null : req.ClienteCep.Trim(),
             ClienteEndereco = string.IsNullOrWhiteSpace(req.ClienteEndereco) ? null : req.ClienteEndereco.Trim(),
+            HoraEntrada = string.IsNullOrWhiteSpace(req.HoraEntrada) ? null : req.HoraEntrada.Trim(),
+            HoraSaida = string.IsNullOrWhiteSpace(req.HoraSaida) ? null : req.HoraSaida.Trim(),
             Valor = resultado.ValorTotal,
             Status = "pendente_pagamento",
             ExpiraEm = DateTime.UtcNow.AddMinutes(15),
@@ -463,6 +489,11 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
             ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
 
+        var horariosConfig = await db.HorariosChacara
+            .Where(h => h.LojaId == loja.Id)
+            .OrderBy(h => h.Ordem).ThenBy(h => h.Hora)
+            .ToListAsync();
+
         var comodidadesChaves = (info?.Comodidades ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var comodidades = comodidadesChaves
             .Where(c => ComodidadesLabels.ContainsKey(c))
@@ -491,6 +522,11 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             mapaEmbedUrl = info?.MapaEmbedUrl,
             horaEntrada = info?.HoraEntrada ?? "08:00",
             horaSaida = info?.HoraSaida ?? "22:00",
+            horarios = new
+            {
+                entrada = horariosConfig.Where(h => h.Tipo == "entrada").Select(h => new { h.Id, h.Hora, h.Ajuste }),
+                saida = horariosConfig.Where(h => h.Tipo == "saida").Select(h => new { h.Id, h.Hora, h.Ajuste }),
+            },
             avisosUso = avisos,
             fotos,
             comodidades,
@@ -515,5 +551,7 @@ public record ReservarPublicoRequest(
     string ClienteTelefone,
     string? ClienteDocumento,
     string? ClienteCep,
-    string? ClienteEndereco
+    string? ClienteEndereco,
+    string? HoraEntrada,
+    string? HoraSaida
 );
