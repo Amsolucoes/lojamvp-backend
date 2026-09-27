@@ -417,6 +417,136 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         });
     }
 
+    // ── Cria um produto novo (e categoria, se preciso) a partir de um item de NF manual ──
+    private async Task<(Guid ProdutoId, Guid? VariacaoId, bool CategoriaCriada, Guid? CategoriaId)> CriarProdutoNovo(
+        Guid lojaId, string nomeBase, string? categoriaNome, string? cor, string? tamanho,
+        decimal precoCusto, decimal precoVenda, decimal quantidade, string? gtin)
+    {
+        var nomeCategoria = string.IsNullOrWhiteSpace(categoriaNome) ? "Outro" : categoriaNome.Trim();
+
+        var categoria = await db.CategoriasLoja
+            .FirstOrDefaultAsync(c => c.LojaId == lojaId && c.Ativo && c.Nome.ToLower() == nomeCategoria.ToLower());
+
+        bool categoriaCriadaAgora = false;
+        if (categoria is null)
+        {
+            var maxOrdem = await db.CategoriasLoja.Where(c => c.LojaId == lojaId).Select(c => (int?)c.Ordem).MaxAsync() ?? -1;
+            categoria = new CategoriaLoja
+            {
+                LojaId = lojaId,
+                Nome = nomeCategoria,
+                Ordem = maxOrdem + 1,
+                UsaTamanho = tamanho != null,
+                UsaCor = cor != null,
+            };
+            db.CategoriasLoja.Add(categoria);
+            categoriaCriadaAgora = true;
+        }
+
+        var temVariacao = cor != null || tamanho != null;
+        var novoProduto = new Produto
+        {
+            Nome = nomeBase,
+            Categoria = categoria.Nome,
+            PrecoCusto = precoCusto,
+            PrecoVenda = precoVenda,
+            Estoque = temVariacao ? 0 : (int)quantidade,
+            CodigoBarras = string.IsNullOrWhiteSpace(gtin) ? null : gtin,
+            LojaId = lojaId,
+        };
+        db.Produtos.Add(novoProduto);
+        await db.SaveChangesAsync(); // precisa do Id antes de criar variação
+
+        Guid? variacaoId = null;
+        if (temVariacao)
+        {
+            var novaVariacao = new ProdutoVariacao
+            {
+                ProdutoId = novoProduto.Id,
+                Cor = cor,
+                Tamanho = tamanho,
+                Estoque = (int)quantidade,
+            };
+            db.ProdutoVariacoes.Add(novaVariacao);
+            await db.SaveChangesAsync();
+            variacaoId = novaVariacao.Id;
+        }
+
+        return (novoProduto.Id, variacaoId, categoriaCriadaAgora, categoria.Id);
+    }
+
+    // ── Aplica uma lista de itens de NF manual (existentes ou novos), gerando os
+    // movimentos de estoque e o detalhe usado depois pro Desfazer/Editar ──────
+    private async Task<(List<ItemImportadoDetalhe>? Detalhes, string? Erro)> AplicarItensManual(
+        Guid lojaId, string numeroNf, List<ItemNfManualRequest> itensReq)
+    {
+        var detalhes = new List<ItemImportadoDetalhe>();
+
+        foreach (var item in itensReq)
+        {
+            Guid produtoId;
+            Guid? variacaoId = null;
+            bool produtoCriado = false, variacaoCriada = false, categoriaCriadaAgora = false;
+            Guid? categoriaId = null;
+
+            if (item.Acao == "novo")
+            {
+                if (string.IsNullOrWhiteSpace(item.NomeBase))
+                    return (null, "Informe o nome do novo produto.");
+
+                var (novoProdutoId, novaVariacaoId, catCriada, catId) = await CriarProdutoNovo(
+                    lojaId, item.NomeBase!.Trim(), item.CategoriaNome, item.Cor, item.Tamanho,
+                    item.PrecoCusto ?? 0, item.PrecoVenda ?? item.PrecoCusto ?? 0, item.Quantidade, item.Gtin);
+
+                produtoId = novoProdutoId;
+                variacaoId = novaVariacaoId;
+                produtoCriado = true;
+                variacaoCriada = novaVariacaoId.HasValue;
+                categoriaCriadaAgora = catCriada;
+                categoriaId = catId;
+            }
+            else
+            {
+                if (item.ProdutoId is null) return (null, "Produto não informado.");
+                var produto = await db.Produtos.Include(p => p.Variacoes).FirstOrDefaultAsync(p => p.Id == item.ProdutoId.Value);
+                if (produto is null || produto.LojaId != lojaId) return (null, "Produto não encontrado.");
+
+                if (item.VariacaoId.HasValue)
+                {
+                    var variacao = produto.Variacoes.FirstOrDefault(v => v.Id == item.VariacaoId.Value);
+                    if (variacao is null) return (null, $"Variação não encontrada para '{produto.Nome}'.");
+                    variacao.Estoque += (int)item.Quantidade;
+                    variacao.AtualizadoEm = DateTime.UtcNow;
+                    variacaoId = variacao.Id;
+                }
+                else
+                {
+                    produto.Estoque += item.Quantidade;
+                }
+
+                if (item.PrecoCusto.HasValue) produto.PrecoCusto = item.PrecoCusto.Value;
+                produto.AtualizadoEm = DateTime.UtcNow;
+                produtoId = produto.Id;
+            }
+
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = produtoId,
+                Tipo = "entrada",
+                Quantidade = item.Quantidade,
+                Observacao = $"Nota fiscal manual {numeroNf}",
+                LojaId = lojaId,
+            });
+
+            detalhes.Add(new ItemImportadoDetalhe(
+                produtoId, variacaoId, item.Quantidade,
+                produtoCriado, variacaoCriada, categoriaCriadaAgora, categoriaId
+            ));
+        }
+
+        return (detalhes, null);
+    }
+
     // ── Lançamento manual de nota fiscal (sem XML), vinculado a um Fornecedor ──
     [HttpPost("manual")]
     [Authorize(Roles = "admin,superadmin")]
@@ -439,61 +569,156 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             ? DateTime.SpecifyKind(req.DataEmissao.Value.Date, DateTimeKind.Utc)
             : null;
 
-        var detalhesParaDesfazer = new List<ItemImportadoDetalhe>();
-
-        foreach (var item in req.Itens)
-        {
-            var produto = await db.Produtos.Include(p => p.Variacoes).FirstOrDefaultAsync(p => p.Id == item.ProdutoId);
-            if (produto is null || produto.LojaId != lojaId)
-                return BadRequest(new { erro = "Produto não encontrado." });
-
-            if (item.VariacaoId.HasValue)
-            {
-                var variacao = produto.Variacoes.FirstOrDefault(v => v.Id == item.VariacaoId.Value);
-                if (variacao is null) return BadRequest(new { erro = $"Variação não encontrada para '{produto.Nome}'." });
-                variacao.Estoque += (int)item.Quantidade;
-                variacao.AtualizadoEm = DateTime.UtcNow;
-            }
-            else
-            {
-                produto.Estoque += item.Quantidade;
-            }
-
-            if (item.PrecoCusto.HasValue) produto.PrecoCusto = item.PrecoCusto.Value;
-            produto.AtualizadoEm = DateTime.UtcNow;
-
-            db.Movimentos.Add(new MovimentoEstoque
-            {
-                ProdutoId = produto.Id,
-                Tipo = "entrada",
-                Quantidade = item.Quantidade,
-                Observacao = $"Nota fiscal manual {req.NumeroNf}",
-                LojaId = lojaId,
-            });
-
-            detalhesParaDesfazer.Add(new ItemImportadoDetalhe(
-                produto.Id, item.VariacaoId, item.Quantidade,
-                false, false, false, null
-            ));
-        }
+        var numeroNf = req.NumeroNf.Trim();
+        var (detalhes, erro) = await AplicarItensManual(lojaId.Value, numeroNf, req.Itens);
+        if (erro != null) return BadRequest(new { erro });
 
         db.NfsImportadas.Add(new NfImportada
         {
             LojaId = lojaId.Value,
             ChaveAcesso = null,
-            NumeroNf = req.NumeroNf.Trim(),
+            NumeroNf = numeroNf,
             NomeFornecedor = fornecedor.Nome,
             FornecedorId = fornecedor.Id,
             Origem = "manual",
             DataEmissao = dataEmissaoUtc,
             ValorTotal = req.ValorTotal,
             QtdItens = req.Itens.Count,
-            ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhesParaDesfazer),
+            ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhes),
         });
 
         await db.SaveChangesAsync();
 
         return Ok(new { mensagem = "Nota fiscal lançada.", produtosAtualizados = req.Itens.Count });
+    }
+
+    // ── Detalhe de uma NF manual (pra preencher o formulário de edição) ────
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> Detalhe(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return NotFound();
+
+        var nf = await db.NfsImportadas.FirstOrDefaultAsync(n => n.Id == id && n.LojaId == lojaId);
+        if (nf is null) return NotFound();
+        if (nf.Origem != "manual") return BadRequest(new { erro = "Apenas notas lançadas manualmente têm detalhe editável." });
+
+        var itensDetalhe = System.Text.Json.JsonSerializer.Deserialize<List<ItemImportadoDetalhe>>(nf.ItensJson) ?? new();
+        var itens = new List<object>();
+
+        foreach (var item in itensDetalhe)
+        {
+            var produto = await db.Produtos.Include(p => p.Variacoes).FirstOrDefaultAsync(p => p.Id == item.ProdutoId);
+            if (produto is null) continue; // produto pode ter sido excluído depois (ex: por outro Desfazer)
+
+            string? variacaoLabel = null;
+            if (item.VariacaoId.HasValue)
+            {
+                var variacao = produto.Variacoes.FirstOrDefault(v => v.Id == item.VariacaoId.Value);
+                if (variacao != null)
+                    variacaoLabel = string.Join(" / ", new[] { variacao.Cor, variacao.Tamanho }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            }
+
+            itens.Add(new
+            {
+                produtoId = item.ProdutoId,
+                nomeProduto = produto.Nome,
+                variacaoId = item.VariacaoId,
+                variacaoLabel,
+                quantidade = item.Quantidade,
+                precoCusto = produto.PrecoCusto,
+            });
+        }
+
+        return Ok(new
+        {
+            nf.Id,
+            nf.FornecedorId,
+            nf.NumeroNf,
+            nf.DataEmissao,
+            nf.ValorTotal,
+            Itens = itens,
+        });
+    }
+
+    // ── Edita uma NF manual já lançada (número, fornecedor, data, valor e
+    // quantidade/custo dos itens — não permite adicionar/remover itens) ────
+    [HttpPut("{id:guid}/editar")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Editar(Guid id, [FromBody] EditarNfManualRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var nf = await db.NfsImportadas.FirstOrDefaultAsync(n => n.Id == id && n.LojaId == lojaId);
+        if (nf is null) return NotFound();
+        if (nf.Desfeita) return BadRequest(new { erro = "Esta importação foi desfeita e não pode ser editada." });
+        if (nf.Origem != "manual") return BadRequest(new { erro = "Apenas notas lançadas manualmente podem ser editadas." });
+        if (string.IsNullOrWhiteSpace(req.NumeroNf)) return BadRequest(new { erro = "Informe o número da nota fiscal." });
+
+        var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(f => f.Id == req.FornecedorId && f.LojaId == lojaId);
+        if (fornecedor is null) return BadRequest(new { erro = "Fornecedor não encontrado." });
+
+        var itensAntigos = System.Text.Json.JsonSerializer.Deserialize<List<ItemImportadoDetalhe>>(nf.ItensJson) ?? new();
+        if (itensAntigos.Count != req.Itens.Count)
+            return BadRequest(new { erro = "Não é possível adicionar ou remover itens ao editar — desfaça e lance novamente." });
+
+        var numeroNfNovo = req.NumeroNf.Trim();
+        var tagAntiga = $"Nota fiscal manual {nf.NumeroNf}";
+        var tagNova = $"Nota fiscal manual {numeroNfNovo}";
+
+        var detalhesNovos = new List<ItemImportadoDetalhe>();
+
+        foreach (var antigo in itensAntigos)
+        {
+            var novo = req.Itens.FirstOrDefault(i => i.ProdutoId == antigo.ProdutoId && i.VariacaoId == antigo.VariacaoId);
+            if (novo is null)
+                return BadRequest(new { erro = "Os itens editados não correspondem aos itens originais desta nota." });
+
+            var produto = await db.Produtos.Include(p => p.Variacoes).FirstOrDefaultAsync(p => p.Id == antigo.ProdutoId);
+            if (produto != null)
+            {
+                var delta = novo.Quantidade - antigo.Quantidade;
+
+                if (antigo.VariacaoId.HasValue)
+                {
+                    var variacao = produto.Variacoes.FirstOrDefault(v => v.Id == antigo.VariacaoId.Value);
+                    if (variacao != null)
+                    {
+                        variacao.Estoque = Math.Max(0, variacao.Estoque + (int)delta);
+                        variacao.AtualizadoEm = DateTime.UtcNow;
+                    }
+                }
+                else
+                {
+                    produto.Estoque = Math.Max(0, produto.Estoque + delta);
+                }
+
+                if (novo.PrecoCusto.HasValue) produto.PrecoCusto = novo.PrecoCusto.Value;
+                produto.AtualizadoEm = DateTime.UtcNow;
+            }
+
+            detalhesNovos.Add(antigo with { Quantidade = novo.Quantidade });
+        }
+
+        var movimentos = await db.Movimentos.Where(m => m.LojaId == lojaId && m.Observacao == tagAntiga).ToListAsync();
+        foreach (var mov in movimentos)
+        {
+            var correspondente = req.Itens.FirstOrDefault(i => i.ProdutoId == mov.ProdutoId);
+            if (correspondente != null) mov.Quantidade = correspondente.Quantidade;
+            mov.Observacao = tagNova;
+        }
+
+        nf.FornecedorId = fornecedor.Id;
+        nf.NomeFornecedor = fornecedor.Nome;
+        nf.NumeroNf = numeroNfNovo;
+        nf.DataEmissao = req.DataEmissao.HasValue ? DateTime.SpecifyKind(req.DataEmissao.Value.Date, DateTimeKind.Utc) : null;
+        nf.ValorTotal = req.ValorTotal;
+        nf.ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhesNovos);
+
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Nota fiscal atualizada." });
     }
 
     // ── Histórico de importações (XML e lançamentos manuais) ───────
@@ -644,11 +869,22 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
 
     public record ConfirmarImportacaoRequest(string CnpjFornecedor, string NumeroNf, string ChaveAcesso, string NomeFornecedor, List<ItemConfirmacao> Itens);
 
-    public record ItemNfManualRequest(Guid ProdutoId, Guid? VariacaoId, decimal Quantidade, decimal? PrecoCusto);
+    public record ItemNfManualRequest(
+        Guid? ProdutoId, Guid? VariacaoId, decimal Quantidade, decimal? PrecoCusto,
+        string? Acao, // null/"existente" (padrão) | "novo"
+        string? NomeBase, string? CategoriaNome, string? Cor, string? Tamanho, decimal? PrecoVenda, string? Gtin
+    );
 
     public record LancarNfManualRequest(
         Guid FornecedorId, string NumeroNf, DateTime? DataEmissao, decimal? ValorTotal,
         List<ItemNfManualRequest> Itens
+    );
+
+    public record ItemNfEditRequest(Guid ProdutoId, Guid? VariacaoId, decimal Quantidade, decimal? PrecoCusto);
+
+    public record EditarNfManualRequest(
+        Guid FornecedorId, string NumeroNf, DateTime? DataEmissao, decimal? ValorTotal,
+        List<ItemNfEditRequest> Itens
     );
 
     public record ItemImportadoDetalhe(
