@@ -35,4 +35,15 @@ public class NfImportada
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal? ValorTotal { get; set; }
+
+    // Totais calculados a partir dos itens no momento do lançamento/edição — usados
+    // pro card do histórico, sem precisar reabrir o detalhe pra ver custo x venda.
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? ValorCustoTotal { get; set; }
+
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? ValorVendaTotal { get; set; }
+
+    [Column(TypeName = "decimal(10,3)")]
+    public decimal? QuantidadeTotal { get; set; }
 }
