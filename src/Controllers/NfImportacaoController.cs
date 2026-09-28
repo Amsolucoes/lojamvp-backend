@@ -244,6 +244,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         var atualizados = 0;
         var categoriasCriadas = 0;
         var detalhesParaDesfazer = new List<ItemImportadoDetalhe>();
+        decimal custoTotal = 0, vendaTotal = 0, quantidadeTotal = 0;
 
         foreach (var item in req.Itens)
         {
@@ -252,6 +253,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             bool produtoCriado = false, variacaoCriada = false, categoriaCriadaAgora = false;
             Guid? categoriaId = null;
             Guid? variacaoId = null;
+            decimal custoUnit, vendaUnit;
 
             if (item.Acao == "novo")
             {
@@ -277,12 +279,15 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 }
                 categoriaId = categoria.Id;
 
+                custoUnit = item.PrecoCusto ?? 0;
+                vendaUnit = item.PrecoVenda ?? item.PrecoCusto ?? 0;
+
                 var novoProduto = new Produto
                 {
                     Nome = item.NomeBase,
                     Categoria = categoria.Nome,
-                    PrecoCusto = item.PrecoCusto ?? 0,
-                    PrecoVenda = item.PrecoVenda ?? item.PrecoCusto ?? 0,
+                    PrecoCusto = custoUnit,
+                    PrecoVenda = vendaUnit,
                     Estoque = temVariacao ? 0 : item.Quantidade,
                     CodigoBarras = string.IsNullOrWhiteSpace(item.Gtin) ? null : item.Gtin,
                     LojaId = lojaId,
@@ -360,6 +365,8 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 produto.AtualizadoEm = DateTime.UtcNow;
                 produtoId = produto.Id;
                 atualizados++;
+                custoUnit = produto.PrecoCusto;
+                vendaUnit = produto.PrecoVenda;
 
                 db.Movimentos.Add(new MovimentoEstoque
                 {
@@ -370,6 +377,10 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                     LojaId = lojaId,
                 });
             }
+
+            custoTotal += custoUnit * item.Quantidade;
+            vendaTotal += vendaUnit * item.Quantidade;
+            quantidadeTotal += item.Quantidade;
 
             detalhesParaDesfazer.Add(new ItemImportadoDetalhe(
                 produtoId, variacaoId, item.Quantidade,
@@ -402,6 +413,10 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             ChaveAcesso = req.ChaveAcesso,
             NumeroNf = req.NumeroNf,
             NomeFornecedor = req.NomeFornecedor,
+            ValorTotal = custoTotal,
+            ValorCustoTotal = custoTotal,
+            ValorVendaTotal = vendaTotal,
+            QuantidadeTotal = quantidadeTotal,
             QtdItens = req.Itens.Count,
             ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhesParaDesfazer),
         });
@@ -481,10 +496,11 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
 
     // ── Aplica uma lista de itens de NF manual (existentes ou novos), gerando os
     // movimentos de estoque e o detalhe usado depois pro Desfazer/Editar ──────
-    private async Task<(List<ItemImportadoDetalhe>? Detalhes, string? Erro)> AplicarItensManual(
+    private async Task<(List<ItemImportadoDetalhe>? Detalhes, decimal CustoTotal, decimal VendaTotal, decimal QuantidadeTotal, string? Erro)> AplicarItensManual(
         Guid lojaId, string numeroNf, List<ItemNfManualRequest> itensReq)
     {
         var detalhes = new List<ItemImportadoDetalhe>();
+        decimal custoTotal = 0, vendaTotal = 0, quantidadeTotal = 0;
 
         foreach (var item in itensReq)
         {
@@ -492,15 +508,19 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             Guid? variacaoId = null;
             bool produtoCriado = false, variacaoCriada = false, categoriaCriadaAgora = false;
             Guid? categoriaId = null;
+            decimal custoUnit, vendaUnit;
 
             if (item.Acao == "novo")
             {
                 if (string.IsNullOrWhiteSpace(item.NomeBase))
-                    return (null, "Informe o nome do novo produto.");
+                    return (null, 0, 0, 0, "Informe o nome do novo produto.");
+
+                custoUnit = item.PrecoCusto ?? 0;
+                vendaUnit = item.PrecoVenda ?? item.PrecoCusto ?? 0;
 
                 var (novoProdutoId, novaVariacaoId, catCriada, catId) = await CriarProdutoNovo(
                     lojaId, item.NomeBase!.Trim(), item.CategoriaNome, item.Cor, item.Tamanho,
-                    item.PrecoCusto ?? 0, item.PrecoVenda ?? item.PrecoCusto ?? 0, item.Quantidade, item.Gtin,
+                    custoUnit, vendaUnit, item.Quantidade, item.Gtin,
                     item.TipoVenda, item.UnidadeMedida);
 
                 produtoId = novoProdutoId;
@@ -512,14 +532,14 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             }
             else
             {
-                if (item.ProdutoId is null) return (null, "Produto não informado.");
+                if (item.ProdutoId is null) return (null, 0, 0, 0, "Produto não informado.");
                 var produto = await db.Produtos.Include(p => p.Variacoes).FirstOrDefaultAsync(p => p.Id == item.ProdutoId.Value);
-                if (produto is null || produto.LojaId != lojaId) return (null, "Produto não encontrado.");
+                if (produto is null || produto.LojaId != lojaId) return (null, 0, 0, 0, "Produto não encontrado.");
 
                 if (item.VariacaoId.HasValue)
                 {
                     var variacao = produto.Variacoes.FirstOrDefault(v => v.Id == item.VariacaoId.Value);
-                    if (variacao is null) return (null, $"Variação não encontrada para '{produto.Nome}'.");
+                    if (variacao is null) return (null, 0, 0, 0, $"Variação não encontrada para '{produto.Nome}'.");
                     variacao.Estoque += (int)item.Quantidade;
                     variacao.AtualizadoEm = DateTime.UtcNow;
                     variacaoId = variacao.Id;
@@ -532,7 +552,13 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 if (item.PrecoCusto.HasValue) produto.PrecoCusto = item.PrecoCusto.Value;
                 produto.AtualizadoEm = DateTime.UtcNow;
                 produtoId = produto.Id;
+                custoUnit = produto.PrecoCusto;
+                vendaUnit = produto.PrecoVenda;
             }
+
+            custoTotal += custoUnit * item.Quantidade;
+            vendaTotal += vendaUnit * item.Quantidade;
+            quantidadeTotal += item.Quantidade;
 
             db.Movimentos.Add(new MovimentoEstoque
             {
@@ -549,7 +575,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             ));
         }
 
-        return (detalhes, null);
+        return (detalhes, custoTotal, vendaTotal, quantidadeTotal, null);
     }
 
     // ── Lançamento manual de nota fiscal (sem XML), vinculado a um Fornecedor ──
@@ -575,7 +601,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             : null;
 
         var numeroNf = req.NumeroNf.Trim();
-        var (detalhes, erro) = await AplicarItensManual(lojaId.Value, numeroNf, req.Itens);
+        var (detalhes, custoTotal, vendaTotal, quantidadeTotal, erro) = await AplicarItensManual(lojaId.Value, numeroNf, req.Itens);
         if (erro != null) return BadRequest(new { erro });
 
         db.NfsImportadas.Add(new NfImportada
@@ -587,7 +613,10 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
             FornecedorId = fornecedor.Id,
             Origem = "manual",
             DataEmissao = dataEmissaoUtc,
-            ValorTotal = req.ValorTotal,
+            ValorTotal = req.ValorTotal ?? custoTotal,
+            ValorCustoTotal = custoTotal,
+            ValorVendaTotal = vendaTotal,
+            QuantidadeTotal = quantidadeTotal,
             QtdItens = req.Itens.Count,
             ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhes),
         });
@@ -673,6 +702,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         var tagNova = $"Nota fiscal manual {numeroNfNovo}";
 
         var detalhesNovos = new List<ItemImportadoDetalhe>();
+        decimal custoTotal = 0, vendaTotal = 0, quantidadeTotal = 0;
 
         foreach (var antigo in itensAntigos)
         {
@@ -701,8 +731,12 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
 
                 if (novo.PrecoCusto.HasValue) produto.PrecoCusto = novo.PrecoCusto.Value;
                 produto.AtualizadoEm = DateTime.UtcNow;
+
+                custoTotal += produto.PrecoCusto * novo.Quantidade;
+                vendaTotal += produto.PrecoVenda * novo.Quantidade;
             }
 
+            quantidadeTotal += novo.Quantidade;
             detalhesNovos.Add(antigo with { Quantidade = novo.Quantidade });
         }
 
@@ -718,7 +752,10 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         nf.NomeFornecedor = fornecedor.Nome;
         nf.NumeroNf = numeroNfNovo;
         nf.DataEmissao = req.DataEmissao.HasValue ? DateTime.SpecifyKind(req.DataEmissao.Value.Date, DateTimeKind.Utc) : null;
-        nf.ValorTotal = req.ValorTotal;
+        nf.ValorTotal = req.ValorTotal ?? custoTotal;
+        nf.ValorCustoTotal = custoTotal;
+        nf.ValorVendaTotal = vendaTotal;
+        nf.QuantidadeTotal = quantidadeTotal;
         nf.ItensJson = System.Text.Json.JsonSerializer.Serialize(detalhesNovos);
 
         await db.SaveChangesAsync();
@@ -745,6 +782,9 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
                 n.Origem,
                 n.DataEmissao,
                 n.ValorTotal,
+                n.ValorCustoTotal,
+                n.ValorVendaTotal,
+                n.QuantidadeTotal,
                 n.QtdItens,
                 n.ImportadoEm,
                 n.Desfeita,
