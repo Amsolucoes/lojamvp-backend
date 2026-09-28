@@ -420,7 +420,8 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
     // ── Cria um produto novo (e categoria, se preciso) a partir de um item de NF manual ──
     private async Task<(Guid ProdutoId, Guid? VariacaoId, bool CategoriaCriada, Guid? CategoriaId)> CriarProdutoNovo(
         Guid lojaId, string nomeBase, string? categoriaNome, string? cor, string? tamanho,
-        decimal precoCusto, decimal precoVenda, decimal quantidade, string? gtin)
+        decimal precoCusto, decimal precoVenda, decimal quantidade, string? gtin,
+        string? tipoVenda = null, string? unidadeMedida = null)
     {
         var nomeCategoria = string.IsNullOrWhiteSpace(categoriaNome) ? "Outro" : categoriaNome.Trim();
 
@@ -444,15 +445,18 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         }
 
         var temVariacao = cor != null || tamanho != null;
+        var tipoVendaFinal = tipoVenda == "fracionado" ? "fracionado" : "unidade";
         var novoProduto = new Produto
         {
             Nome = nomeBase,
             Categoria = categoria.Nome,
             PrecoCusto = precoCusto,
             PrecoVenda = precoVenda,
-            Estoque = temVariacao ? 0 : (int)quantidade,
+            Estoque = temVariacao ? 0 : quantidade,
             CodigoBarras = string.IsNullOrWhiteSpace(gtin) ? null : gtin,
             LojaId = lojaId,
+            TipoVenda = tipoVendaFinal,
+            UnidadeMedida = tipoVendaFinal == "fracionado" && !string.IsNullOrWhiteSpace(unidadeMedida) ? unidadeMedida : (tipoVendaFinal == "fracionado" ? "kg" : "un"),
         };
         db.Produtos.Add(novoProduto);
         await db.SaveChangesAsync(); // precisa do Id antes de criar variação
@@ -496,7 +500,8 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
 
                 var (novoProdutoId, novaVariacaoId, catCriada, catId) = await CriarProdutoNovo(
                     lojaId, item.NomeBase!.Trim(), item.CategoriaNome, item.Cor, item.Tamanho,
-                    item.PrecoCusto ?? 0, item.PrecoVenda ?? item.PrecoCusto ?? 0, item.Quantidade, item.Gtin);
+                    item.PrecoCusto ?? 0, item.PrecoVenda ?? item.PrecoCusto ?? 0, item.Quantidade, item.Gtin,
+                    item.TipoVenda, item.UnidadeMedida);
 
                 produtoId = novoProdutoId;
                 variacaoId = novaVariacaoId;
@@ -872,7 +877,9 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
     public record ItemNfManualRequest(
         Guid? ProdutoId, Guid? VariacaoId, decimal Quantidade, decimal? PrecoCusto,
         string? Acao, // null/"existente" (padrão) | "novo"
-        string? NomeBase, string? CategoriaNome, string? Cor, string? Tamanho, decimal? PrecoVenda, string? Gtin
+        string? NomeBase, string? CategoriaNome, string? Cor, string? Tamanho, decimal? PrecoVenda, string? Gtin,
+        string? TipoVenda = null, // "unidade" (padrão) | "fracionado" — só usado quando Acao == "novo"
+        string? UnidadeMedida = null
     );
 
     public record LancarNfManualRequest(
