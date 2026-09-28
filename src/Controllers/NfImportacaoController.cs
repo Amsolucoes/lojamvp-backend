@@ -594,13 +594,20 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(f => f.Id == req.FornecedorId && f.LojaId == lojaId);
         if (fornecedor is null) return BadRequest(new { erro = "Fornecedor não encontrado." });
 
+        var numeroNf = req.NumeroNf.Trim();
+
+        // Trava contra lançar a mesma NF (número) duas vezes pro mesmo fornecedor
+        var duplicada = await db.NfsImportadas.AnyAsync(n =>
+            n.LojaId == lojaId && n.FornecedorId == fornecedor.Id && !n.Desfeita && n.NumeroNf.ToLower() == numeroNf.ToLower());
+        if (duplicada)
+            return Conflict(new { erro = $"Já existe uma nota {numeroNf} lançada para o fornecedor {fornecedor.Nome}." });
+
         // Postgres exige DateTimeKind.Utc pra gravar em coluna timestamptz — o valor
         // desserializado do JSON vem com Kind=Unspecified e quebra o SaveChanges.
         DateTime? dataEmissaoUtc = req.DataEmissao.HasValue
             ? DateTime.SpecifyKind(req.DataEmissao.Value.Date, DateTimeKind.Utc)
             : null;
 
-        var numeroNf = req.NumeroNf.Trim();
         var (detalhes, custoTotal, vendaTotal, quantidadeTotal, erro) = await AplicarItensManual(lojaId.Value, numeroNf, req.Itens);
         if (erro != null) return BadRequest(new { erro });
 
@@ -693,13 +700,22 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
         var fornecedor = await db.Fornecedores.FirstOrDefaultAsync(f => f.Id == req.FornecedorId && f.LojaId == lojaId);
         if (fornecedor is null) return BadRequest(new { erro = "Fornecedor não encontrado." });
 
+        var numeroNfEditado = req.NumeroNf.Trim();
+
+        // Trava contra deixar duas notas com o mesmo número pro mesmo fornecedor
+        // (ignora a própria nota sendo editada)
+        var duplicada = await db.NfsImportadas.AnyAsync(n =>
+            n.LojaId == lojaId && n.Id != nf.Id && n.FornecedorId == fornecedor.Id && !n.Desfeita
+            && n.NumeroNf.ToLower() == numeroNfEditado.ToLower());
+        if (duplicada)
+            return Conflict(new { erro = $"Já existe uma nota {numeroNfEditado} lançada para o fornecedor {fornecedor.Nome}." });
+
         var itensAntigos = System.Text.Json.JsonSerializer.Deserialize<List<ItemImportadoDetalhe>>(nf.ItensJson) ?? new();
         if (itensAntigos.Count != req.Itens.Count)
             return BadRequest(new { erro = "Não é possível adicionar ou remover itens ao editar — desfaça e lance novamente." });
 
-        var numeroNfNovo = req.NumeroNf.Trim();
         var tagAntiga = $"Nota fiscal manual {nf.NumeroNf}";
-        var tagNova = $"Nota fiscal manual {numeroNfNovo}";
+        var tagNova = $"Nota fiscal manual {numeroNfEditado}";
 
         var detalhesNovos = new List<ItemImportadoDetalhe>();
         decimal custoTotal = 0, vendaTotal = 0, quantidadeTotal = 0;
@@ -750,7 +766,7 @@ public class NfImportacaoController(AppDbContext db) : ControllerBase
 
         nf.FornecedorId = fornecedor.Id;
         nf.NomeFornecedor = fornecedor.Nome;
-        nf.NumeroNf = numeroNfNovo;
+        nf.NumeroNf = numeroNfEditado;
         nf.DataEmissao = req.DataEmissao.HasValue ? DateTime.SpecifyKind(req.DataEmissao.Value.Date, DateTimeKind.Utc) : null;
         nf.ValorTotal = req.ValorTotal ?? custoTotal;
         nf.ValorCustoTotal = custoTotal;
