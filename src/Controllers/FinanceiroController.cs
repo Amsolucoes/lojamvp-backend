@@ -1212,26 +1212,39 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     // tela "A Pagar" é aberta, então corrige sozinho sem precisar de ação manual.
     private async Task CorrigirParcelasFinanciamentoEmCicloFechadoAsync(Guid lojaId)
     {
-        var grupos = await db.LancamentosFinanceiros
-            .Where(l => l.LojaId == lojaId && l.CartaoOrigemId != null && l.Status == "pendente")
-            .GroupBy(l => l.GrupoParcelamentoId)
-            .Select(g => g.Key)
+        // Performance: antes rodava 2+ consultas POR grupo de parcelamento (N+1). Agora são
+        // 3 consultas no total (grupos, parcelas, cartões) e o resto é feito em memória.
+        var grupoIds = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.CartaoOrigemId != null && l.Status == "pendente" && l.GrupoParcelamentoId != null)
+            .Select(l => l.GrupoParcelamentoId)
+            .Distinct()
             .ToListAsync();
 
-        foreach (var grupoId in grupos)
+        if (grupoIds.Count == 0) return;
+
+        var todasParcelas = await db.LancamentosFinanceiros
+            .Where(l => grupoIds.Contains(l.GrupoParcelamentoId) && l.Status == "pendente")
+            .ToListAsync();
+
+        var cartaoIds = todasParcelas
+            .Where(p => p.CartaoOrigemId != null)
+            .Select(p => p.CartaoOrigemId!.Value)
+            .Distinct()
+            .ToList();
+
+        var cartoesPorId = (await db.CartoesCredito
+            .Where(c => cartaoIds.Contains(c.Id))
+            .ToListAsync())
+            .ToDictionary(c => c.Id);
+
+        foreach (var grupo in todasParcelas.Where(p => p.GrupoParcelamentoId != null).GroupBy(p => p.GrupoParcelamentoId!.Value))
         {
-            if (grupoId is null) continue;
-
-            var parcelas = await db.LancamentosFinanceiros
-                .Where(l => l.GrupoParcelamentoId == grupoId && l.Status == "pendente")
-                .OrderBy(l => l.NumeroParcela)
-                .ToListAsync();
-
+            var parcelas = grupo.OrderBy(p => p.NumeroParcela).ToList();
             if (parcelas.Count == 0) continue;
 
             var primeira = parcelas[0];
-            var cartao = await db.CartoesCredito.FindAsync(primeira.CartaoOrigemId!.Value);
-            if (cartao is null) continue;
+            if (primeira.CartaoOrigemId is null) continue;
+            if (!cartoesPorId.TryGetValue(primeira.CartaoOrigemId.Value, out var cartao)) continue;
 
             // Recalcula SEMPRE do zero a partir da data real de criação da 1ª parcela — nunca
             // incrementa em cima do valor atualmente gravado. Isso torna a rotina idempotente:
@@ -1256,7 +1269,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             }
         }
 
-        if (grupos.Count > 0) await db.SaveChangesAsync();
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
     }
 
     // ── Calcula a fatura de um mês (sob demanda, sem precisar de job) ──
@@ -1322,6 +1335,147 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
 
         return (pago, pendente, vencido);
+    }
+
+    // ── Dados de cartão pré-carregados ─────────────────────────────────
+    // Resumo anual e resumo de cartões consultavam o banco dentro de loops (cartão × mês/ciclo),
+    // chegando a centenas de consultas por requisição. Agora os dados necessários são lidos em
+    // poucas consultas e as mesmas regras de cálculo rodam em memória.
+    private sealed record CompraLeve(Guid CartaoId, DateTime DataCompra, decimal Valor, string Modo);
+
+    private sealed class DadosCartoes
+    {
+        public Dictionary<Guid, List<CompraLeve>> ComprasPorCartao { get; } = new();
+        public List<FaturaCartao> Faturas { get; } = new();
+        public Dictionary<Guid, decimal> AntecipadoPorFatura { get; } = new();
+
+        public IReadOnlyList<CompraLeve> Compras(Guid cartaoId)
+            => ComprasPorCartao.TryGetValue(cartaoId, out var lista) ? lista : new List<CompraLeve>();
+
+        public decimal SomaCompras(Guid cartaoId, DateTime inicio, DateTime fim)
+            => Compras(cartaoId)
+                .Where(c => c.DataCompra.Date >= inicio.Date && c.DataCompra.Date <= fim.Date)
+                .Sum(c => c.Valor);
+
+        public FaturaCartao? Fatura(Guid cartaoId, int ano, int mes)
+            => Faturas.FirstOrDefault(f => f.CartaoCreditoId == cartaoId && f.MesReferencia.Year == ano && f.MesReferencia.Month == mes);
+
+        public decimal Antecipado(FaturaCartao? fatura)
+            => fatura is not null && AntecipadoPorFatura.TryGetValue(fatura.Id, out var v) ? v : 0;
+    }
+
+    private async Task<DadosCartoes> CarregarDadosCartoesAsync(
+        List<Guid> cartaoIds, DateTime comprasDesde, DateTime? comprasAte, DateTime faturasDesde, DateTime? faturasAte)
+    {
+        var dados = new DadosCartoes();
+        if (cartaoIds.Count == 0) return dados;
+
+        var comprasQuery = db.LancamentosCartao.AsNoTracking()
+            .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= comprasDesde);
+        if (comprasAte.HasValue) comprasQuery = comprasQuery.Where(l => l.DataCompra < comprasAte.Value);
+
+        var compras = await comprasQuery
+            .Select(l => new CompraLeve(l.CartaoCreditoId, l.DataCompra, l.Valor, l.Modo))
+            .ToListAsync();
+        foreach (var grupo in compras.GroupBy(c => c.CartaoId))
+            dados.ComprasPorCartao[grupo.Key] = grupo.ToList();
+
+        var faturasQuery = db.FaturasCartao.AsNoTracking()
+            .Where(f => cartaoIds.Contains(f.CartaoCreditoId) && f.MesReferencia >= faturasDesde);
+        if (faturasAte.HasValue) faturasQuery = faturasQuery.Where(f => f.MesReferencia < faturasAte.Value);
+        dados.Faturas.AddRange(await faturasQuery.ToListAsync());
+
+        var faturaIds = dados.Faturas.Select(f => f.Id).ToList();
+        if (faturaIds.Count > 0)
+        {
+            var antecipados = await db.PagamentosAntecipadosFatura.AsNoTracking()
+                .Where(p => faturaIds.Contains(p.FaturaCartaoId))
+                .GroupBy(p => p.FaturaCartaoId)
+                .Select(g => new { FaturaId = g.Key, Total = g.Sum(x => x.Valor) })
+                .ToListAsync();
+            foreach (var a in antecipados) dados.AntecipadoPorFatura[a.FaturaId] = a.Total;
+        }
+
+        return dados;
+    }
+
+    // Mesma regra de CalcularContribuicaoCartaoMesAsync, só que em memória. parcelasDoMes =
+    // parcelas de financiamento (LancamentosFinanceiros) deste cartão que vencem nesse mês.
+    private (decimal Pago, decimal Pendente, decimal Vencido) CalcularContribuicaoCartaoMes(
+        CartaoCredito cartao, int ano, int mes, DateTime hoje, DadosCartoes dados, IEnumerable<LancamentoFinanceiro> parcelasDoMes)
+    {
+        decimal pago = 0, pendente = 0, vencido = 0;
+
+        var inicioMes = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fimMes = inicioMes.AddMonths(1);
+        var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
+
+        if (vencimentoFatura >= inicioMes && vencimentoFatura < fimMes)
+        {
+            var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
+            var totalFatura = dados.SomaCompras(cartao.Id, cInicio, cFim);
+
+            if (totalFatura > 0)
+            {
+                var faturaExistente = dados.Fatura(cartao.Id, ano, mes);
+                var totalAntecipado = dados.Antecipado(faturaExistente);
+                var totalRestante = totalFatura - totalAntecipado;
+                var resolvida = faturaExistente?.Status == "pago" || faturaExistente?.Status == "parcial" || faturaExistente?.Status == "financiada";
+
+                if (resolvida) pago += totalRestante;
+                else if (totalRestante <= 0) pago += totalFatura;
+                else if (vencimentoFatura.Date < hoje) vencido += totalRestante;
+                else pendente += totalRestante;
+            }
+        }
+
+        foreach (var p in parcelasDoMes)
+        {
+            if (p.Status == "pago") pago += p.Valor;
+            else if (p.Vencimento.Date < hoje) vencido += p.Valor;
+            else pendente += p.Valor;
+        }
+
+        return (pago, pendente, vencido);
+    }
+
+    // Mesma regra de CicloAtualCartaoAsync, em memória.
+    private (DateTime Vencimento, decimal Total, string Status) CicloAtualCartaoMem(CartaoCredito cartao, DadosCartoes dados, DateTime hoje)
+    {
+        for (int offset = -3; offset <= 0; offset++)
+        {
+            var refBase = new DateTime(hoje.Year, hoje.Month, 1).AddMonths(offset);
+            var vencimentoCheck = CalcularVencimentoFatura(cartao, refBase.Year, refBase.Month);
+            var cicloCheck = CicloDaFatura(cartao, vencimentoCheck);
+
+            var cicloJaFechou = hoje.Date > cicloCheck.Fim.Date;
+            if (!cicloJaFechou) continue;
+
+            var totalCheck = dados.SomaCompras(cartao.Id, cicloCheck.Inicio, cicloCheck.Fim);
+            if (totalCheck <= 0) continue;
+
+            var faturaCheck = dados.Fatura(cartao.Id, vencimentoCheck.Year, vencimentoCheck.Month);
+            if (faturaCheck?.Status == "pago") continue;
+
+            return (vencimentoCheck, totalCheck, faturaCheck?.Status ?? "pendente");
+        }
+
+        // Nenhuma fatura fechada pendente — mostra o ciclo em aberto (só informativo)
+        int ano = hoje.Year, mes = hoje.Month;
+        DateTime vencimento = default;
+        (DateTime Inicio, DateTime Fim) ciclo = default;
+        for (int i = 0; i < 3; i++)
+        {
+            vencimento = CalcularVencimentoFatura(cartao, ano, mes);
+            ciclo = CicloDaFatura(cartao, vencimento);
+            if (hoje.Date >= ciclo.Inicio.Date && hoje.Date <= ciclo.Fim.Date) break;
+            mes++;
+            if (mes > 12) { mes = 1; ano++; }
+        }
+
+        var total = dados.SomaCompras(cartao.Id, ciclo.Inicio, ciclo.Fim);
+        var fatura = dados.Fatura(cartao.Id, vencimento.Year, vencimento.Month);
+        return (vencimento, total, fatura?.Status ?? "pendente");
     }
 
     // ── Listar faturas + total, agrupado ou detalhado ──────────────
@@ -1726,41 +1880,62 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var inicio = new DateTime(ano, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         var fim = inicio.AddYears(1);
 
-        var doAno = await db.LancamentosFinanceiros
+        var doAno = await db.LancamentosFinanceiros.AsNoTracking()
             .Where(l => l.LojaId == lojaId && l.Vencimento >= inicio && l.Vencimento < fim)
             .ToListAsync();
 
         // Planos: busca pagamentos já gerados no ano
-        var assinaturas = await db.AssinaturasCliente
+        var assinaturas = await db.AssinaturasCliente.AsNoTracking()
             .Where(a => a.LojaId == lojaId && a.Status == "ativa")
             .ToListAsync();
         var assinaturaIds = assinaturas.Select(a => a.Id).ToList();
 
-        var pagamentosPlanoAno = await db.PagamentosPlano
+        var pagamentosPlanoAno = await db.PagamentosPlano.AsNoTracking()
             .Where(p => assinaturaIds.Contains(p.AssinaturaId) && p.MesReferencia >= inicio && p.MesReferencia < fim)
             .ToListAsync();
 
         // Soma o valor dos planos vinculados às assinaturas ativas para projeção mensal
         var planoIds = assinaturas.Select(a => a.PlanoId).Distinct().ToList();
-        var planos = await db.Planos.Where(p => planoIds.Contains(p.Id)).ToListAsync();
+        var planos = await db.Planos.AsNoTracking().Where(p => planoIds.Contains(p.Id)).ToListAsync();
         var receitaProjetadaMensal = assinaturas
             .Sum(a => planos.FirstOrDefault(p => p.Id == a.PlanoId)?.Valor ?? 0);
 
         // Meses com pagamento já gerado — para os demais, projeta com base nas assinaturas ativas
         var mesesComPagamento = pagamentosPlanoAno.Select(p => p.MesReferencia.Month).ToHashSet();
 
-        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         var totalCartaoPorMes = new decimal[13]; // índice 1-12
         var hojeAnual = DateTime.UtcNow.Date;
 
-        foreach (var cartao in cartoes)
+        if (cartoes.Count > 0)
         {
-            // Mesma função do Resumo Mensal e do Balanço — os três relatórios ficam
-            // sempre consistentes entre si.
-            for (int mes = 1; mes <= 12; mes++)
+            var cartaoIds = cartoes.Select(c => c.Id).ToList();
+            var cartaoIdsN = cartaoIds.Cast<Guid?>().ToList();
+
+            // Os ciclos do ano começam em dezembro do ano anterior e terminam em dezembro.
+            var dadosCartoes = await CarregarDadosCartoesAsync(
+                cartaoIds,
+                new DateTime(ano - 1, 12, 1, 0, 0, 0, DateTimeKind.Utc),
+                new DateTime(ano + 1, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                inicio,
+                fim);
+
+            var parcelasFinanciamento = await db.LancamentosFinanceiros.AsNoTracking()
+                .Where(l => cartaoIdsN.Contains(l.CartaoOrigemId) && l.Vencimento >= inicio && l.Vencimento < fim)
+                .ToListAsync();
+
+            foreach (var cartao in cartoes)
             {
-                var (pagoCartao, pendenteCartao, vencidoCartao) = await CalcularContribuicaoCartaoMesAsync(cartao, ano, mes, hojeAnual);
-                totalCartaoPorMes[mes] += pagoCartao + pendenteCartao + vencidoCartao;
+                var parcelasDoCartao = parcelasFinanciamento.Where(l => l.CartaoOrigemId == cartao.Id).ToList();
+
+                // Mesma regra do Resumo Mensal e do Balanço — os três relatórios ficam
+                // sempre consistentes entre si.
+                for (int mes = 1; mes <= 12; mes++)
+                {
+                    var parcelasDoMes = parcelasDoCartao.Where(l => l.Vencimento.Month == mes);
+                    var (pagoCartao, pendenteCartao, vencidoCartao) = CalcularContribuicaoCartaoMes(cartao, ano, mes, hojeAnual, dadosCartoes, parcelasDoMes);
+                    totalCartaoPorMes[mes] += pagoCartao + pendenteCartao + vencidoCartao;
+                }
             }
         }
 
@@ -1854,9 +2029,27 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
 
-        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         var resultado = new List<object>();
+        if (cartoes.Count == 0) return Ok(resultado);
+
         var hoje = DateTime.UtcNow;
+
+        // Performance: tudo que o cálculo precisa é carregado de uma vez (antes eram dezenas de
+        // consultas por cartão, dentro de loops). A janela cobre os 12 ciclos somados + folga;
+        // compras futuras (parceladas) e faturas futuras entram porque não há limite superior.
+        var cartaoIds = cartoes.Select(c => c.Id).ToList();
+        var cartaoIdsN = cartaoIds.Cast<Guid?>().ToList();
+        var inicioJanela = new DateTime(hoje.Year, hoje.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-16);
+        var dados = await CarregarDadosCartoesAsync(cartaoIds, inicioJanela, null, inicioJanela, null);
+
+        var financiamentoPendente = (await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => cartaoIdsN.Contains(l.CartaoOrigemId) && l.Status == "pendente")
+            .GroupBy(l => l.CartaoOrigemId)
+            .Select(g => new { CartaoId = g.Key, Total = g.Sum(x => x.Valor) })
+            .ToListAsync())
+            .Where(x => x.CartaoId != null)
+            .ToDictionary(x => x.CartaoId!.Value, x => x.Total);
 
         foreach (var cartao in cartoes)
         {
@@ -1881,24 +2074,18 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 var vencimentoCiclo = CalcularVencimentoFatura(cartao, cursor.Year, cursor.Month);
                 var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoCiclo);
 
-                var totalCiclo = await db.LancamentosCartao
-                    .Where(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= cInicio.Date && l.DataCompra.Date <= cFim.Date)
-                    .SumAsync(l => (decimal?)l.Valor) ?? 0;
+                var totalCiclo = dados.SomaCompras(cartao.Id, cInicio, cFim);
 
                 if (totalCiclo > 0)
                 {
-                    var faturaExistente = await db.FaturasCartao
-                        .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == cursor.Year && f.MesReferencia.Month == cursor.Month);
+                    var faturaExistente = dados.Fatura(cartao.Id, cursor.Year, cursor.Month);
 
                     // "financiada": virou pagamento parcelado à parte, não conta mais nesse ciclo.
                     // "parcial": o restante já foi lançado como compra real no próximo ciclo (com juros),
                     // então não soma aqui de novo — senão a mesma dívida é contada duas vezes.
                     if (faturaExistente?.Status != "pago" && faturaExistente?.Status != "financiada" && faturaExistente?.Status != "parcial")
                     {
-                        var totalAntecipadoCiclo = faturaExistente is null ? 0 : await db.PagamentosAntecipadosFatura
-                            .Where(p => p.FaturaCartaoId == faturaExistente.Id)
-                            .SumAsync(p => (decimal?)p.Valor) ?? 0;
-                        usado += totalCiclo - totalAntecipadoCiclo;
+                        usado += totalCiclo - dados.Antecipado(faturaExistente);
                     }
                 }
 
@@ -1908,9 +2095,9 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             // Parcelas futuras (compras parceladas) que caem em ciclos além do aberto — ainda não contadas
             // acima. Cobrança fixa/recorrente futura NÃO entra aqui: só conta quando já estiver dentro de
             // uma fatura gerada (fechada ou aberta), que já é somada no loop dos últimos 12 meses acima.
-            var parcelasFuturas = await db.LancamentosCartao
-                .Where(l => l.CartaoCreditoId == cartao.Id && l.Modo == "parcelada" && l.DataCompra.Date > cicloAberta.Fim.Date)
-                .ToListAsync();
+            var parcelasFuturas = dados.Compras(cartao.Id)
+                .Where(l => l.Modo == "parcelada" && l.DataCompra.Date > cicloAberta.Fim.Date)
+                .ToList();
 
             decimal totalParcelasFuturas = 0;
             foreach (var p in parcelasFuturas)
@@ -1920,8 +2107,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 if (p.DataCompra.Date < ini.Date || p.DataCompra.Date > fim.Date)
                     vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.AddMonths(1).Year, p.DataCompra.AddMonths(1).Month);
 
-                var faturaFutura = await db.FaturasCartao
-                    .FirstOrDefaultAsync(f => f.CartaoCreditoId == cartao.Id && f.MesReferencia.Year == vencTeste.Year && f.MesReferencia.Month == vencTeste.Month);
+                var faturaFutura = dados.Fatura(cartao.Id, vencTeste.Year, vencTeste.Month);
 
                 if (faturaFutura?.Status != "pago" && faturaFutura?.Status != "financiada")
                     totalParcelasFuturas += p.Valor;
@@ -1932,17 +2118,13 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             // Parcelas de financiamento de faturas antigas (ficam em LancamentosFinanceiros, não em
             // LancamentosCartao — por isso não entram nas duas somas acima) — soma tudo que ainda
             // não foi pago, independente do mês de vencimento.
-            var totalFinanciamentoPendente = await db.LancamentosFinanceiros
-                .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente")
-                .SumAsync(l => (decimal?)l.Valor) ?? 0;
-
-            usado += totalFinanciamentoPendente;
+            usado += financiamentoPendente.TryGetValue(cartao.Id, out var totalFinanciamentoPendente) ? totalFinanciamentoPendente : 0;
 
             // Fatura "principal" pra exibir vencimento/status no card (a mais antiga fechada e pendente, senão a aberta)
-            var (vencimentoPrincipal, _, statusPrincipal) = await CicloAtualCartaoAsync(cartao);
+            var (vencimentoPrincipal, _, statusPrincipal) = CicloAtualCartaoMem(cartao, dados, hoje);
             var (piInicio, piFim) = CicloDaFatura(cartao, vencimentoPrincipal);
-            var qtdCompras = await db.LancamentosCartao
-                .CountAsync(l => l.CartaoCreditoId == cartao.Id && l.DataCompra.Date >= piInicio.Date && l.DataCompra.Date <= piFim.Date);
+            var qtdCompras = dados.Compras(cartao.Id)
+                .Count(l => l.DataCompra.Date >= piInicio.Date && l.DataCompra.Date <= piFim.Date);
 
             resultado.Add(new
             {
