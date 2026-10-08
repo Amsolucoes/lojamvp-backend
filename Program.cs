@@ -49,6 +49,9 @@ internal class Program
         builder.Services.AddScoped<AlertaEmailService>();
         builder.Services.AddScoped<ComunicadoEmailService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
+        // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
+        builder.Services.AddSingleton<PushService>();
+        builder.Services.AddHostedService<AvisosVencimentoService>();
         builder.Services.AddScoped<ReservaChacaraNotificacaoService>();
         builder.Services.AddScoped<OrdemServicoNotificacaoService>();
         // Sem provedor terceirizado contratado ainda — troca fácil quando um for integrado.
