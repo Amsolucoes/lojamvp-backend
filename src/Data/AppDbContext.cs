@@ -39,6 +39,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LancamentoFixo> LancamentosFixos => Set<LancamentoFixo>();
     public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
     public DbSet<AjusteContaBancaria> AjustesContaBancaria => Set<AjusteContaBancaria>();
+    public DbSet<AssinaturaPush> AssinaturasPush => Set<AssinaturaPush>();
     public DbSet<CategoriaFinanceira> CategoriasFinanceiras => Set<CategoriaFinanceira>();
     public DbSet<CartaoCredito> CartoesCredito => Set<CartaoCredito>();
     public DbSet<LancamentoCartao> LancamentosCartao => Set<LancamentoCartao>();
@@ -257,6 +258,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<AjusteContaBancaria>()
             .HasOne(a => a.ContaBancaria).WithMany()
             .HasForeignKey(a => a.ContaBancariaId).OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<AssinaturaPush>()
+            .HasIndex(a => a.Endpoint).IsUnique();
 
         mb.Entity<CartaoCredito>()
             .HasOne(c => c.ContaBancaria).WithMany()

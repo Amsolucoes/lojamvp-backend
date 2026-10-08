@@ -15,6 +15,7 @@
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
     <PackageReference Include="QuestPDF" Version="2026.7.1" />
     <PackageReference Include="Resend" Version="0.6.0" />
+    <PackageReference Include="WebPush" Version="1.0.12" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
   </ItemGroup>
 

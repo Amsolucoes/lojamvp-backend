@@ -165,6 +165,57 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("ajustes_conta_bancaria");
                 });
 
+            modelBuilder.Entity("LojaApi.Models.AssinaturaPush", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ChaveAuth")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("chave_auth");
+
+                    b.Property<string>("ChavePublica")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("chave_publica");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("endpoint");
+
+                    b.Property<Guid>("LojaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("loja_id");
+
+                    b.Property<DateTime?>("UltimoAvisoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultimo_aviso_em");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_assinaturas_push");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique()
+                        .HasDatabaseName("i_x_assinaturas_push_endpoint");
+
+                    b.ToTable("assinaturas_push");
+                });
+
             modelBuilder.Entity("LojaApi.Models.AssinaturaCliente", b =>
                 {
                     b.Property<Guid>("Id")
