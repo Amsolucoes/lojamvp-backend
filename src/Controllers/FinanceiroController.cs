@@ -1561,6 +1561,89 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return (vencimento, total, fatura?.Status ?? "pendente");
     }
 
+    // ── Faturas de cartão de um mês — com o que já foi pago, parcial e parcelamento ──
+    // Mostra, para cada cartão ativo, a fatura que vence no mês: total, status
+    // (pendente | parcial | pago | financiada), valor pago, adiantamentos e, se foi parcelada,
+    // o cronograma das parcelas. Usada pelas telas de Cartões e Contas a Pagar.
+    [HttpGet("faturas-do-mes")]
+    public async Task<IActionResult> FaturasDoMes([FromQuery] int ano, [FromQuery] int mes)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(Array.Empty<object>());
+
+        var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        if (cartoes.Count == 0) return Ok(Array.Empty<object>());
+
+        var inicioMes = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fimMes = inicioMes.AddMonths(1);
+        var cartaoIds = cartoes.Select(c => c.Id).ToList();
+        var cartaoIdsN = cartaoIds.Cast<Guid?>().ToList();
+
+        var dados = await CarregarDadosCartoesAsync(cartaoIds, inicioMes.AddMonths(-1), fimMes, inicioMes, fimMes);
+
+        // Parcelas de financiamento (de faturas antigas) que vencem neste mês — entram no total da fatura
+        var parcelasDoMes = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => cartaoIdsN.Contains(l.CartaoOrigemId) && l.Vencimento >= inicioMes && l.Vencimento < fimMes)
+            .ToListAsync();
+
+        // Cronograma completo das parcelas geradas pelo financiamento das faturas deste mês
+        var faturaIdsN = dados.Faturas.Select(f => (Guid?)f.Id).ToList();
+        var parcelasOrigem = faturaIdsN.Count == 0
+            ? new List<LancamentoFinanceiro>()
+            : await db.LancamentosFinanceiros.AsNoTracking()
+                .Where(l => faturaIdsN.Contains(l.FaturaCartaoId))
+                .OrderBy(l => l.NumeroParcela)
+                .ToListAsync();
+
+        var resultado = new List<object>();
+        foreach (var cartao in cartoes)
+        {
+            var vencimento = CalcularVencimentoFatura(cartao, ano, mes);
+            var (cInicio, cFim) = CicloDaFatura(cartao, vencimento);
+
+            var totalCompras = dados.SomaCompras(cartao.Id, cInicio, cFim);
+            var totalParcelasFinanciamento = parcelasDoMes.Where(l => l.CartaoOrigemId == cartao.Id).Sum(l => l.Valor);
+            var total = totalCompras + totalParcelasFinanciamento;
+
+            var fatura = dados.Fatura(cartao.Id, ano, mes);
+            if (total <= 0 && fatura is null) continue;
+
+            var totalAntecipado = dados.Antecipado(fatura);
+            var parcelasDaFatura = fatura is null
+                ? new List<LancamentoFinanceiro>()
+                : parcelasOrigem.Where(l => l.FaturaCartaoId == fatura.Id).ToList();
+
+            resultado.Add(new
+            {
+                cartaoId = cartao.Id,
+                cartaoNome = cartao.Nome,
+                ano,
+                mes,
+                vencimento,
+                totalCompras,
+                totalParcelasFinanciamento,
+                total,
+                totalAntecipado,
+                restante = total - totalAntecipado,
+                status = fatura?.Status ?? "pendente",
+                valorPago = fatura?.ValorPago ?? 0,
+                pagoEm = fatura?.PagoEm,
+                parcelas = parcelasDaFatura.Select(l => new
+                {
+                    l.Id,
+                    l.NumeroParcela,
+                    l.TotalParcelas,
+                    l.Valor,
+                    l.Vencimento,
+                    l.Status,
+                    l.PagoEm,
+                }).ToList(),
+            });
+        }
+
+        return Ok(resultado);
+    }
+
     // ── Listar faturas + total, agrupado ou detalhado ──────────────
     [HttpGet("cartoes/{id:guid}/fatura")]
     public async Task<IActionResult> VerFatura(Guid id, [FromQuery] int ano, [FromQuery] int mes)
