@@ -1287,8 +1287,54 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
     // mas que já deixou registros antigos errados), empurra ela — e as parcelas pendentes
     // seguintes do mesmo grupo — um mês pra frente, pro ciclo certo. Roda toda vez que a
     // tela "A Pagar" é aberta, então corrige sozinho sem precisar de ação manual.
+    // Parcela de financiamento antigo que vence no mesmo mês de uma fatura paga parcialmente faz parte
+    // do total dessa fatura: some de "A Pagar" (vira paga/absorvida), pois o que sobrou da fatura segue
+    // para a próxima como saldo rotativo. NaoAfetaSaldo evita descontar duas vezes da conta (o
+    // dinheiro que saiu é o ValorPago da própria fatura).
+    private static void AbsorverParcela(LancamentoFinanceiro l, DateTime data, string motivo)
+    {
+        l.Status = "pago";
+        l.PagoEm = data;
+        l.NaoAfetaSaldo = true;
+
+        var descricaoBase = System.Text.RegularExpressions.Regex.Replace(l.Descricao, @"\s*\(absorvida [^)]*\)$", "");
+        var sufixo = $" (absorvida no {motivo} de {data:dd/MM/yyyy})";
+        var espacoDisponivel = 150 - sufixo.Length;
+        if (descricaoBase.Length > espacoDisponivel)
+            descricaoBase = descricaoBase.Substring(0, Math.Max(0, espacoDisponivel));
+        l.Descricao = $"{descricaoBase}{sufixo}";
+    }
+
+    // Corrige faturas já pagas parcialmente ANTES desta regra: as parcelas de financiamento do mês delas
+    // ainda estavam "pendentes" em Contas a Pagar.
+    private async Task AbsorverParcelasDeFaturasParciaisAsync(Guid lojaId)
+    {
+        var parciais = await db.FaturasCartao.AsNoTracking()
+            .Where(f => f.LojaId == lojaId && f.Status == "parcial")
+            .Select(f => new { f.CartaoCreditoId, f.MesReferencia, f.PagoEm })
+            .ToListAsync();
+        if (parciais.Count == 0) return;
+
+        var cartaoIdsN = parciais.Select(f => (Guid?)f.CartaoCreditoId).Distinct().ToList();
+        var pendentes = await db.LancamentosFinanceiros
+            .Where(l => l.LojaId == lojaId && l.Status == "pendente" && cartaoIdsN.Contains(l.CartaoOrigemId))
+            .ToListAsync();
+
+        foreach (var l in pendentes)
+        {
+            var fatura = parciais.FirstOrDefault(f => f.CartaoCreditoId == l.CartaoOrigemId
+                && f.MesReferencia.Year == l.Vencimento.Year && f.MesReferencia.Month == l.Vencimento.Month);
+            if (fatura is null) continue;
+            AbsorverParcela(l, fatura.PagoEm ?? DateTime.UtcNow, "pagamento parcial");
+        }
+
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync();
+    }
+
     private async Task CorrigirParcelasFinanciamentoEmCicloFechadoAsync(Guid lojaId)
     {
+        await AbsorverParcelasDeFaturasParciaisAsync(lojaId);
+
         // Performance: antes rodava 2+ consultas POR grupo de parcelamento (N+1). Agora são
         // 3 consultas no total (grupos, parcelas, cartões) e o resto é feito em memória.
         var grupoIds = await db.LancamentosFinanceiros
@@ -1870,6 +1916,12 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 {
                     p.Status = "pendente";
                     p.PagoEm = null;
+                    // Se tinha sido absorvida por um pagamento parcial, volta a descontar da conta normalmente
+                    if (p.Descricao.Contains("(absorvida no pagamento parcial"))
+                    {
+                        p.NaoAfetaSaldo = false;
+                        p.Descricao = System.Text.RegularExpressions.Regex.Replace(p.Descricao, @"\s*\(absorvida [^)]*\)$", "");
+                    }
                 }
 
                 fatura.Status = "pendente";
@@ -1902,11 +1954,22 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
             case "parcial":
                 {
+                    // Parcelas de financiamento antigo que vencem neste mês fazem parte do total da fatura
+                    // (a tela mostra o total já com elas) — entram no valor devido e saem de Contas a Pagar.
+                    var parcelasAntigasDoMes = await db.LancamentosFinanceiros
+                        .Where(l => l.CartaoOrigemId == cartao.Id && l.Status == "pendente"
+                            && l.Vencimento.Year == mesReferencia.Year && l.Vencimento.Month == mesReferencia.Month)
+                        .ToListAsync();
+                    var totalDevidoComParcelas = totalDevido + parcelasAntigasDoMes.Sum(p => p.Valor);
+
                     var pago = req.ValorPago ?? 0;
-                    if (pago <= 0 || pago >= totalDevido)
+                    if (pago <= 0 || pago >= totalDevidoComParcelas)
                         return BadRequest(new { erro = "Valor parcial deve ser maior que zero e menor que o total (já descontado o que foi antecipado)." });
 
-                    var restante = totalDevido - pago;
+                    foreach (var antiga in parcelasAntigasDoMes)
+                        AbsorverParcela(antiga, dataPagamentoFinal, "pagamento parcial");
+
+                    var restante = totalDevidoComParcelas - pago;
                     var comJuros = restante * (1 + (cartao.TaxaJurosMensal / 100m));
 
                     // Lança o saldo devedor + juros como um item na PRÓXIMA fatura
