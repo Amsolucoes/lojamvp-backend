@@ -2071,6 +2071,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
 
         var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         var totalCartaoPorMes = new decimal[13]; // índice 1-12
+        var totalCartaoPagoPorMes = new decimal[13]; // parte da fatura já paga
         var hojeAnual = DateTime.UtcNow.Date;
 
         if (cartoes.Count > 0)
@@ -2101,6 +2102,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                     var parcelasDoMes = parcelasDoCartao.Where(l => l.Vencimento.Month == mes);
                     var (pagoCartao, pendenteCartao, vencidoCartao) = CalcularContribuicaoCartaoMes(cartao, ano, mes, hojeAnual, dadosCartoes, parcelasDoMes);
                     totalCartaoPorMes[mes] += pagoCartao + pendenteCartao + vencidoCartao;
+                    totalCartaoPagoPorMes[mes] += pagoCartao;
                 }
             }
         }
@@ -2123,7 +2125,11 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 : ehFuturo ? receitaProjetadaMensal : 0; // só projeta mês atual em diante
             var receber = receberLancamentos + receberPlanos;
 
-            return new { mes, pagar, receber, saldo = receber - pagar };
+            // Quanto das despesas do mês já foi pago e quanto ainda falta pagar
+            var pagarPagoLancamentos = doAno.Where(l => l.Tipo == "pagar" && l.Vencimento.Month == mes && l.CartaoOrigemId == null && l.Status == "pago").Sum(l => l.Valor);
+            var pagarPago = pagarPagoLancamentos + totalCartaoPagoPorMes[mes];
+
+            return new { mes, pagar, receber, saldo = receber - pagar, pagarPago, pagarAberto = pagar - pagarPago };
         }).ToList();
 
         return Ok(meses);
