@@ -1533,9 +1533,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var itens = new List<ItemCartaoCategoria>();
         if (desmembrar)
         {
-            var desde = inicio.AddMonths(-1);
             itens = await db.LancamentosCartao.AsNoTracking()
-                .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= desde && l.DataCompra < fim)
+                .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= inicio && l.DataCompra < fim)
                 .Select(l => new ItemCartaoCategoria(l.CartaoCreditoId, l.DataCompra, l.Valor, l.Categoria != null ? l.Categoria.Nome : null, l.Categoria != null ? l.Categoria.Icone : null))
                 .ToListAsync();
         }
@@ -1543,6 +1542,21 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         foreach (var (ano, mes) in meses)
         {
             var cats = resultado[(ano, mes)];
+
+            if (desmembrar)
+            {
+                // Desmembrado: compras do cartão pela DATA DA COMPRA dentro do mês (não pela fatura que vence nele)
+                foreach (var grupo in itens.Where(i => i.Data.Year == ano && i.Data.Month == mes).GroupBy(i => i.Nome ?? "Sem categoria"))
+                    Somar(cats, grupo.Key, grupo.First().Icone, 0, grupo.Sum(i => i.Valor));
+
+                var somaParcelas = parcelasFinanciamento
+                    .Where(p => p.Vencimento.Year == ano && p.Vencimento.Month == mes)
+                    .Sum(p => p.Valor);
+                if (somaParcelas > 0)
+                    Somar(cats, "Financiamento de fatura", "🏦", 0, somaParcelas);
+                continue;
+            }
+
             foreach (var cartao in cartoes)
             {
                 var parcelasDoMes = parcelasFinanciamento
@@ -1551,38 +1565,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 var (pago, pendente, vencido) = CalcularContribuicaoCartaoMes(cartao, ano, mes, hoje, dados, parcelasDoMes);
                 var total = pago + pendente + vencido;
                 if (total <= 0) continue;
-
-                if (!desmembrar)
-                {
-                    Somar(cats, "Cartão de Crédito", "💳", 0, total);
-                    continue;
-                }
-
-                var somaParcelas = parcelasDoMes.Sum(p => p.Valor);
-                var parteFatura = total - somaParcelas;
-
-                var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
-                var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
-                var itensCiclo = itens
-                    .Where(i => i.CartaoId == cartao.Id && i.Data.Date >= cInicio.Date && i.Data.Date <= cFim.Date)
-                    .ToList();
-                var somaItens = itensCiclo.Sum(i => i.Valor);
-
-                if (parteFatura > 0 && somaItens > 0)
-                {
-                    foreach (var grupo in itensCiclo.GroupBy(i => i.Nome ?? "Sem categoria"))
-                    {
-                        var valor = parteFatura * grupo.Sum(i => i.Valor) / somaItens;
-                        Somar(cats, grupo.Key, grupo.First().Icone, 0, valor);
-                    }
-                }
-                else if (parteFatura > 0)
-                {
-                    Somar(cats, "Cartão de Crédito", "💳", 0, parteFatura);
-                }
-
-                if (somaParcelas > 0)
-                    Somar(cats, "Financiamento de fatura", "🏦", 0, somaParcelas);
+                Somar(cats, "Cartão de Crédito", "💳", 0, total);
             }
         }
 
