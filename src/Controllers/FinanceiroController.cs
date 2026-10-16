@@ -1731,9 +1731,8 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
                 serie,
             };
         })
-        .Where(c => c.atual > 0 || c.anterior > 0)
-        .OrderByDescending(c => c.atual)
-        .ThenByDescending(c => c.anterior)
+        .Where(c => c.serie.Any(v => v > 0))
+        .OrderByDescending(c => c.serie.Sum())
         .ToList();
 
         return Ok(new
@@ -1743,6 +1742,7 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             anterior = new { ano = anterior.Ano, mes = anterior.Mes },
             totalAtual = categorias.Sum(c => c.atual),
             totalAnterior = categorias.Sum(c => c.anterior),
+            totaisMes = Enumerable.Range(0, 12).Select(i => categorias.Sum(c => c.serie[i])).ToList(),
             categorias,
         });
     }
