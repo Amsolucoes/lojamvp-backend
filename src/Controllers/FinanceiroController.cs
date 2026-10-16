@@ -1589,6 +1589,113 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         return resultado;
     }
 
+    // ── Lançamentos que compõem uma categoria do balanço (inclusive as compras dentro do cartão) ──
+    // O balanço desmembrado soma, na categoria, despesas avulsas + compras do cartão. Contas a Pagar só
+    // lista as avulsas (as compras do cartão ficam dentro da linha da fatura, e some quando a fatura é
+    // paga), então o clique na categoria precisa deste detalhe para fechar com o valor do balanço.
+    private sealed record DetalheBalancoItem(string Origem, string Descricao, decimal Valor, DateTime Data, string Status, string? CartaoNome);
+
+    [HttpGet("balanco-detalhe")]
+    public async Task<IActionResult> BalancoDetalhe([FromQuery] int ano, [FromQuery] int mes, [FromQuery] string categoria, [FromQuery] bool desmembrar = false)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(new { });
+
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
+        var inicio = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fim = inicio.AddMonths(1);
+        var hoje = DateTime.UtcNow.Date;
+        var semCategoria = categoria == "Sem categoria";
+        var itens = new List<DetalheBalancoItem>();
+
+        // Despesas avulsas/parceladas/fixas da categoria
+        var avulsos = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.CartaoOrigemId == null
+                        && l.Vencimento >= inicio && l.Vencimento < fim
+                        && (semCategoria ? l.Categoria == null : (l.Categoria != null && l.Categoria.Nome == categoria)))
+            .Select(l => new { l.Descricao, l.Valor, l.Vencimento, l.Status })
+            .ToListAsync();
+        itens.AddRange(avulsos.Select(l => new DetalheBalancoItem("avulso", l.Descricao, l.Valor, l.Vencimento, l.Status, null)));
+
+        var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        if (cartoes.Count > 0)
+        {
+            var cartaoIds = cartoes.Select(c => c.Id).ToList();
+            var cartaoIdsN = cartaoIds.Cast<Guid?>().ToList();
+            var dados = await CarregarDadosCartoesAsync(cartaoIds, inicio.AddMonths(-1), fim, inicio, fim);
+
+            var parcelasFinanciamento = await db.LancamentosFinanceiros.AsNoTracking()
+                .Where(l => cartaoIdsN.Contains(l.CartaoOrigemId) && l.Vencimento >= inicio && l.Vencimento < fim)
+                .ToListAsync();
+
+            if (categoria == "Cartão de Crédito")
+            {
+                // Visão agrupada: uma linha por cartão, com o valor que o balanço considera da fatura do mês
+                foreach (var cartao in cartoes)
+                {
+                    var parcelasDoMes = parcelasFinanciamento.Where(p => p.CartaoOrigemId == cartao.Id).ToList();
+                    var (pago, pendente, vencido) = CalcularContribuicaoCartaoMes(cartao, ano, mes, hoje, dados, parcelasDoMes);
+                    var total = pago + pendente + vencido;
+                    if (total <= 0) continue;
+                    var status = dados.Fatura(cartao.Id, ano, mes)?.Status;
+                    itens.Add(new DetalheBalancoItem("cartao_fatura", $"Fatura {cartao.Nome}", total, CalcularVencimentoFatura(cartao, ano, mes),
+                        status == "pago" || status == "parcial" || status == "financiada" ? "pago" : "pendente", cartao.Nome));
+                }
+            }
+            else if (desmembrar && categoria == "Financiamento de fatura")
+            {
+                foreach (var p in parcelasFinanciamento)
+                {
+                    var cartao = cartoes.First(c => c.Id == p.CartaoOrigemId);
+                    itens.Add(new DetalheBalancoItem("cartao_parcela", p.Descricao, p.Valor, p.Vencimento, p.Status, cartao.Nome));
+                }
+            }
+            else if (desmembrar)
+            {
+                // Compras no cartão, dentro do ciclo da fatura que vence neste mês
+                var desde = inicio.AddMonths(-1);
+                var compras = await db.LancamentosCartao.AsNoTracking()
+                    .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= desde && l.DataCompra < fim
+                                && (semCategoria ? l.Categoria == null : (l.Categoria != null && l.Categoria.Nome == categoria)))
+                    .Select(l => new { l.CartaoCreditoId, l.Descricao, l.Valor, l.DataCompra })
+                    .ToListAsync();
+
+                foreach (var cartao in cartoes)
+                {
+                    var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
+                    var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
+                    var statusFatura = dados.Fatura(cartao.Id, ano, mes)?.Status;
+                    var statusItem = statusFatura == "pago" || statusFatura == "parcial" || statusFatura == "financiada" ? "pago" : "pendente";
+                    foreach (var c in compras.Where(x => x.CartaoCreditoId == cartao.Id && x.DataCompra.Date >= cInicio.Date && x.DataCompra.Date <= cFim.Date))
+                        itens.Add(new DetalheBalancoItem("cartao_item", c.Descricao, c.Valor, c.DataCompra, statusItem, cartao.Nome));
+                }
+            }
+        }
+
+        // Valor que o balanço mostra para essa categoria (para o usuário conferir com a soma da lista)
+        var calc = await CalcularDespesasPorCategoriaAsync(lojaId.Value, new List<(int Ano, int Mes)> { (ano, mes) }, desmembrar);
+        var valorBalanco = calc[(ano, mes)].TryGetValue(categoria, out var linha) ? linha.Total : 0m;
+
+        return Ok(new
+        {
+            categoria,
+            ano,
+            mes,
+            valorBalanco,
+            totalItens = itens.Sum(i => i.Valor),
+            itens = itens.OrderBy(i => i.Data).Select(i => new
+            {
+                origem = i.Origem,
+                descricao = i.Descricao,
+                valor = i.Valor,
+                data = i.Data,
+                status = i.Status,
+                cartaoNome = i.CartaoNome,
+            }).ToList(),
+        });
+    }
+
     // ── Comparativo de despesas por categoria: mês escolhido x mês anterior + melhor mês do ano ──
     [HttpGet("balanco-comparativo")]
     public async Task<IActionResult> BalancoComparativo([FromQuery] int ano, [FromQuery] int mes, [FromQuery] bool desmembrar = false)
