@@ -1653,22 +1653,17 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
             }
             else if (desmembrar)
             {
-                // Compras no cartão, dentro do ciclo da fatura que vence neste mês
-                var desde = inicio.AddMonths(-1);
+                // Compras no cartão feitas (data da compra) dentro do mês escolhido, qualquer que seja a fatura
                 var compras = await db.LancamentosCartao.AsNoTracking()
-                    .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= desde && l.DataCompra < fim
+                    .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= inicio && l.DataCompra < fim
                                 && (semCategoria ? l.Categoria == null : (l.Categoria != null && l.Categoria.Nome == categoria)))
                     .Select(l => new { l.CartaoCreditoId, l.Descricao, l.Valor, l.DataCompra })
                     .ToListAsync();
 
-                foreach (var cartao in cartoes)
+                foreach (var c in compras)
                 {
-                    var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
-                    var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
-                    var statusFatura = dados.Fatura(cartao.Id, ano, mes)?.Status;
-                    var statusItem = statusFatura == "pago" || statusFatura == "parcial" || statusFatura == "financiada" ? "pago" : "pendente";
-                    foreach (var c in compras.Where(x => x.CartaoCreditoId == cartao.Id && x.DataCompra.Date >= cInicio.Date && x.DataCompra.Date <= cFim.Date))
-                        itens.Add(new DetalheBalancoItem("cartao_item", c.Descricao, c.Valor, c.DataCompra, statusItem, cartao.Nome));
+                    var cartao = cartoes.First(x => x.Id == c.CartaoCreditoId);
+                    itens.Add(new DetalheBalancoItem("cartao_item", c.Descricao, c.Valor, c.DataCompra, "cartao", cartao.Nome));
                 }
             }
         }
