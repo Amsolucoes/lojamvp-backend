@@ -1065,10 +1065,19 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         var totalReceitas = receitasPorCategoria.Sum(r => r.valor);
         var totalDespesas = despesasPorCategoria.Sum(d => d.valor);
 
+        // Visão "desmembrada": em vez de uma linha única "Cartão de Crédito", distribui o valor do cartão
+        // entre as categorias das compras da fatura (e as soma às categorias das despesas avulsas).
+        var desmembradas = await CalcularDespesasPorCategoriaAsync(lojaId.Value, new List<(int Ano, int Mes)> { (ano, mes) }, true);
+        var despesasDesmembradas = desmembradas[(ano, mes)]
+            .Select(kv => new { nome = kv.Key, icone = kv.Value.Icone, valor = kv.Value.Total, valorCartao = kv.Value.Cartao, valorAvulso = kv.Value.Avulso })
+            .OrderByDescending(x => x.valor)
+            .ToList();
+
         return Ok(new
         {
             receitas = receitasPorCategoria.OrderByDescending(r => r.valor),
             despesas = despesasPorCategoria.OrderByDescending(d => d.valor),
+            despesasDesmembradas,
             totalReceitas,
             totalDespesas,
             saldo = totalReceitas - totalDespesas,
@@ -1458,6 +1467,199 @@ public class FinanceiroController(AppDbContext db, FinanceiroService financeiroS
         }
 
         return (pago, pendente, vencido);
+    }
+
+    // ── Despesas por categoria (várias competências de uma vez) ─────────
+    // Base do balanço desmembrado e do comparativo mês a mês. Soma as despesas avulsas por categoria e o
+    // cartão de crédito de cada mês (mesma regra de CalcularContribuicaoCartaoMes). Com desmembrar=true, o
+    // valor do cartão é distribuído entre as categorias das compras da fatura (proporcionalmente, para o
+    // total continuar igual ao do balanço normal); as parcelas de financiamento viram uma linha própria.
+    private sealed class LinhaCategoriaBalanco
+    {
+        public string Icone { get; set; } = "📁";
+        public decimal Avulso { get; set; }
+        public decimal Cartao { get; set; }
+        public decimal Total => Avulso + Cartao;
+    }
+
+    private sealed record ItemCartaoCategoria(Guid CartaoId, DateTime Data, decimal Valor, string? Nome, string? Icone);
+
+    private async Task<Dictionary<(int Ano, int Mes), Dictionary<string, LinhaCategoriaBalanco>>> CalcularDespesasPorCategoriaAsync(
+        Guid lojaId, List<(int Ano, int Mes)> meses, bool desmembrar)
+    {
+        var resultado = new Dictionary<(int Ano, int Mes), Dictionary<string, LinhaCategoriaBalanco>>();
+        foreach (var m in meses) resultado[m] = new Dictionary<string, LinhaCategoriaBalanco>();
+        if (meses.Count == 0) return resultado;
+
+        var ordenados = meses.OrderBy(m => m.Ano * 12 + m.Mes).ToList();
+        var inicio = new DateTime(ordenados[0].Ano, ordenados[0].Mes, 1, 0, 0, 0, DateTimeKind.Utc);
+        var fim = new DateTime(ordenados[ordenados.Count - 1].Ano, ordenados[ordenados.Count - 1].Mes, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        var hoje = DateTime.UtcNow.Date;
+
+        void Somar(Dictionary<string, LinhaCategoriaBalanco> cats, string nome, string? icone, decimal avulso, decimal cartao)
+        {
+            if (!cats.TryGetValue(nome, out var linha))
+            {
+                linha = new LinhaCategoriaBalanco { Icone = icone ?? "📁" };
+                cats[nome] = linha;
+            }
+            linha.Avulso += avulso;
+            linha.Cartao += cartao;
+        }
+
+        // Despesas avulsas/parceladas/fixas. Parcelas de financiamento de cartão ficam de fora: o valor
+        // delas já entra pelo cartão (senão a mesma dívida seria contada duas vezes).
+        var lancamentos = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.CartaoOrigemId == null && l.Vencimento >= inicio && l.Vencimento < fim)
+            .Select(l => new { l.Vencimento, l.Valor, Nome = l.Categoria != null ? l.Categoria.Nome : null, Icone = l.Categoria != null ? l.Categoria.Icone : null })
+            .ToListAsync();
+        foreach (var l in lancamentos)
+        {
+            if (!resultado.TryGetValue((l.Vencimento.Year, l.Vencimento.Month), out var cats)) continue;
+            Somar(cats, l.Nome ?? "Sem categoria", l.Icone, l.Valor, 0);
+        }
+
+        var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+        if (cartoes.Count == 0) return resultado;
+
+        var cartaoIds = cartoes.Select(c => c.Id).ToList();
+        var cartaoIdsN = cartaoIds.Cast<Guid?>().ToList();
+        var dados = await CarregarDadosCartoesAsync(cartaoIds, inicio.AddMonths(-1), fim, inicio, fim);
+
+        var parcelasFinanciamento = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => cartaoIdsN.Contains(l.CartaoOrigemId) && l.Vencimento >= inicio && l.Vencimento < fim)
+            .ToListAsync();
+
+        var itens = new List<ItemCartaoCategoria>();
+        if (desmembrar)
+        {
+            var desde = inicio.AddMonths(-1);
+            itens = await db.LancamentosCartao.AsNoTracking()
+                .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= desde && l.DataCompra < fim)
+                .Select(l => new ItemCartaoCategoria(l.CartaoCreditoId, l.DataCompra, l.Valor, l.Categoria != null ? l.Categoria.Nome : null, l.Categoria != null ? l.Categoria.Icone : null))
+                .ToListAsync();
+        }
+
+        foreach (var (ano, mes) in meses)
+        {
+            var cats = resultado[(ano, mes)];
+            foreach (var cartao in cartoes)
+            {
+                var parcelasDoMes = parcelasFinanciamento
+                    .Where(p => p.CartaoOrigemId == cartao.Id && p.Vencimento.Year == ano && p.Vencimento.Month == mes)
+                    .ToList();
+                var (pago, pendente, vencido) = CalcularContribuicaoCartaoMes(cartao, ano, mes, hoje, dados, parcelasDoMes);
+                var total = pago + pendente + vencido;
+                if (total <= 0) continue;
+
+                if (!desmembrar)
+                {
+                    Somar(cats, "Cartão de Crédito", "💳", 0, total);
+                    continue;
+                }
+
+                var somaParcelas = parcelasDoMes.Sum(p => p.Valor);
+                var parteFatura = total - somaParcelas;
+
+                var vencimentoFatura = CalcularVencimentoFatura(cartao, ano, mes);
+                var (cInicio, cFim) = CicloDaFatura(cartao, vencimentoFatura);
+                var itensCiclo = itens
+                    .Where(i => i.CartaoId == cartao.Id && i.Data.Date >= cInicio.Date && i.Data.Date <= cFim.Date)
+                    .ToList();
+                var somaItens = itensCiclo.Sum(i => i.Valor);
+
+                if (parteFatura > 0 && somaItens > 0)
+                {
+                    foreach (var grupo in itensCiclo.GroupBy(i => i.Nome ?? "Sem categoria"))
+                    {
+                        var valor = parteFatura * grupo.Sum(i => i.Valor) / somaItens;
+                        Somar(cats, grupo.Key, grupo.First().Icone, 0, valor);
+                    }
+                }
+                else if (parteFatura > 0)
+                {
+                    Somar(cats, "Cartão de Crédito", "💳", 0, parteFatura);
+                }
+
+                if (somaParcelas > 0)
+                    Somar(cats, "Financiamento de fatura", "🏦", 0, somaParcelas);
+            }
+        }
+
+        return resultado;
+    }
+
+    // ── Comparativo de despesas por categoria: mês escolhido x mês anterior + melhor mês do ano ──
+    [HttpGet("balanco-comparativo")]
+    public async Task<IActionResult> BalancoComparativo([FromQuery] int ano, [FromQuery] int mes, [FromQuery] bool desmembrar = false)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return Ok(new { });
+
+        await CorrigirParcelasFinanciamentoEmCicloFechadoAsync(lojaId.Value);
+
+        var anterior = mes == 1 ? (Ano: ano - 1, Mes: 12) : (Ano: ano, Mes: mes - 1);
+        var meses = new List<(int Ano, int Mes)>();
+        for (int m = 1; m <= 12; m++) meses.Add((ano, m));
+        if (!meses.Contains(anterior)) meses.Add(anterior);
+
+        var dados = await CalcularDespesasPorCategoriaAsync(lojaId.Value, meses, desmembrar);
+
+        // Só considera "melhor mês" os meses que já aconteceram (o resto do ano ainda é previsão)
+        var agora = DateTime.UtcNow;
+        var ultimoMesValido = ano < agora.Year ? 12 : ano == agora.Year ? agora.Month : 0;
+
+        decimal ValorDe((int Ano, int Mes) chave, string nome)
+            => dados[chave].TryGetValue(nome, out var linha) ? linha.Total : 0;
+
+        var nomes = dados.Values.SelectMany(d => d.Keys).Distinct().ToList();
+        var categorias = nomes.Select(nome =>
+        {
+            var serie = Enumerable.Range(1, 12).Select(m => ValorDe((ano, m), nome)).ToList();
+            var atual = serie[mes - 1];
+            var anteriorValor = ValorDe(anterior, nome);
+
+            int? melhorMes = null;
+            decimal? melhorValor = null;
+            for (int m = 1; m <= ultimoMesValido; m++)
+            {
+                var v = serie[m - 1];
+                if (v > 0 && (melhorValor is null || v < melhorValor))
+                {
+                    melhorValor = v;
+                    melhorMes = m;
+                }
+            }
+
+            var icone = dados.Values.Select(d => d.TryGetValue(nome, out var l) ? l.Icone : null).FirstOrDefault(i => i != null) ?? "📁";
+
+            return new
+            {
+                nome,
+                icone,
+                atual,
+                anterior = anteriorValor,
+                diferenca = atual - anteriorValor,
+                variacaoPct = anteriorValor > 0 ? (decimal?)((atual - anteriorValor) / anteriorValor * 100m) : null,
+                melhorMes,
+                melhorValor,
+                serie,
+            };
+        })
+        .Where(c => c.atual > 0 || c.anterior > 0)
+        .OrderByDescending(c => c.atual)
+        .ThenByDescending(c => c.anterior)
+        .ToList();
+
+        return Ok(new
+        {
+            ano,
+            mes,
+            anterior = new { ano = anterior.Ano, mes = anterior.Mes },
+            totalAtual = categorias.Sum(c => c.atual),
+            totalAnterior = categorias.Sum(c => c.anterior),
+            categorias,
+        });
     }
 
     // ── Dados de cartão pré-carregados ─────────────────────────────────
