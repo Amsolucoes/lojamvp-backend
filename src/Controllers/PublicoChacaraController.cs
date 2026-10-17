@@ -11,8 +11,19 @@ namespace LojaApi.Controllers;
 [ApiController]
 [Route("api/publico/{slug}/chacara")]
 [AllowAnonymous]
-public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.ReservaChacaraNotificacaoService notificacao, MercadoPagoService mpService) : ControllerBase
+public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.ReservaChacaraNotificacaoService notificacao, MercadoPagoService mpService, IConfiguration config) : ControllerBase
 {
+    // Credencial do Mercado Pago da loja da chácara: a própria (cifrada no banco) ou, só para a loja da plataforma, a do servidor.
+    // Uma loja sem nenhuma das duas NÃO cai na conta da plataforma: o pagamento online fica indisponível.
+    private async Task<(bool Ok, string? Token, string? PublicKey)> CredencialMpAsync(Guid lojaId)
+    {
+        var info = await db.InfosChacara.AsNoTracking().FirstOrDefaultAsync(i => i.LojaId == lojaId);
+        var token = SegredoService.Decifrar(info?.MpAccessTokenCifrado, config);
+        if (token != null) return (true, token, info!.MpPublicKey);
+        if (info?.MpContaPlataforma == true) return (true, null, null);
+        return (false, null, null);
+    }
+
     // Cartão parcelado (pagando o total): até R$800 → 2x; acima disso → trava em 3x
     private static int ParcelasMaximas(decimal valor) => valor <= 800m ? 2 : 3;
 
@@ -295,6 +306,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         if (req.FormaPagamento != "pix" && req.FormaPagamento != "cartao" && req.FormaPagamento != "combinado")
             return BadRequest(new { erro = "Forma de pagamento inválida." });
 
+        var cred = await CredencialMpAsync(loja.Id);
+        if (!cred.Ok)
+            return BadRequest(new { erro = "O pagamento online ainda não está configurado para esta chácara. Entre em contato com o responsável." });
+
         reserva.FormaPagamento = req.FormaPagamento;
         await db.SaveChangesAsync();
 
@@ -303,7 +318,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var valorCartao = req.FormaPagamento == "cartao" ? ComMarkupCartao(reserva.Valor)
                          : req.FormaPagamento == "combinado" ? ComMarkupCartao(reserva.Valor / 2) : 0;
 
-        return Ok(new { valorPix, valorCartao, parcelasMax });
+        return Ok(new { valorPix, valorCartao, parcelasMax, mpPublicKey = cred.PublicKey });
     }
 
     // ── Gera o Pix (sinal de 50%, ou metade do combinado) ──────────
@@ -323,10 +338,14 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         if (string.IsNullOrWhiteSpace(reserva.ClienteDocumento))
             return BadRequest(new { erro = "CPF é obrigatório para gerar o Pix." });
 
+        var credPix = await CredencialMpAsync(loja.Id);
+        if (!credPix.Ok)
+            return BadRequest(new { erro = "O pagamento online ainda não está configurado para esta chácara." });
+
         var valor = reserva.Valor / 2;
         var descricao = $"Reserva {loja.Nome} — {reserva.DataInicio:dd/MM} a {reserva.DataFim:dd/MM}";
 
-        var resultado = await mpService.CriarPix(valor, descricao, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid(), reserva.ExpiraEm);
+        var resultado = await mpService.CriarPix(valor, descricao, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid(), reserva.ExpiraEm, credPix.Token);
         if (!resultado.Sucesso)
             return BadRequest(new { erro = resultado.Erro });
 
@@ -366,7 +385,11 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
 
         var descricao = $"Reserva {loja.Nome} — {reserva.DataInicio:dd/MM} a {reserva.DataFim:dd/MM}";
 
-        var resultado = await mpService.CriarCartao(valor, descricao, req.Token, req.Parcelas, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid());
+        var credCartao = await CredencialMpAsync(loja.Id);
+        if (!credCartao.Ok)
+            return BadRequest(new { erro = "O pagamento online ainda não está configurado para esta chácara." });
+
+        var resultado = await mpService.CriarCartao(valor, descricao, req.Token, req.Parcelas, reserva.ClienteEmail, reserva.ClienteDocumento, reserva.ClienteNome, Guid.NewGuid(), credCartao.Token);
         if (!resultado.Sucesso)
             return BadRequest(new { erro = resultado.Erro });
 
@@ -389,14 +412,15 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == loja.Id);
         if (reserva is null) return NotFound(new { erro = "Reserva não encontrada." });
 
+        var credStatus = await CredencialMpAsync(loja.Id);
         if (reserva.Status == "pendente_pagamento" && reserva.MpPaymentId != null && reserva.MpStatusPix != "approved")
         {
-            var statusPix = await mpService.VerificarStatus(reserva.MpPaymentId);
+            var statusPix = await mpService.VerificarStatus(reserva.MpPaymentId, credStatus.Token);
             if (statusPix != null) reserva.MpStatusPix = statusPix;
         }
         if (reserva.Status == "pendente_pagamento" && reserva.MpPaymentIdCartao != null && reserva.MpStatusCartao != "approved")
         {
-            var statusCartao = await mpService.VerificarStatus(reserva.MpPaymentIdCartao);
+            var statusCartao = await mpService.VerificarStatus(reserva.MpPaymentIdCartao, credStatus.Token);
             if (statusCartao != null) reserva.MpStatusCartao = statusCartao;
         }
 

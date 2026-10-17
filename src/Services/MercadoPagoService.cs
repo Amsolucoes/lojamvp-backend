@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -8,6 +8,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
 {
     private readonly HttpClient _http = new();
     private string AccessToken => config["MercadoPago:AccessToken"]!;
+    private string Tk(string? accessToken) => string.IsNullOrWhiteSpace(accessToken) ? AccessToken : accessToken;
     private const string BASE = "https://api.mercadopago.com";
 
     // ── Criar pagamento Pix ───────────────────────────────────────
@@ -15,7 +16,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
         decimal valor, string descricao,
         string emailPagador, string cpfPagador,
         string nomePagador, Guid pagamentoId,
-        DateTime? expiraEm = null)
+        DateTime? expiraEm = null, string? accessToken = null)
     {
         var body = new
         {
@@ -35,7 +36,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             },
         };
 
-        return await PostPayment(body);
+        return await PostPayment(body, accessToken);
     }
 
     // ── Criar boleto ──────────────────────────────────────────────
@@ -68,7 +69,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
         decimal valor, string descricao,
         string cardToken, int parcelas,
         string emailPagador, string cpfPagador,
-        string nomePagador, Guid pagamentoId)
+        string nomePagador, Guid pagamentoId, string? accessToken = null)
     {
         var body = new
         {
@@ -85,16 +86,36 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             },
         };
 
-        return await PostPayment(body);
+        return await PostPayment(body, accessToken);
+    }
+
+    // ── Valida um Access Token de cliente (devolve o e-mail da conta MP) ──
+    public async Task<(bool ok, string? email)> ValidarToken(string accessToken)
+    {
+        try
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, $"{BASE}/users/me");
+            req.Headers.Add("Authorization", $"Bearer {accessToken}");
+            var res = await _http.SendAsync(req);
+            if (!res.IsSuccessStatusCode) return (false, null);
+            var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+            var email = doc.RootElement.TryGetProperty("email", out var e) ? e.GetString() : null;
+            return (true, email);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao validar token do Mercado Pago");
+            return (false, null);
+        }
     }
 
     // ── Verificar status de um pagamento ──────────────────────────
-    public async Task<string?> VerificarStatus(string mpPaymentId)
+    public async Task<string?> VerificarStatus(string mpPaymentId, string? accessToken = null)
     {
         try
         {
             var req = new HttpRequestMessage(HttpMethod.Get, $"{BASE}/v1/payments/{mpPaymentId}");
-            req.Headers.Add("Authorization", $"Bearer {AccessToken}");
+            req.Headers.Add("Authorization", $"Bearer {Tk(accessToken)}");
 
             var res = await _http.SendAsync(req);
             if (!res.IsSuccessStatusCode) return null;
@@ -265,7 +286,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── POST genérico ─────────────────────────────────────────────
-    private async Task<MpPaymentResult> PostPayment(object body)
+    private async Task<MpPaymentResult> PostPayment(object body, string? accessToken = null)
     {
         try
         {
@@ -275,7 +296,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             var req = new HttpRequestMessage(HttpMethod.Post, $"{BASE}/v1/payments");
-            req.Headers.Add("Authorization", $"Bearer {AccessToken}");
+            req.Headers.Add("Authorization", $"Bearer {Tk(accessToken)}");
             req.Headers.Add("X-Idempotency-Key", Guid.NewGuid().ToString());
             req.Content = content;
 

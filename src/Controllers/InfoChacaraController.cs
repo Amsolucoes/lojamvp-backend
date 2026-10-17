@@ -10,7 +10,7 @@ namespace LojaApi.src.Controllers;
 [ApiController]
 [Route("api/chacara/info")]
 [Authorize]
-public class InfoChacaraController(AppDbContext db) : ControllerBase
+public class InfoChacaraController(AppDbContext db, LojaApi.Services.MercadoPagoService mp, IConfiguration config) : ControllerBase
 {
     private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -74,5 +74,67 @@ public class InfoChacaraController(AppDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
         return Ok(info);
+    }
+
+    // ── Pagamento online (Mercado Pago) da própria loja ───────────
+    public record PagamentoReq(string AccessToken, string PublicKey);
+
+    private async Task<InfoChacara> ObterOuCriarAsync(Guid lojaId)
+    {
+        var info = await db.InfosChacara.FirstOrDefaultAsync(i => i.LojaId == lojaId);
+        if (info is null)
+        {
+            info = new InfoChacara { LojaId = lojaId };
+            db.InfosChacara.Add(info);
+            await db.SaveChangesAsync();
+        }
+        return info;
+    }
+
+    [HttpGet("pagamento")]
+    public async Task<IActionResult> ObterPagamento()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+        var info = await ObterOuCriarAsync(lojaId.Value);
+        var token = LojaApi.Services.SegredoService.Decifrar(info.MpAccessTokenCifrado, config);
+        return Ok(new
+        {
+            configurado = token != null,
+            contaPlataforma = info.MpContaPlataforma && token == null,
+            tokenFinal = token != null && token.Length > 4 ? token[^4..] : null,
+            publicKey = info.MpPublicKey,
+        });
+    }
+
+    [HttpPut("pagamento")]
+    public async Task<IActionResult> SalvarPagamento([FromBody] PagamentoReq req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+        if (string.IsNullOrWhiteSpace(req.AccessToken) || string.IsNullOrWhiteSpace(req.PublicKey))
+            return BadRequest(new { erro = "Informe o Access Token e a Public Key do Mercado Pago." });
+
+        var token = req.AccessToken.Trim();
+        var (ok, email) = await mp.ValidarToken(token);
+        if (!ok) return BadRequest(new { erro = "O Mercado Pago não aceitou esse Access Token. Confira se copiou o de produção." });
+
+        var info = await ObterOuCriarAsync(lojaId.Value);
+        info.MpAccessTokenCifrado = LojaApi.Services.SegredoService.Cifrar(token, config);
+        info.MpPublicKey = req.PublicKey.Trim();
+        await db.SaveChangesAsync();
+        return Ok(new { configurado = true, contaMercadoPago = email });
+    }
+
+    [HttpDelete("pagamento")]
+    public async Task<IActionResult> RemoverPagamento()
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+        var info = await ObterOuCriarAsync(lojaId.Value);
+        info.MpAccessTokenCifrado = null;
+        info.MpPublicKey = null;
+        await db.SaveChangesAsync();
+        return Ok(new { configurado = false });
     }
 }
