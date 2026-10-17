@@ -554,6 +554,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
                 saida = horariosConfig.Where(h => h.Tipo == "saida").Select(h => new { h.Id, h.Hora, h.Ajuste }),
             },
             avisosUso = avisos,
+            pagamentoOnline = (await CredencialMpAsync(loja.Id)).Ok,
             fotos,
             comodidades,
             comodidadesExtras,
