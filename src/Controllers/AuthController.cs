@@ -227,40 +227,68 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             await db.SaveChangesAsync();
         }
 
-        // Avisa por e-mail que uma nova loja se cadastrou
-        _ = EnviarAvisoNovoCadastroAsync(loja, usuario, req.PerfilId);
-        _ = EnviarBoasVindasAsync(loja, usuario);
+        // E-mails de novo cadastro (aviso interno + boas-vindas). Precisam ser aguardados: o DbContext é
+        // escopado à requisição e já estaria descartado quando um envio "solto" fosse ler o perfil.
+        try
+        {
+            PerfilLoja? perfilEscolhido = null;
+            if (!string.IsNullOrEmpty(req.PerfilId) && Guid.TryParse(req.PerfilId, out var perfilEmailGuid))
+            {
+                perfilEscolhido = await db.PerfisLoja.AsNoTracking()
+                    .Include(p => p.Categorias)
+                    .Include(p => p.Servicos)
+                    .FirstOrDefaultAsync(p => p.Id == perfilEmailGuid);
+            }
+            await Task.WhenAll(
+                EnviarAvisoNovoCadastroAsync(loja, usuario, perfilEscolhido),
+                EnviarBoasVindasAsync(loja, usuario, perfilEscolhido));
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao preparar e-mails de novo cadastro.");
+        }
 
         // Gera token e já loga
         var token = tokenService.GerarToken(usuario);
         return Ok(new LoginResponse(token, usuario.Nome, usuario.Email, usuario.Role));
     }
 
-    private async Task EnviarAvisoNovoCadastroAsync(Loja loja, Usuario usuario, string? perfilId)
+    private static string H(string? texto) => System.Net.WebUtility.HtmlEncode(texto ?? "");
+
+    private static string NomeModulo(string chave) => chave switch
+    {
+        "financeiro" => "Financeiro (contas a pagar e receber, cartões, balanço)",
+        "nf" => "Emissão de notas fiscais",
+        "servicos" => "Serviços e agenda",
+        "turmas" => "Turmas e alunos",
+        "corretora" => "Corretora (apólices, comissões e funil)",
+        _ => chave,
+    };
+
+    private async Task EnviarAvisoNovoCadastroAsync(Loja loja, Usuario usuario, PerfilLoja? perfil)
     {
         try
         {
-            string? nomePerfil = null;
-            if (!string.IsNullOrEmpty(perfilId) && Guid.TryParse(perfilId, out var perfilGuid))
-            {
-                nomePerfil = await db.PerfisLoja
-                    .Where(p => p.Id == perfilGuid)
-                    .Select(p => p.Nome)
-                    .FirstOrDefaultAsync();
-            }
+            string Linha(string rotulo, string valor, bool ultima = false) =>
+                $"<tr><td style='padding:6px 10px;{(ultima ? "" : "border-bottom:1px solid #eee;")}color:#888'>{rotulo}</td><td style='padding:6px 10px;{(ultima ? "" : "border-bottom:1px solid #eee")}'>{valor}</td></tr>";
 
+            var modulos = string.IsNullOrWhiteSpace(loja.ModulosAtivos) ? "—" : H(loja.ModulosAtivos);
+            var mensalidade = "R$ " + loja.MensalidadeValor.ToString("N2") + (loja.Promocional ? " (promocional)" : "");
+            var trialAte = loja.TrialAte.ToString("dd/MM/yyyy");
             var html = $@"
                 <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
                     <h2 style='color:#c38228'>🎉 Nova loja cadastrada!</h2>
                     <table style='width:100%;border-collapse:collapse;margin-top:12px'>
-                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Nome da loja</td><td style='padding:6px 10px;border-bottom:1px solid #eee'><strong>{loja.Nome}</strong></td></tr>
-                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Perfil escolhido</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{nomePerfil ?? "Começar do zero"}</td></tr>
-                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Tipo de plano</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{loja.TipoPlano}</td></tr>
-                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Mensalidade</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>R$ {loja.MensalidadeValor:N2}{(loja.Promocional ? " (promocional)" : "")}</td></tr>
-                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Responsável</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{usuario.Nome}</td></tr>
-                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>E-mail</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{loja.Email}</td></tr>
-                        <tr><td style='padding:6px 10px;border-bottom:1px solid #eee;color:#888'>Telefone</td><td style='padding:6px 10px;border-bottom:1px solid #eee'>{loja.Telefone ?? "—"}</td></tr>
-                        <tr><td style='padding:6px 10px;color:#888'>Trial até</td><td style='padding:6px 10px'>{loja.TrialAte:dd/MM/yyyy}</td></tr>
+                        {Linha("Nome da loja", "<strong>" + H(loja.Nome) + "</strong>")}
+                        {Linha("Perfil escolhido", H(perfil?.Nome ?? "Começar do zero"))}
+                        {Linha("Tipo de plano", H(loja.TipoPlano))}
+                        {Linha("Módulos", modulos)}
+                        {Linha("Mensalidade", mensalidade)}
+                        {Linha("Responsável", H(usuario.Nome))}
+                        {Linha("E-mail", H(loja.Email))}
+                        {Linha("Telefone", H(string.IsNullOrWhiteSpace(loja.Telefone) ? "—" : loja.Telefone))}
+                        {Linha("CNPJ/CPF", H(string.IsNullOrWhiteSpace(loja.CnpjCpf) ? "não informado no cadastro" : loja.CnpjCpf))}
+                        {Linha("Trial até", trialAte, true)}
                     </table>
                 </div>";
 
@@ -279,19 +307,49 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
         }
     }
 
-    private async Task EnviarBoasVindasAsync(Loja loja, Usuario usuario)
+    private async Task EnviarBoasVindasAsync(Loja loja, Usuario usuario, PerfilLoja? perfil)
     {
         try
         {
+            var primeiroNome = H(usuario.Nome.Split(' ')[0]);
+
+            // Resumo do que o perfil escolhido traz
+            var blocoPerfil = "";
+            if (perfil != null)
+            {
+                var categorias = perfil.Categorias.OrderBy(c => c.Ordem).Select(c => c.Nome).Take(8).ToList();
+                var servicos = perfil.Servicos.OrderBy(sv => sv.Ordem).Select(sv => sv.Nome).Take(8).ToList();
+                var itens = new System.Text.StringBuilder();
+                if (!string.IsNullOrWhiteSpace(perfil.Descricao))
+                    itens.Append($"<p style='margin:8px 0'>{H(perfil.Descricao)}</p>");
+                if (categorias.Count > 0)
+                    itens.Append($"<li>Categorias de produto já criadas: {H(string.Join(", ", categorias))}</li>");
+                if (servicos.Count > 0)
+                    itens.Append($"<li>Serviços já cadastrados (ajuste preços e duração): {H(string.Join(", ", servicos))}</li>");
+                blocoPerfil = $@"
+                    <div style='background:#faf5ec;border-radius:8px;padding:12px 16px;margin-top:16px'>
+                        <strong>Seu perfil: {H(perfil.Nome)}</strong>
+                        {itens}
+                    </div>";
+            }
+
+            var modulos = (loja.ModulosAtivos ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            var blocoModulos = modulos.Count == 0 ? "" : $@"
+                    <p style='margin-top:16px'>Módulos ativos na sua conta:</p>
+                    <ul style='padding-left:20px;line-height:1.8'>{string.Concat(modulos.Select(m => $"<li>{H(NomeModulo(m))}</li>"))}</ul>";
+
             var html = $@"
                 <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
-                    <h2 style='color:#c38228'>Bem-vindo(a), {usuario.Nome.Split(' ')[0]}! 🎉</h2>
-                    <p>Sua loja <strong>{loja.Nome}</strong> já está pronta pra usar. Você tem <strong>7 dias grátis</strong> pra testar tudo sem compromisso.</p>
+                    <h2 style='color:#c38228'>Bem-vindo(a), {primeiroNome}! 🎉</h2>
+                    <p>Sua loja <strong>{H(loja.Nome)}</strong> já está pronta pra usar. Você tem <strong>7 dias grátis</strong> (até {loja.TrialAte:dd/MM/yyyy}) pra testar tudo sem compromisso.</p>
+                    {blocoPerfil}
+                    {blocoModulos}
                     <p style='margin-top:16px'>Alguns pontos de partida:</p>
                     <ul style='padding-left:20px;line-height:1.8'>
                         <li>Cadastre seus primeiros produtos ou serviços</li>
                         <li>Configure suas contas e categorias no Financeiro</li>
                         <li>Convide sua equipe, se precisar</li>
+                        <li>Instale o sistema no celular: abra o endereço no navegador e use “Adicionar à tela inicial”</li>
                     </ul>
                     <p style='margin-top:16px'>Tem alguma dúvida de como usar o sistema? Acesse nossa <a href='https://aldevsoftware.com.br/#duvidas' style='color:#c38228'>Central de Dúvidas</a> — tem passo a passo de como cadastrar produto com grade, configurar cartão de crédito e outras coisas do dia a dia.</p>
                     <p style='margin-top:20px'>
@@ -303,7 +361,7 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             var msg = new Resend.EmailMessage
             {
                 From = "AldevSoftware <financeiro@aldevsoftware.com.br>",
-                Subject = $"Bem-vindo(a) ao AldevSoftware, {usuario.Nome.Split(' ')[0]}!",
+                Subject = $"Bem-vindo(a) ao AldevSoftware, {primeiroNome}!",
                 HtmlBody = html,
             };
             msg.To.Add(loja.Email);
