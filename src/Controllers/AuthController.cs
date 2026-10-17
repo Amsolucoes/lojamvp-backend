@@ -275,6 +275,9 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
             var modulos = string.IsNullOrWhiteSpace(loja.ModulosAtivos) ? "—" : H(loja.ModulosAtivos);
             var mensalidade = "R$ " + loja.MensalidadeValor.ToString("N2") + (loja.Promocional ? " (promocional)" : "");
             var trialAte = loja.TrialAte.ToString("dd/MM/yyyy");
+            var documento = !string.IsNullOrWhiteSpace(loja.Cnpj) ? loja.Cnpj
+                : !string.IsNullOrWhiteSpace(loja.Cpf) ? loja.Cpf
+                : "não informado no cadastro";
             var html = $@"
                 <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
                     <h2 style='color:#c38228'>🎉 Nova loja cadastrada!</h2>
@@ -287,7 +290,7 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
                         {Linha("Responsável", H(usuario.Nome))}
                         {Linha("E-mail", H(loja.Email))}
                         {Linha("Telefone", H(string.IsNullOrWhiteSpace(loja.Telefone) ? "—" : loja.Telefone))}
-                        {Linha("CNPJ/CPF", H(string.IsNullOrWhiteSpace(loja.CnpjCpf) ? "não informado no cadastro" : loja.CnpjCpf))}
+                        {Linha("CNPJ/CPF", H(documento))}
                         {Linha("Trial até", trialAte, true)}
                     </table>
                 </div>";
