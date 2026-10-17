@@ -1,4 +1,5 @@
 ﻿using LojaApi.Data;
+using LojaApi.Models;
 using LojaApi.src.Models;
 using Microsoft.EntityFrameworkCore;
 using Resend;
@@ -235,6 +236,34 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         }
     }
 
+    // Cópia do contrato para o e-mail de cadastro do dono da loja (mensagem separada, para não expor o e-mail dele ao cliente)
+    private async Task EnviarCopiaContratoAoDonoAsync(Loja loja, Reserva reserva, string assunto, string titulo, string nomeArquivo, byte[] pdfBytes)
+    {
+        if (string.IsNullOrWhiteSpace(loja.Email)) return;
+        try
+        {
+            var html = $@"
+                <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                    <h2 style='color:#2f7d4f'>{titulo}</h2>
+                    <p>Cópia do contrato da reserva de <strong>{reserva.ClienteNome}</strong> ({reserva.DataInicio:dd/MM/yyyy} — {reserva.DataFim:dd/MM/yyyy}), enviado ao cliente.</p>
+                    <p style='font-size:13px;color:#888'>Valor da reserva: R$ {reserva.Valor:N2}</p>
+                </div>";
+            var msg = new EmailMessage
+            {
+                From = "AldevSoftware <reservas@aldevsoftware.com.br>",
+                Subject = assunto,
+                HtmlBody = html,
+                Attachments = new List<EmailAttachment> { new EmailAttachment { Filename = nomeArquivo, Content = pdfBytes } },
+            };
+            msg.To.Add(loja.Email);
+            await resend.EmailSendAsync(msg);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Erro ao enviar cópia do contrato ao dono da loja {LojaId}.", loja.Id);
+        }
+    }
+
     public async Task ReenviarContratoAtualizadoAsync(Reserva reserva)
     {
         if (string.IsNullOrWhiteSpace(reserva.ClienteEmail)) return;
@@ -291,6 +320,7 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
             await db.SaveChangesAsync();
 
             logger.LogInformation("Contrato atualizado reenviado ao cliente da reserva {ReservaId}.", reserva.Id);
+            await EnviarCopiaContratoAoDonoAsync(loja, reserva, $"Contrato atualizado — {reserva.ClienteNome} ({reserva.DataInicio:dd/MM})", "Contrato atualizado enviado", $"contrato-reserva-{reserva.Id}-atualizado.pdf", pdfBytes);
         }
         catch (Exception ex)
         {
@@ -353,6 +383,7 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
             await db.SaveChangesAsync();
 
             logger.LogInformation("Contrato enviado manualmente ao cliente da reserva {ReservaId}.", reserva.Id);
+            await EnviarCopiaContratoAoDonoAsync(loja, reserva, $"Contrato enviado — {reserva.ClienteNome} ({reserva.DataInicio:dd/MM})", "Contrato enviado ao cliente", $"contrato-reserva-{reserva.Id}.pdf", pdfBytes);
             return true;
         }
         catch (Exception ex)
