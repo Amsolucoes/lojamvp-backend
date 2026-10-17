@@ -24,5 +24,14 @@ public class InfoChacara
     public string? LocadorTelefone { get; set; }
     public string? CidadeAssinatura { get; set; } // ex: "Campo Grande – MS", usado no fecho do contrato
 
+    // Pagamento online (Mercado Pago) da própria loja. O token fica cifrado e nunca é devolvido pela API.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? MpAccessTokenCifrado { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? MpPublicKey { get; set; }
+    // true = esta loja recebe na conta da plataforma (credencial do servidor); novas lojas começam em false
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool MpContaPlataforma { get; set; }
+
     public Loja? Loja { get; set; }
 }
