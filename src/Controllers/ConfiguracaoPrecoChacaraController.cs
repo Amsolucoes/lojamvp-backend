@@ -43,7 +43,11 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
         int LimitePessoasParaTaxaLimpeza,
         decimal ValorTaxaLimpeza,
         decimal ValorMultaNaoLimpeza,
-        decimal PercentualEntradaMinimo
+        decimal PercentualEntradaMinimo,
+        decimal? PercentualTaxaCartao = null,
+        decimal? ValorLimiteParcelas = null,
+        int? ParcelasAteLimite = null,
+        int? ParcelasAcimaLimite = null
     );
 
     [HttpPut]
@@ -64,6 +68,15 @@ public class ConfiguracaoPrecoChacaraController(AppDbContext db) : ControllerBas
         cfg.ValorTaxaLimpeza = req.ValorTaxaLimpeza;
         cfg.ValorMultaNaoLimpeza = req.ValorMultaNaoLimpeza;
         cfg.PercentualEntradaMinimo = req.PercentualEntradaMinimo;
+
+        if (req.PercentualTaxaCartao is < 0 or > 15)
+            return BadRequest(new { erro = "A taxa do cartão deve ficar entre 0% e 15%." });
+        if (req.ParcelasAteLimite is < 1 or > 12 || req.ParcelasAcimaLimite is < 1 or > 12)
+            return BadRequest(new { erro = "O número de parcelas deve ficar entre 1 e 12." });
+        if (req.PercentualTaxaCartao.HasValue) cfg.PercentualTaxaCartao = req.PercentualTaxaCartao.Value;
+        if (req.ValorLimiteParcelas.HasValue) cfg.ValorLimiteParcelas = req.ValorLimiteParcelas.Value;
+        if (req.ParcelasAteLimite.HasValue) cfg.ParcelasAteLimite = req.ParcelasAteLimite.Value;
+        if (req.ParcelasAcimaLimite.HasValue) cfg.ParcelasAcimaLimite = req.ParcelasAcimaLimite.Value;
 
         await db.SaveChangesAsync();
         return Ok(cfg);

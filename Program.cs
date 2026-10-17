@@ -1,4 +1,4 @@
-using LojaApi.Data;
+﻿using LojaApi.Data;
 using LojaApi.Services;
 using LojaApi.src.Middleware;
 using LojaApi.src.Services;
@@ -49,6 +49,7 @@ internal class Program
         builder.Services.AddScoped<AlertaEmailService>();
         builder.Services.AddScoped<ComunicadoEmailService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
+        builder.Services.AddHostedService<ReservaChacaraRotinaService>();
         // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
         builder.Services.AddSingleton<PushService>();
         builder.Services.AddHostedService<AvisosVencimentoService>();
