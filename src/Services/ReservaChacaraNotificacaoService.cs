@@ -197,10 +197,133 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         return enviados;
     }
 
+    private static string FormatarLimite(DateTime? utc) => utc is null ? "—" : utc.Value.AddHours(-4).ToString("dd/MM/yyyy 'às' HH:mm");
+
+    // Reserva feita no site de uma chácara sem pagamento online: avisa o dono para confirmar e o cliente que a solicitação foi recebida
+    private async Task NotificarSolicitacaoSemPagamentoAsync(Reserva reserva, Loja loja)
+    {
+        var limite = FormatarLimite(reserva.ExpiraEm);
+        if (!string.IsNullOrWhiteSpace(loja.Email))
+        {
+            try
+            {
+                var html = $@"
+                    <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                        <h2 style='color:#c38228'>Nova solicitação de reserva — {loja.Nome}</h2>
+                        <p><strong>{reserva.ClienteNome}</strong> solicitou uma reserva pelo site. Como o pagamento online não está configurado, ela <strong>aguarda a sua confirmação</strong>.</p>
+                        <table style='width:100%;border-collapse:collapse;margin-top:12px'>
+                            <tr><td style='padding:6px 10px'>Período</td><td style='padding:6px 10px;text-align:right'>{reserva.DataInicio:dd/MM/yyyy} — {reserva.DataFim:dd/MM/yyyy}</td></tr>
+                            <tr><td style='padding:6px 10px'>Pessoas</td><td style='padding:6px 10px;text-align:right'>{reserva.Pessoas}</td></tr>
+                            <tr><td style='padding:6px 10px'>Telefone</td><td style='padding:6px 10px;text-align:right'>{reserva.ClienteTelefone}</td></tr>
+                            <tr><td style='padding:6px 10px'>Valor</td><td style='padding:6px 10px;text-align:right'><strong>R$ {reserva.Valor:N2}</strong></td></tr>
+                        </table>
+                        <p style='margin-top:16px;font-size:13px'>Combine o pagamento com o cliente e confirme a reserva no sistema. <strong>Se não for confirmada até {limite}, a reserva expira</strong> e a data volta a ficar livre.</p>
+                    </div>";
+                var msg = new EmailMessage
+                {
+                    From = "AldevSoftware <reservas@aldevsoftware.com.br>",
+                    Subject = $"📝 Solicitação de reserva — {reserva.ClienteNome} ({reserva.DataInicio:dd/MM})",
+                    HtmlBody = html,
+                };
+                msg.To.Add(loja.Email);
+                await resend.EmailSendAsync(msg);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao avisar o dono da loja {LojaId} sobre solicitação de reserva.", loja.Id);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(reserva.ClienteEmail))
+        {
+            try
+            {
+                var html = $@"
+                    <div style='font-family:sans-serif;max-width:480px;margin:0 auto'>
+                        <h2 style='color:#c38228'>Solicitação recebida</h2>
+                        <p>Olá, {reserva.ClienteNome}! Recebemos sua solicitação de reserva na {loja.Nome} para {reserva.DataInicio:dd/MM/yyyy} a {reserva.DataFim:dd/MM/yyyy}.</p>
+                        <p>A chácara vai analisar e entrar em contato para combinar o pagamento e confirmar. Até lá, as datas ficam reservadas para você até {limite}; se não houver confirmação até lá, a solicitação expira.</p>
+                    </div>";
+                var msg = new EmailMessage
+                {
+                    From = "AldevSoftware <reservas@aldevsoftware.com.br>",
+                    Subject = $"Solicitação recebida — {loja.Nome}",
+                    HtmlBody = html,
+                };
+                msg.To.Add(reserva.ClienteEmail);
+                await resend.EmailSendAsync(msg);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Erro ao avisar o cliente da reserva {ReservaId} sobre solicitação recebida.", reserva.Id);
+            }
+        }
+    }
+
+    // Aviso de 24h: reserva sem pagamento online ainda sem confirmação do dono — avisa os dois que ela vai expirar
+    public async Task<int> EnviarAvisosReservasSemPagamentoAsync()
+    {
+        var agora = DateTime.UtcNow;
+        var limiteCriacao = agora.AddHours(-24);
+        var reservas = await db.Reservas
+            .Where(r => r.Status == "pendente_pagamento" && r.FormaPagamento == "sem_pagamento_online"
+                     && !r.AvisoExpiracaoEnviado && r.CriadoEm <= limiteCriacao
+                     && r.ExpiraEm != null && r.ExpiraEm > agora)
+            .ToListAsync();
+
+        var enviados = 0;
+        foreach (var reserva in reservas)
+        {
+            var loja = await db.Lojas.FindAsync(reserva.LojaId);
+            if (loja is null) continue;
+            var limite = FormatarLimite(reserva.ExpiraEm);
+
+            async Task Enviar(string? para, string assunto, string corpo)
+            {
+                if (string.IsNullOrWhiteSpace(para)) return;
+                try
+                {
+                    var msg = new EmailMessage
+                    {
+                        From = "AldevSoftware <reservas@aldevsoftware.com.br>",
+                        Subject = assunto,
+                        HtmlBody = $"<div style='font-family:sans-serif;max-width:480px;margin:0 auto'>{corpo}</div>",
+                    };
+                    msg.To.Add(para);
+                    await resend.EmailSendAsync(msg);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Erro ao enviar aviso de expiração da reserva {ReservaId}.", reserva.Id);
+                }
+            }
+
+            await Enviar(loja.Email,
+                $"⏰ Reserva sem confirmação — {reserva.ClienteNome} ({reserva.DataInicio:dd/MM})",
+                $"<h2 style='color:#c38228'>Confirme a reserva de {reserva.ClienteNome}</h2><p>A reserva de {reserva.DataInicio:dd/MM/yyyy} a {reserva.DataFim:dd/MM/yyyy} ainda não foi confirmada. <strong>Se não confirmar até {limite}, ela expira</strong> e a data volta a ficar livre.</p>");
+            await Enviar(reserva.ClienteEmail,
+                $"Sua solicitação de reserva — {loja.Nome}",
+                $"<h2 style='color:#c38228'>Sua reserva ainda não foi confirmada</h2><p>Olá, {reserva.ClienteNome}! A {loja.Nome} ainda não confirmou sua solicitação para {reserva.DataInicio:dd/MM/yyyy} a {reserva.DataFim:dd/MM/yyyy}. Se não houver confirmação até {limite}, ela expira e a data será liberada. Se quiser, entre em contato direto com a chácara.</p>");
+
+            reserva.AvisoExpiracaoEnviado = true;
+            await db.SaveChangesAsync();
+            enviados++;
+        }
+        return enviados;
+    }
+
     public async Task NotificarPendenteAsync(Reserva reserva)
     {
         var loja = await db.Lojas.FindAsync(reserva.LojaId);
-        if (loja is null || string.IsNullOrWhiteSpace(loja.Email)) return;
+        if (loja is null) return;
+
+        if (reserva.FormaPagamento == "sem_pagamento_online")
+        {
+            await NotificarSolicitacaoSemPagamentoAsync(reserva, loja);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(loja.Email)) return;
 
         try
         {

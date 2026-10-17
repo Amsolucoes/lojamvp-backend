@@ -40,6 +40,7 @@ public class Reserva
 
     public DateTime? ContratoEnviadoEm { get; set; }
     public bool AvisoCheckoutEnviado { get; set; }
+    public bool AvisoExpiracaoEnviado { get; set; } // aviso de 24h para reservas sem pagamento online (evita repetir)
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiraEm { get; set; } // usada pra liberar reservas pendentes nao pagas

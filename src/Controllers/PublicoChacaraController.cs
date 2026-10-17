@@ -24,13 +24,24 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         return (false, null, null);
     }
 
-    // Cartão parcelado (pagando o total): até R$800 → 2x; acima disso → trava em 3x
-    private static int ParcelasMaximas(decimal valor) => valor <= 800m ? 2 : 3;
+    // Parcelas e taxa do cartão são configuráveis por chácara (ConfiguracaoPrecoChacara)
+    private static int ParcelasMaximas(decimal valor, ConfiguracaoPrecoChacara cfg)
+        => valor <= cfg.ValorLimiteParcelas ? cfg.ParcelasAteLimite : cfg.ParcelasAcimaLimite;
 
-    // Repassa a taxa fixa de processamento do Mercado Pago (~4,98% no modo Parcelado Cliente)
-    // — não confundir com juros de parcelamento, que o próprio MP já cobra do cliente à parte.
-    private const decimal MARKUP_CARTAO = 1.05m;
-    private static decimal ComMarkupCartao(decimal valor) => Math.Round(valor * MARKUP_CARTAO, 2);
+    // Repassa a taxa de processamento do Mercado Pago — não confundir com juros de parcelamento, que o MP cobra do cliente à parte.
+    private static decimal ComMarkupCartao(decimal valor, ConfiguracaoPrecoChacara cfg)
+        => Math.Round(valor * (1 + cfg.PercentualTaxaCartao / 100m), 2);
+
+    private async Task<ConfiguracaoPrecoChacara> CfgAsync(Guid lojaId)
+        => await db.ConfiguracoesPrecoChacara.AsNoTracking().FirstOrDefaultAsync(c => c.LojaId == lojaId)
+           ?? new ConfiguracaoPrecoChacara { LojaId = lojaId };
+
+    // Dados mínimos do locador para o contrato sair completo
+    private static bool LocadorCompleto(InfoChacara? info)
+        => info != null
+           && !string.IsNullOrWhiteSpace(info.LocadorNome)
+           && (info.LocadorCpf ?? "").Count(char.IsDigit) == 11
+           && !string.IsNullOrWhiteSpace(info.LocadorEndereco);
 
     [HttpGet("disponibilidade")]
     public async Task<IActionResult> Disponibilidade(string slug, [FromQuery] DateTime dataInicio, [FromQuery] DateTime dataFim)
@@ -139,6 +150,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         if (diasSolicitadosReserva > 30)
             return BadRequest(new { erro = "O período máximo por reserva é de 30 dias." });
 
+        var infoLocador = await db.InfosChacara.AsNoTracking().FirstOrDefaultAsync(i => i.LojaId == loja.Id);
+        if (!LocadorCompleto(infoLocador))
+            return BadRequest(new { erro = "Esta chácara ainda não está habilitada para reservas online. Entre em contato com o responsável." });
+
         var cfgValidacao = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == loja.Id)
             ?? new ConfiguracaoPrecoChacara { LojaId = loja.Id };
 
@@ -169,6 +184,8 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         var resultado = CalculadoraPrecoChacara.Calcular(ini, fim, req.Pessoas, cfg, faixas, periodosEspeciais);
         resultado = await ComAjusteHorarioAsync(loja.Id, resultado, req.HoraEntrada, req.HoraSaida);
 
+        var semPagamentoOnline = !(await CredencialMpAsync(loja.Id)).Ok;
+
         var reserva = new Reserva
         {
             LojaId = loja.Id,
@@ -185,7 +202,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             HoraSaida = string.IsNullOrWhiteSpace(req.HoraSaida) ? null : req.HoraSaida.Trim(),
             Valor = resultado.ValorTotal,
             Status = "pendente_pagamento",
-            ExpiraEm = DateTime.UtcNow.AddMinutes(15),
+            // Sem pagamento online configurado: reserva fica aguardando a confirmação do dono por até 48h;
+            // com pagamento online, segura a data por 15 minutos enquanto o cliente paga.
+            FormaPagamento = semPagamentoOnline ? "sem_pagamento_online" : null,
+            ExpiraEm = semPagamentoOnline ? DateTime.UtcNow.AddHours(48) : DateTime.UtcNow.AddMinutes(15),
         };
 
         db.Reservas.Add(reserva);
@@ -198,7 +218,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             reserva.Id,
             reserva.Valor,
             reserva.ExpiraEm,
-            mensagem = "Reserva criada. Prossiga para o pagamento.",
+            semPagamentoOnline,
+            mensagem = semPagamentoOnline
+                ? "Solicitação enviada. A chácara vai confirmar sua reserva e entrar em contato."
+                : "Reserva criada. Prossiga para o pagamento.",
         });
     }
 
@@ -314,9 +337,10 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
         await db.SaveChangesAsync();
 
         var valorPix = req.FormaPagamento is "pix" or "combinado" ? reserva.Valor / 2 : 0;
-        var parcelasMax = req.FormaPagamento == "cartao" ? ParcelasMaximas(reserva.Valor) : 1;
-        var valorCartao = req.FormaPagamento == "cartao" ? ComMarkupCartao(reserva.Valor)
-                         : req.FormaPagamento == "combinado" ? ComMarkupCartao(reserva.Valor / 2) : 0;
+        var cfgCartao = await CfgAsync(loja.Id);
+        var parcelasMax = req.FormaPagamento == "cartao" ? ParcelasMaximas(reserva.Valor, cfgCartao) : 1;
+        var valorCartao = req.FormaPagamento == "cartao" ? ComMarkupCartao(reserva.Valor, cfgCartao)
+                         : req.FormaPagamento == "combinado" ? ComMarkupCartao(reserva.Valor / 2, cfgCartao) : 0;
 
         return Ok(new { valorPix, valorCartao, parcelasMax, mpPublicKey = cred.PublicKey });
     }
@@ -377,8 +401,9 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
 
         var ehCombinado = reserva.FormaPagamento == "combinado";
         var valorBase = ehCombinado ? reserva.Valor / 2 : reserva.Valor;
-        var valor = ComMarkupCartao(valorBase);
-        var parcelasPermitidas = ehCombinado ? 1 : ParcelasMaximas(reserva.Valor); // faixa baseada no valor real, sem o markup
+        var cfgCartao = await CfgAsync(loja.Id);
+        var valor = ComMarkupCartao(valorBase, cfgCartao);
+        var parcelasPermitidas = ehCombinado ? 1 : ParcelasMaximas(reserva.Valor, cfgCartao); // faixa baseada no valor real, sem o markup
 
         if (req.Parcelas < 1 || req.Parcelas > parcelasPermitidas)
             return BadRequest(new { erro = $"Para esse valor, o máximo é {parcelasPermitidas}x." });
@@ -555,6 +580,7 @@ public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.Rese
             },
             avisosUso = avisos,
             pagamentoOnline = (await CredencialMpAsync(loja.Id)).Ok,
+            reservasDisponiveis = LocadorCompleto(info),
             fotos,
             comodidades,
             comodidadesExtras,
