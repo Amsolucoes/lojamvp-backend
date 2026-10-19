@@ -1576,7 +1576,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
     // O balanço desmembrado soma, na categoria, despesas avulsas + compras do cartão. Contas a Pagar só
     // lista as avulsas (as compras do cartão ficam dentro da linha da fatura, e some quando a fatura é
     // paga), então o clique na categoria precisa deste detalhe para fechar com o valor do balanço.
-    private sealed record DetalheBalancoItem(string Origem, string Descricao, decimal Valor, DateTime Data, string Status, string? CartaoNome);
+    private sealed record DetalheBalancoItem(string Origem, string Descricao, decimal Valor, DateTime Data, string Status, string? CartaoNome, string? ContaNome = null);
 
     [HttpGet("balanco-detalhe")]
     public async Task<IActionResult> BalancoDetalhe([FromQuery] int ano, [FromQuery] int mes, [FromQuery] string categoria, [FromQuery] bool desmembrar = false)
@@ -1597,9 +1597,9 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
             .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.CartaoOrigemId == null
                         && l.Vencimento >= inicio && l.Vencimento < fim
                         && (semCategoria ? l.Categoria == null : (l.Categoria != null && l.Categoria.Nome == categoria)))
-            .Select(l => new { l.Descricao, l.Valor, l.Vencimento, l.Status })
+            .Select(l => new { l.Descricao, l.Valor, l.Vencimento, l.Status, Conta = l.ContaBancaria != null ? l.ContaBancaria.Nome : null })
             .ToListAsync();
-        itens.AddRange(avulsos.Select(l => new DetalheBalancoItem("avulso", l.Descricao, l.Valor, l.Vencimento, l.Status, null)));
+        itens.AddRange(avulsos.Select(l => new DetalheBalancoItem("avulso", l.Descricao, l.Valor, l.Vencimento, l.Status, null, l.Conta)));
 
         var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         if (cartoes.Count > 0)
@@ -1670,6 +1670,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
                 data = i.Data,
                 status = i.Status,
                 cartaoNome = i.CartaoNome,
+                contaNome = i.ContaNome,
             }).ToList(),
         });
     }
