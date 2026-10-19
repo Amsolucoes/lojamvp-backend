@@ -30,7 +30,7 @@ public partial class FinanceiroController
 
         var plano = await ObterOuCriarPlanejamentoAsync(lojaId.Value);
         var categorias = await db.CategoriasFinanceiras.AsNoTracking()
-            .Where(c => c.LojaId == lojaId && c.Ativa && c.Tipo != "receber")
+            .Where(c => c.LojaId == lojaId && c.Ativa)
             .OrderBy(c => c.Nome)
             .ToListAsync();
         var tetos = await db.PlanejamentoCategorias.AsNoTracking().Where(p => p.LojaId == lojaId).ToListAsync();
@@ -45,9 +45,34 @@ public partial class FinanceiroController
             .Where(l => l.LojaId == lojaId && l.Tipo == "receber" && l.CartaoOrigemId == null && l.Vencimento >= inicio && l.Vencimento < fim)
             .SumAsync(l => (decimal?)l.Valor) ?? 0m;
 
-        var linhas = categorias.Select(c =>
+        // Receitas do mês por categoria: recebido (pago) e ainda a receber
+        var recLanc = await db.LancamentosFinanceiros.AsNoTracking()
+            .Where(l => l.LojaId == lojaId && l.Tipo == "receber" && l.CartaoOrigemId == null && l.Vencimento >= inicio && l.Vencimento < fim)
+            .Select(l => new { Nome = l.Categoria != null ? l.Categoria.Nome : null, l.Valor, l.Status })
+            .ToListAsync();
+
+        var linhasReceita = categorias.Where(c => c.Tipo != "pagar").Select(c =>
         {
-            var teto = tetos.FirstOrDefault(t => t.CategoriaId == c.Id);
+            var teto = tetos.FirstOrDefault(t => t.CategoriaId == c.Id && t.Tipo == "receber");
+            var doMes = recLanc.Where(l => l.Nome == c.Nome).ToList();
+            var recebido = doMes.Where(l => l.Status == "pago").Sum(l => l.Valor);
+            var aReceber = doMes.Where(l => l.Status != "pago").Sum(l => l.Valor);
+            return new
+            {
+                categoriaId = c.Id,
+                nome = c.Nome,
+                icone = c.Icone ?? "💰",
+                ativo = teto?.Ativo ?? false,
+                valor = teto?.Valor ?? 0m,
+                recebido,
+                aReceber,
+                total = recebido + aReceber,
+            };
+        }).ToList();
+
+        var linhas = categorias.Where(c => c.Tipo != "receber").Select(c =>
+        {
+            var teto = tetos.FirstOrDefault(t => t.CategoriaId == c.Id && t.Tipo == "pagar");
             gastos.TryGetValue(c.Nome, out var g);
             var avulso = g?.Avulso ?? 0m;
             var cartao = g?.Cartao ?? 0m;
@@ -67,7 +92,9 @@ public partial class FinanceiroController
         var totalPlanejado = linhas.Where(l => l.ativo).Sum(l => l.valor);
         var gastoPlanejadas = linhas.Where(l => l.ativo).Sum(l => l.gasto);
         var gastoTotal = gastos.Values.Sum(g => g.Total);
-        var receita = plano.ReceitaPlanejada ?? receitaPrevista;
+        // Receita planejada = soma das metas de receita marcadas; sem nenhuma, usa o valor antigo/previsto
+        var totalPlanejadoReceber = linhasReceita.Where(l => l.ativo).Sum(l => l.valor);
+        var receita = totalPlanejadoReceber > 0 ? totalPlanejadoReceber : (plano.ReceitaPlanejada ?? receitaPrevista);
         var poupar = Math.Round(receita * plano.PercentualPoupanca / 100m, 2);
 
         var metas = await db.MetasPlanejamento.AsNoTracking().Where(m => m.LojaId == lojaId).OrderBy(m => m.CriadoEm).ToListAsync();
@@ -94,9 +121,13 @@ public partial class FinanceiroController
             poupar,
             disponivelParaGastar = receita - poupar,
             totalPlanejado,
+            totalPlanejadoReceber,
+            recebidoPlanejadas = linhasReceita.Where(l => l.ativo).Sum(l => l.recebido),
+            aReceberPlanejadas = linhasReceita.Where(l => l.ativo).Sum(l => l.aReceber),
             gastoPlanejadas,
             gastoTotal,
             categorias = linhas,
+            categoriasReceita = linhasReceita,
             metas = metasDto,
         });
     }
@@ -120,7 +151,7 @@ public partial class FinanceiroController
         return Ok(new { plano.ReceitaPlanejada, plano.PercentualPoupanca });
     }
 
-    public record PlanejamentoCategoriaItem(Guid CategoriaId, bool Ativo, decimal Valor);
+    public record PlanejamentoCategoriaItem(Guid CategoriaId, bool Ativo, decimal Valor, string? Tipo = "pagar");
     public record PlanejamentoCategoriasRequest(List<PlanejamentoCategoriaItem> Itens);
 
     [HttpPut("planejamento/categorias")]
@@ -135,10 +166,11 @@ public partial class FinanceiroController
         foreach (var item in req.Itens.Where(i => idsValidos.Contains(i.CategoriaId)))
         {
             if (item.Valor < 0) return BadRequest(new { erro = "O valor planejado não pode ser negativo." });
-            var atual = existentes.FirstOrDefault(p => p.CategoriaId == item.CategoriaId);
+            var tipo = item.Tipo == "receber" ? "receber" : "pagar";
+            var atual = existentes.FirstOrDefault(p => p.CategoriaId == item.CategoriaId && p.Tipo == tipo);
             if (atual is null)
             {
-                db.PlanejamentoCategorias.Add(new PlanejamentoCategoria { LojaId = lojaId.Value, CategoriaId = item.CategoriaId, Ativo = item.Ativo, Valor = item.Valor });
+                db.PlanejamentoCategorias.Add(new PlanejamentoCategoria { LojaId = lojaId.Value, CategoriaId = item.CategoriaId, Tipo = tipo, Ativo = item.Ativo, Valor = item.Valor });
             }
             else
             {

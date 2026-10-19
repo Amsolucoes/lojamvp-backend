@@ -19,6 +19,8 @@ public class PlanejamentoCategoria
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid LojaId { get; set; }
     public Guid CategoriaId { get; set; }
+    // pagar = teto de gasto | receber = meta de receita (uma categoria 'ambos' pode ter os dois)
+    public string Tipo { get; set; } = "pagar";
     public decimal Valor { get; set; }
     public bool Ativo { get; set; } = true;
 }
