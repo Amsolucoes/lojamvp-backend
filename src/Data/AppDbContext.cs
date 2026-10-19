@@ -269,7 +269,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(p => p.LojaId).IsUnique();
 
         mb.Entity<PlanejamentoCategoria>()
-            .HasIndex(p => new { p.LojaId, p.CategoriaId }).IsUnique();
+            .HasIndex(p => new { p.LojaId, p.CategoriaId, p.Tipo }).IsUnique();
 
         mb.Entity<CartaoCredito>()
             .HasOne(c => c.ContaBancaria).WithMany()
