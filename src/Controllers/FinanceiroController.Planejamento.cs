@@ -251,4 +251,42 @@ public partial class FinanceiroController
         await db.SaveChangesAsync();
         return NoContent();
     }
+
+    public record TrocarCategoriaRequest(Guid? CategoriaId, bool TodasParcelas = false);
+
+    // Troca só a categoria de um lançamento (avulso) — usado para corrigir gastos no detalhe do planejamento
+    [HttpPatch("lancamentos/{id:guid}/categoria")]
+    public async Task<IActionResult> TrocarCategoriaLancamento(Guid id, [FromBody] TrocarCategoriaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var lanc = await db.LancamentosFinanceiros.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
+        if (lanc is null) return NotFound();
+
+        if (req.CategoriaId.HasValue && !await db.CategoriasFinanceiras.AnyAsync(c => c.Id == req.CategoriaId && c.LojaId == lojaId))
+            return BadRequest(new { erro = "Categoria não encontrada." });
+
+        lanc.CategoriaId = req.CategoriaId;
+        await db.SaveChangesAsync();
+        return Ok(new { lanc.Id, lanc.CategoriaId });
+    }
+
+    // Troca a categoria de uma compra do cartão (opcionalmente de todas as parcelas da mesma compra)
+    [HttpPatch("cartoes/lancamentos/{id:guid}/categoria")]
+    public async Task<IActionResult> TrocarCategoriaCompraCartao(Guid id, [FromBody] TrocarCategoriaRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var compra = await db.LancamentosCartao.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
+        if (compra is null) return NotFound();
+
+        if (req.CategoriaId.HasValue && !await db.CategoriasFinanceiras.AnyAsync(c => c.Id == req.CategoriaId && c.LojaId == lojaId))
+            return BadRequest(new { erro = "Categoria não encontrada." });
+
+        var alvos = new List<LancamentoCartao> { compra };
+        if (req.TodasParcelas && compra.GrupoParcelamentoId.HasValue)
+            alvos = await db.LancamentosCartao.Where(l => l.LojaId == lojaId && l.GrupoParcelamentoId == compra.GrupoParcelamentoId).ToListAsync();
+
+        foreach (var a in alvos) a.CategoriaId = req.CategoriaId;
+        await db.SaveChangesAsync();
+        return Ok(new { alterados = alvos.Count });
+    }
 }
