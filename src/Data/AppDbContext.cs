@@ -1,4 +1,4 @@
-using LojaApi.Models;
+﻿using LojaApi.Models;
 using LojaApi.src.Models;
 using LojaApi.src.Models.Etiquetas;
 using LojaApi.src.Models.Fiscal;
@@ -40,6 +40,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<LancamentoFinanceiro> LancamentosFinanceiros => Set<LancamentoFinanceiro>();
     public DbSet<AjusteContaBancaria> AjustesContaBancaria => Set<AjusteContaBancaria>();
     public DbSet<AssinaturaPush> AssinaturasPush => Set<AssinaturaPush>();
+    public DbSet<PlanejamentoFinanceiro> PlanejamentosFinanceiros => Set<PlanejamentoFinanceiro>();
+    public DbSet<PlanejamentoCategoria> PlanejamentoCategorias => Set<PlanejamentoCategoria>();
+    public DbSet<MetaPlanejamento> MetasPlanejamento => Set<MetaPlanejamento>();
     public DbSet<CategoriaFinanceira> CategoriasFinanceiras => Set<CategoriaFinanceira>();
     public DbSet<CartaoCredito> CartoesCredito => Set<CartaoCredito>();
     public DbSet<LancamentoCartao> LancamentosCartao => Set<LancamentoCartao>();
@@ -261,6 +264,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         mb.Entity<AssinaturaPush>()
             .HasIndex(a => a.Endpoint).IsUnique();
+
+        mb.Entity<PlanejamentoFinanceiro>()
+            .HasIndex(p => p.LojaId).IsUnique();
+
+        mb.Entity<PlanejamentoCategoria>()
+            .HasIndex(p => new { p.LojaId, p.CategoriaId }).IsUnique();
 
         mb.Entity<CartaoCredito>()
             .HasOne(c => c.ContaBancaria).WithMany()
