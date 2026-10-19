@@ -11,7 +11,7 @@ namespace LojaApi.src.Controllers;
 [ApiController]
 [Route("api/financeiro")]
 [Authorize]
-public class FinanceiroController(AppDbContext db, FinanceiroService financeiroService) : ControllerBase
+public partial class FinanceiroController(AppDbContext db, FinanceiroService financeiroService) : ControllerBase
 {
     private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
