@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
@@ -254,44 +254,82 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     }
 
     // ── Deletar loja (e todos os dados) ───────────────────────────
+    // Remove tudo que tem loja_id (qualquer módulo, inclusive os criados depois desta rotina) em passes
+    // sucessivos: o que ainda é referenciado por outra tabela (FK sem cascade) é repetido no passe seguinte,
+    // depois que quem o referencia já foi apagado. Tudo numa transação: se algo ficar preso, nada é apagado
+    // e o erro devolve a tabela e o motivo.
     [HttpDelete("lojas/{id:guid}")]
     public async Task<IActionResult> Deletar(Guid id)
     {
-        var loja = await db.Lojas.FindAsync(id);
+        var loja = await db.Lojas.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
         if (loja is null) return NotFound();
 
-        // Deleta dados vinculados que não são cascade automático
-        var produtos = await db.Produtos.Where(p => p.LojaId == id).Select(p => p.Id).ToListAsync();
+        await using var tx = await db.Database.BeginTransactionAsync();
 
-        // Variações e movimentos dos produtos
-        await db.ProdutoVariacoes.Where(v => produtos.Contains(v.ProdutoId)).ExecuteDeleteAsync();
-        await db.Movimentos.Where(m => m.LojaId == id).ExecuteDeleteAsync();
-
-        // Itens de venda e vendas
-        var vendas = await db.Vendas.Where(v => v.LojaId == id).Select(v => v.Id).ToListAsync();
-        await db.ItensVenda.Where(i => vendas.Contains(i.VendaId)).ExecuteDeleteAsync();
-        await db.Vendas.Where(v => v.LojaId == id).ExecuteDeleteAsync();
-
-        // Itens de troca e trocas
-        var trocas = await db.Trocas.Where(t => t.LojaId == id).Select(t => t.Id).ToListAsync();
-        await db.ItensTroca.Where(i => trocas.Contains(i.TrocaId)).ExecuteDeleteAsync();
-        await db.Trocas.Where(t => t.LojaId == id).ExecuteDeleteAsync();
-
-        // Produtos, clientes, categorias
-        await db.Produtos.Where(p => p.LojaId == id).ExecuteDeleteAsync();
-        await db.Clientes.Where(c => c.LojaId == id).ExecuteDeleteAsync();
-        await db.CategoriasLoja.Where(c => c.LojaId == id).ExecuteDeleteAsync();
-        await db.CamposExtrasLoja.Where(c => c.LojaId == id).ExecuteDeleteAsync();
-
-        // Usuários vinculados (pega os ids antes)
         var usuarioIds = await db.UsuariosLoja.Where(ul => ul.LojaId == id).Select(ul => ul.UsuarioId).ToListAsync();
-        await db.UsuariosLoja.Where(ul => ul.LojaId == id).ExecuteDeleteAsync();
-        await db.Usuarios.Where(u => usuarioIds.Contains(u.Id)).ExecuteDeleteAsync();
 
-        // Pagamentos e a loja (pagamentos é cascade, mas deletamos explícito por segurança)
-        await db.Pagamentos.Where(p => p.LojaId == id).ExecuteDeleteAsync();
-        await db.Lojas.Where(l => l.Id == id).ExecuteDeleteAsync();
+        var tabelas = await db.Database
+            .SqlQueryRaw<string>("SELECT DISTINCT table_name AS \"Value\" FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'loja_id' AND table_name <> 'lojas'")
+            .ToListAsync();
 
+        var pendentes = new List<string>(tabelas);
+        var ultimosErros = new Dictionary<string, string>();
+
+        for (var passe = 0; passe < 12 && pendentes.Count > 0; passe++)
+        {
+            var progresso = false;
+            foreach (var tabela in pendentes.ToList())
+            {
+                await tx.CreateSavepointAsync("sp_del");
+                try
+                {
+                    await db.Database.ExecuteSqlRawAsync($"DELETE FROM \"{tabela}\" WHERE loja_id = {{0}}", id);
+                    await tx.ReleaseSavepointAsync("sp_del");
+                    pendentes.Remove(tabela);
+                    ultimosErros.Remove(tabela);
+                    progresso = true;
+                }
+                catch (Exception ex)
+                {
+                    await tx.RollbackToSavepointAsync("sp_del");
+                    ultimosErros[tabela] = (ex.InnerException ?? ex).Message;
+                }
+            }
+            if (!progresso) break;
+        }
+
+        if (pendentes.Count > 0)
+        {
+            await tx.RollbackAsync();
+            var detalhe = string.Join(" | ", pendentes.Select(t => $"{t}: {ultimosErros.GetValueOrDefault(t)}"));
+            return StatusCode(500, new { erro = $"Não foi possível excluir: {detalhe}" });
+        }
+
+        try
+        {
+            // Usuários que só pertenciam a esta loja
+            await tx.CreateSavepointAsync("sp_usr");
+            await db.Usuarios
+                .Where(u => usuarioIds.Contains(u.Id) && !db.UsuariosLoja.Any(ul => ul.UsuarioId == u.Id))
+                .ExecuteDeleteAsync();
+            await tx.ReleaseSavepointAsync("sp_usr");
+        }
+        catch
+        {
+            await tx.RollbackToSavepointAsync("sp_usr"); // usuário preso a outro registro: não impede a exclusão da loja
+        }
+
+        try
+        {
+            await db.Lojas.Where(l => l.Id == id).ExecuteDeleteAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            return StatusCode(500, new { erro = $"Não foi possível excluir a loja: {(ex.InnerException ?? ex).Message}" });
+        }
+
+        await tx.CommitAsync();
         return Ok(new { mensagem = "Loja e todos os dados foram removidos." });
     }
 
