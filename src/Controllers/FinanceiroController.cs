@@ -849,11 +849,24 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
 
 
 
+    private static string NormalizarNomeCategoria(string? nome)
+    {
+        var decomposto = (nome ?? "").Trim().ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        return new string(decomposto.Where(ch => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
+    }
+
     [HttpPost("categorias")]
     public async Task<IActionResult> CriarCategoria([FromBody] SalvarCategoriaFinanceiraRequest req)
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        // Nome repetido (sem diferenciar maiúscula nem acento) devolve a categoria que já existe em vez de duplicar
+        var nomeNormalizado = NormalizarNomeCategoria(req.Nome);
+        var existentes = await db.CategoriasFinanceiras.AsNoTracking().Where(c => c.LojaId == lojaId).ToListAsync();
+        var igual = existentes.FirstOrDefault(c => NormalizarNomeCategoria(c.Nome) == nomeNormalizado
+            && (c.Tipo == req.Tipo || c.Tipo == "ambos" || req.Tipo == "ambos"));
+        if (igual is not null) return Ok(new { igual.Id, igual.Nome, igual.Tipo, igual.Icone });
 
         var cat = new CategoriaFinanceira
         {
