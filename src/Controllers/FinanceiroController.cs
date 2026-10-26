@@ -2624,6 +2624,12 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
                     {
                         usado += totalCiclo - dados.Antecipado(faturaExistente);
                     }
+                    else if (faturaExistente is not null && faturaExistente.Total > 0 && totalCiclo > faturaExistente.Total)
+                    {
+                        // Fatura já quitada/financiada: o que foi comprado nesse ciclo DEPOIS do pagamento
+                        // (total atual acima do total registrado no pagamento) ainda consome o limite
+                        usado += totalCiclo - faturaExistente.Total;
+                    }
                 }
 
                 cursor = cursor.AddMonths(1);
