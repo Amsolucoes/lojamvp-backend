@@ -2635,11 +2635,11 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
                 cursor = cursor.AddMonths(1);
             }
 
-            // Parcelas futuras (compras parceladas) que caem em ciclos além do aberto — ainda não contadas
+            // Compras futuras (parceladas ou avulsas com data de um ciclo além do aberto) — ainda não contadas
             // acima. Cobrança fixa/recorrente futura NÃO entra aqui: só conta quando já estiver dentro de
             // uma fatura gerada (fechada ou aberta), que já é somada no loop dos últimos 12 meses acima.
             var parcelasFuturas = dados.Compras(cartao.Id)
-                .Where(l => l.Modo == "parcelada" && l.DataCompra.Date > cicloAberta.Fim.Date)
+                .Where(l => l.Modo != "fixa" && l.DataCompra.Date > cicloAberta.Fim.Date)
                 .ToList();
 
             decimal totalParcelasFuturas = 0;
