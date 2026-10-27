@@ -265,9 +265,31 @@ public partial class FinanceiroController
         if (req.CategoriaId.HasValue && !await db.CategoriasFinanceiras.AnyAsync(c => c.Id == req.CategoriaId && c.LojaId == lojaId))
             return BadRequest(new { erro = "Categoria não encontrada." });
 
-        lanc.CategoriaId = req.CategoriaId;
+        var alterados = 1;
+        if (lanc.Modo == "fixa" && lanc.LancamentoFixoId.HasValue)
+        {
+            // Conta fixa: a categoria vale para o modelo recorrente e para todos os meses já gerados
+            var fixo = await db.LancamentosFixos.FirstOrDefaultAsync(f => f.Id == lanc.LancamentoFixoId.Value && f.LojaId == lojaId);
+            if (fixo is not null) fixo.CategoriaId = req.CategoriaId;
+            var irmaos = await db.LancamentosFinanceiros
+                .Where(l => l.LojaId == lojaId && l.LancamentoFixoId == lanc.LancamentoFixoId).ToListAsync();
+            foreach (var l in irmaos) l.CategoriaId = req.CategoriaId;
+            alterados = irmaos.Count;
+        }
+        else if (req.TodasParcelas && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
+        {
+            var parcelas = await db.LancamentosFinanceiros
+                .Where(l => l.LojaId == lojaId && l.GrupoParcelamentoId == lanc.GrupoParcelamentoId).ToListAsync();
+            foreach (var l in parcelas) l.CategoriaId = req.CategoriaId;
+            alterados = parcelas.Count;
+        }
+        else
+        {
+            lanc.CategoriaId = req.CategoriaId;
+        }
+
         await db.SaveChangesAsync();
-        return Ok(new { lanc.Id, lanc.CategoriaId });
+        return Ok(new { lanc.Id, lanc.CategoriaId, alterados });
     }
 
     // Troca a categoria de uma compra do cartão (opcionalmente de todas as parcelas da mesma compra)
@@ -282,7 +304,14 @@ public partial class FinanceiroController
             return BadRequest(new { erro = "Categoria não encontrada." });
 
         var alvos = new List<LancamentoCartao> { compra };
-        if (req.TodasParcelas && compra.GrupoParcelamentoId.HasValue)
+        if (compra.Modo == "fixa" && compra.CartaoFixoId.HasValue)
+        {
+            // Cobrança fixa no cartão: muda o modelo recorrente e todas as compras já geradas dele
+            var fixoCartao = await db.CartaoLancamentosFixos.FirstOrDefaultAsync(f => f.Id == compra.CartaoFixoId.Value && f.LojaId == lojaId);
+            if (fixoCartao is not null) fixoCartao.CategoriaId = req.CategoriaId;
+            alvos = await db.LancamentosCartao.Where(l => l.LojaId == lojaId && l.CartaoFixoId == compra.CartaoFixoId).ToListAsync();
+        }
+        else if (req.TodasParcelas && compra.GrupoParcelamentoId.HasValue)
             alvos = await db.LancamentosCartao.Where(l => l.LojaId == lojaId && l.GrupoParcelamentoId == compra.GrupoParcelamentoId).ToListAsync();
 
         foreach (var a in alvos) a.CategoriaId = req.CategoriaId;

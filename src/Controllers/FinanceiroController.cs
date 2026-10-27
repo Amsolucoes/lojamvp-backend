@@ -1589,7 +1589,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
     // O balanço desmembrado soma, na categoria, despesas avulsas + compras do cartão. Contas a Pagar só
     // lista as avulsas (as compras do cartão ficam dentro da linha da fatura, e some quando a fatura é
     // paga), então o clique na categoria precisa deste detalhe para fechar com o valor do balanço.
-    private sealed record DetalheBalancoItem(string Origem, string Descricao, decimal Valor, DateTime Data, string Status, string? CartaoNome, string? ContaNome = null, Guid? Id = null);
+    private sealed record DetalheBalancoItem(string Origem, string Descricao, decimal Valor, DateTime Data, string Status, string? CartaoNome, string? ContaNome = null, Guid? Id = null, string? Modo = null);
 
     [HttpGet("balanco-detalhe")]
     public async Task<IActionResult> BalancoDetalhe([FromQuery] int ano, [FromQuery] int mes, [FromQuery] string categoria, [FromQuery] bool desmembrar = false)
@@ -1610,9 +1610,9 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
             .Where(l => l.LojaId == lojaId && l.Tipo == "pagar" && l.CartaoOrigemId == null
                         && l.Vencimento >= inicio && l.Vencimento < fim
                         && (semCategoria ? l.Categoria == null : (l.Categoria != null && l.Categoria.Nome == categoria)))
-            .Select(l => new { l.Id, l.Descricao, l.Valor, l.Vencimento, l.Status, Conta = l.ContaBancaria != null ? l.ContaBancaria.Nome : null })
+            .Select(l => new { l.Id, l.Modo, l.Descricao, l.Valor, l.Vencimento, l.Status, Conta = l.ContaBancaria != null ? l.ContaBancaria.Nome : null })
             .ToListAsync();
-        itens.AddRange(avulsos.Select(l => new DetalheBalancoItem("avulso", l.Descricao, l.Valor, l.Vencimento, l.Status, null, l.Conta, l.Id)));
+        itens.AddRange(avulsos.Select(l => new DetalheBalancoItem("avulso", l.Descricao, l.Valor, l.Vencimento, l.Status, null, l.Conta, l.Id, l.Modo)));
 
         var cartoes = await db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
         if (cartoes.Count > 0)
@@ -1653,13 +1653,13 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
                 var compras = await db.LancamentosCartao.AsNoTracking()
                     .Where(l => cartaoIds.Contains(l.CartaoCreditoId) && l.DataCompra >= inicio && l.DataCompra < fim
                                 && (semCategoria ? l.Categoria == null : (l.Categoria != null && l.Categoria.Nome == categoria)))
-                    .Select(l => new { l.Id, l.CartaoCreditoId, l.Descricao, l.Valor, l.DataCompra })
+                    .Select(l => new { l.Id, l.Modo, l.CartaoCreditoId, l.Descricao, l.Valor, l.DataCompra })
                     .ToListAsync();
 
                 foreach (var c in compras)
                 {
                     var cartao = cartoes.First(x => x.Id == c.CartaoCreditoId);
-                    itens.Add(new DetalheBalancoItem("cartao_item", c.Descricao, c.Valor, c.DataCompra, "cartao", cartao.Nome, null, c.Id));
+                    itens.Add(new DetalheBalancoItem("cartao_item", c.Descricao, c.Valor, c.DataCompra, "cartao", cartao.Nome, null, c.Id, c.Modo));
                 }
             }
         }
@@ -1685,6 +1685,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
                 cartaoNome = i.CartaoNome,
                 contaNome = i.ContaNome,
                 id = i.Id,
+                modo = i.Modo,
             }).ToList(),
         });
     }
