@@ -93,6 +93,14 @@ public class ComissoesController(AppDbContext db) : ControllerBase
             ? new List<Venda>()
             : await db.Vendas.Where(v => vendaIds.Contains(v.Id)).ToListAsync();
 
+        // Itens de cada origem, em lote: itens da venda e itens (peças/serviços) da ordem de serviço
+        var itensVenda = vendaIds.Count == 0
+            ? new List<ItemVenda>()
+            : await db.ItensVenda.Where(i => vendaIds.Contains(i.VendaId)).ToListAsync();
+        var itensOs = orcamentoIds.Count == 0
+            ? new List<ItemOrcamentoServico>()
+            : await db.ItensOrcamentoServico.Where(i => orcamentoIds.Contains(i.OrcamentoId)).ToListAsync();
+
         var clienteIds = orcamentos.Select(o => o.ClienteId)
             .Concat(vendas.Where(v => v.ClienteId.HasValue).Select(v => v.ClienteId!.Value))
             .Distinct()
@@ -116,7 +124,11 @@ public class ComissoesController(AppDbContext db) : ControllerBase
                 return new ComissaoDetalheDto(
                     c.Id, c.ValorServico, c.ComissaoPercentual, c.ValorComissao,
                     c.Status, c.PagoEm, c.CriadoEm,
-                    nomeServicoOs, cliente?.Nome, orcamento?.ConcluidoEm
+                    nomeServicoOs, cliente?.Nome, orcamento?.ConcluidoEm,
+                    "ordem_servico",
+                    itensOs.Where(i => i.OrcamentoId == c.OrigemId)
+                        .Select(i => new ComissaoItemDto(i.Descricao, i.Quantidade, i.ValorTotal, i.Tipo))
+                        .ToList()
                 );
             }
 
@@ -128,7 +140,11 @@ public class ComissoesController(AppDbContext db) : ControllerBase
                 return new ComissaoDetalheDto(
                     c.Id, c.ValorServico, c.ComissaoPercentual, c.ValorComissao,
                     c.Status, c.PagoEm, c.CriadoEm,
-                    "Venda", cliente?.Nome, venda?.CriadaEm
+                    "Venda", cliente?.Nome, venda?.CriadaEm,
+                    "venda",
+                    itensVenda.Where(i => i.VendaId == c.OrigemId)
+                        .Select(i => new ComissaoItemDto(i.NomeProduto, i.Quantidade, i.Subtotal, i.ServicoId.HasValue ? "servico" : "produto"))
+                        .ToList()
                 );
             }
 
@@ -137,7 +153,11 @@ public class ComissoesController(AppDbContext db) : ControllerBase
                 c.Status, c.PagoEm, c.CriadoEm,
                 c.Agendamento != null ? c.Agendamento.NomeServico : null,
                 c.Agendamento != null ? c.Agendamento.NomeCliente : null,
-                c.Agendamento != null ? c.Agendamento.DataHora : (DateTime?)null
+                c.Agendamento != null ? c.Agendamento.DataHora : (DateTime?)null,
+                "agendamento",
+                c.Agendamento != null
+                    ? new List<ComissaoItemDto> { new(c.Agendamento.NomeServico, 1, c.Agendamento.Preco, "servico") }
+                    : null
             );
         }).ToList();
 
@@ -147,8 +167,12 @@ public class ComissoesController(AppDbContext db) : ControllerBase
     public record ComissaoDetalheDto(
         Guid Id, decimal ValorServico, decimal ComissaoPercentual, decimal ValorComissao,
         string Status, DateTime? PagoEm, DateTime CriadoEm,
-        string? NomeServico, string? NomeCliente, DateTime? DataAtendimento
+        string? NomeServico, string? NomeCliente, DateTime? DataAtendimento,
+        string Tipo = "agendamento", List<ComissaoItemDto>? Itens = null
     );
+
+    // Item que originou a comissão: serviço feito, peça/produto da ordem de serviço ou item da venda
+    public record ComissaoItemDto(string Descricao, decimal Quantidade, decimal Valor, string Tipo);
 
     // ── Fechar e pagar as comissões (+ diárias, se houver) de um profissional num período ──
     public record FecharComissaoRequest(Guid ProfissionalId, DateTime PeriodoInicio, DateTime PeriodoFim, Guid? ContaBancariaId, DateTime? Vencimento, int QtdDiarias = 0);

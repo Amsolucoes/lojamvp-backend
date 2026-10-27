@@ -4130,10 +4130,20 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("ativo");
 
+                    b.Property<string>("Bairro")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bairro");
+
                     b.Property<string>("Cep")
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)")
                         .HasColumnName("cep");
+
+                    b.Property<string>("Cidade")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("cidade");
 
                     b.Property<string>("ComissaoBaseCalculo")
                         .IsRequired()
@@ -4180,6 +4190,11 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("nome");
 
+                    b.Property<string>("Numero")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("numero");
+
                     b.Property<decimal?>("SalarioFixo")
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("salario_fixo");
@@ -4194,6 +4209,11 @@ namespace LojaApi.src.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("tipo_remuneracao");
+
+                    b.Property<string>("Uf")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)")
+                        .HasColumnName("uf");
 
                     b.Property<decimal?>("ValorDiaria")
                         .HasColumnType("decimal(10,2)")
