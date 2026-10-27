@@ -21,7 +21,7 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
     }
 
     [HttpGet("dashboard")]
-    public async Task<IActionResult> Dashboard([FromQuery] int mesesAFrente = 6)
+    public async Task<IActionResult> Dashboard([FromQuery] int mesesAFrente = 6, [FromQuery] int? ano = null)
     {
         var lojaId = await GetLojaId();
         if (lojaId is null) return Ok(new { });
@@ -38,29 +38,41 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
             .Where(r => r.LojaId == lojaId && r.Status == "pendente_pagamento" && r.ExpiraEm == null)
             .ToListAsync();
 
-        // Totais gerais (todo o histórico de reservas confirmadas, sem filtro de data)
-        var totalReservas = confirmadas.Count;
-        var totalPago = confirmadas.Sum(r => r.ValorPago);
-        var totalPendente = confirmadas.Sum(r => r.Valor - r.ValorPago);
-        var totalNegociacao = emNegociacao.Count;
-        var totalPendenteNegociacao = emNegociacao.Sum(r => r.Valor - r.ValorPago);
+        // Totais gerais (todo o histórico de reservas confirmadas, sem filtro de data) — card "todos os anos"
+        var geral = new
+        {
+            totalReservas = confirmadas.Count,
+            totalPago = confirmadas.Sum(r => r.ValorPago),
+            totalPendente = confirmadas.Sum(r => r.Valor - r.ValorPago),
+            totalNegociacao = emNegociacao.Count,
+            totalPendenteNegociacao = emNegociacao.Sum(r => r.Valor - r.ValorPago),
+        };
 
-        // Quebra mês a mês, a partir do mês atual
+        // Anos com movimento (do primeiro ao último, sempre incluindo o atual e o próximo)
+        var todasReservas = confirmadas.Concat(emNegociacao).ToList();
+        var anoMin = todasReservas.Count > 0 ? Math.Min(todasReservas.Min(r => r.DataInicio.Year), agora.Year) : agora.Year;
+        var anoMax = todasReservas.Count > 0 ? Math.Max(todasReservas.Max(r => r.DataFim.Year), agora.Year + 1) : agora.Year + 1;
+        var anosDisponiveis = Enumerable.Range(anoMin, anoMax - anoMin + 1).ToList();
+
+        // Quebra mês a mês. Com `ano`: janeiro a dezembro daquele ano. Sem `ano`: a partir do mês atual (comportamento antigo)
         var meses = new List<object>();
-        var mesBase = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var mesBase = ano.HasValue
+            ? new DateTime(ano.Value, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            : new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
         // Garante que a janela sempre cubra a reserva confirmada (ou em negociação) mais distante
         // no futuro, mesmo que isso ultrapasse os "mesesAFrente" pedidos (ex: reserva de Ano Novo
         // que atravessa a virada do ano, feita com bastante antecedência).
-        var totalMeses = mesesAFrente;
+        var totalMeses = ano.HasValue ? 12 : mesesAFrente;
         var todasParaJanela = confirmadas.Concat(emNegociacao).ToList();
-        if (todasParaJanela.Count > 0)
+        if (!ano.HasValue && todasParaJanela.Count > 0)
         {
             var maxDataFim = todasParaJanela.Max(r => r.DataFim);
             var mesesNecessarios = (maxDataFim.Year - mesBase.Year) * 12 + (maxDataFim.Month - mesBase.Month) + 1;
             totalMeses = Math.Max(totalMeses, Math.Min(mesesNecessarios, 24)); // limite de segurança: 24 meses
         }
 
+        decimal totalPagoMeses = 0, totalPendenteMeses = 0, totalPendenteNegMeses = 0;
         for (int i = 0; i < totalMeses; i++)
         {
             var primeiroDia = mesBase.AddMonths(i);
@@ -113,6 +125,10 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
 
             var percentualNegociacao = diasNoMes > 0 ? Math.Round((decimal)diasOcupadosNegociacao / diasNoMes * 100, 1) : 0;
 
+            totalPagoMeses += pagoMes;
+            totalPendenteMeses += pendenteMes;
+            totalPendenteNegMeses += valorNegociacaoMes;
+
             meses.Add(new
             {
                 ano = primeiroDia.Year,
@@ -151,13 +167,23 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
             .Select(r => new { r.Id, r.ClienteNome, r.DataInicio, r.DataFim, r.Pessoas, r.Valor, r.ValorPago, saldoPendente = r.Valor - r.ValorPago })
             .ToList();
 
+        // Totais do período mostrado (o ano escolhido, ou os meses da janela antiga): somam as mesmas partes
+        // proporcionais dos meses, então batem com a lista; as quantidades contam reservas que tocam o período
+        var inicioPeriodo = mesBase;
+        var fimPeriodo = mesBase.AddMonths(totalMeses).AddDays(-1);
+        var totalReservas = confirmadas.Count(r => r.DataInicio <= fimPeriodo && r.DataFim >= inicioPeriodo);
+        var totalNegociacao = emNegociacao.Count(r => r.DataInicio <= fimPeriodo && r.DataFim >= inicioPeriodo);
+
         return Ok(new
         {
+            anoSelecionado = ano,
+            anosDisponiveis,
+            geral,
             totalReservas,
-            totalPago,
-            totalPendente,
+            totalPago = totalPagoMeses,
+            totalPendente = totalPendenteMeses,
             totalNegociacao,
-            totalPendenteNegociacao,
+            totalPendenteNegociacao = totalPendenteNegMeses,
             meses,
             proximasReservas = proximas,
             pendentes,
