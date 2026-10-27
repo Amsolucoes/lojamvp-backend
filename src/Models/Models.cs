@@ -105,6 +105,25 @@ public class Fornecedor
     [MaxLength(300)]
     public string? Endereco { get; set; }
 
+    // Endereço detalhado (o campo Endereco acima guarda o texto montado, para telas e dados antigos)
+    [MaxLength(9)]
+    public string? Cep { get; set; }
+
+    [MaxLength(150)]
+    public string? Rua { get; set; }
+
+    [MaxLength(20)]
+    public string? Numero { get; set; }
+
+    [MaxLength(100)]
+    public string? Bairro { get; set; }
+
+    [MaxLength(100)]
+    public string? Cidade { get; set; }
+
+    [MaxLength(2)]
+    public string? Uf { get; set; }
+
     [MaxLength(500)]
     public string? Observacoes { get; set; }
 

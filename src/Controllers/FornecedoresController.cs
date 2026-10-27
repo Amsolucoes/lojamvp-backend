@@ -22,6 +22,35 @@ public class FornecedoresController(AppDbContext db) : ControllerBase
         return vinculo?.LojaId;
     }
 
+    private static string? Limpa(string? v, int max)
+    {
+        var t = v?.Trim();
+        if (string.IsNullOrEmpty(t)) return null;
+        return t.Length > max ? t[..max] : t;
+    }
+
+    // Grava o endereço detalhado e mantém o texto completo em Endereco (compatível com dados e telas antigas)
+    private static void AplicarEndereco(Fornecedor f, SalvarFornecedorRequest req)
+    {
+        f.Cep = Limpa(req.Cep, 9);
+        f.Rua = Limpa(req.Rua, 150);
+        f.Numero = Limpa(req.Numero, 20);
+        f.Bairro = Limpa(req.Bairro, 100);
+        f.Cidade = Limpa(req.Cidade, 100);
+        f.Uf = Limpa(req.Uf, 2)?.ToUpperInvariant();
+
+        var temDetalhe = f.Rua != null || f.Numero != null || f.Bairro != null || f.Cidade != null || f.Uf != null;
+        if (!temDetalhe)
+        {
+            f.Endereco = Limpa(req.Endereco, 300);
+            return;
+        }
+        var ruaNumero = string.Join(", ", new[] { f.Rua, f.Numero }.Where(x => x != null));
+        var cidadeUf = string.Join("/", new[] { f.Cidade, f.Uf }.Where(x => x != null));
+        var partes = new[] { ruaNumero, f.Bairro, cidadeUf, f.Cep }.Where(x => !string.IsNullOrEmpty(x));
+        f.Endereco = Limpa(string.Join(" - ", partes), 300);
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar([FromQuery] string? busca)
     {
@@ -41,7 +70,8 @@ public class FornecedoresController(AppDbContext db) : ControllerBase
             .Select(f => new FornecedorDto(
                 f.Id, f.Nome, f.CnpjCpf, f.Telefone, f.Email,
                 f.Endereco, f.Observacoes, f.Ativo, f.CriadoEm,
-                f.Produtos.Count(p => p.Ativo)
+                f.Produtos.Count(p => p.Ativo),
+                f.Cep, f.Rua, f.Numero, f.Bairro, f.Cidade, f.Uf
             )).ToListAsync();
 
         return Ok(lista);
@@ -73,7 +103,8 @@ public class FornecedoresController(AppDbContext db) : ControllerBase
         return Ok(new FornecedorDto(
             f.Id, f.Nome, f.CnpjCpf, f.Telefone, f.Email,
             f.Endereco, f.Observacoes, f.Ativo, f.CriadoEm,
-            f.Produtos.Count(p => p.Ativo)
+            f.Produtos.Count(p => p.Ativo),
+            f.Cep, f.Rua, f.Numero, f.Bairro, f.Cidade, f.Uf
         ));
     }
 
@@ -94,17 +125,18 @@ public class FornecedoresController(AppDbContext db) : ControllerBase
             CnpjCpf = req.CnpjCpf,
             Telefone = req.Telefone,
             Email = req.Email,
-            Endereco = req.Endereco,
             Observacoes = req.Observacoes,
             Ativo = req.Ativo,
         };
+        AplicarEndereco(fornecedor, req);
         db.Fornecedores.Add(fornecedor);
         await db.SaveChangesAsync();
 
         return CreatedAtAction(nameof(Buscar), new { id = fornecedor.Id },
             new FornecedorDto(fornecedor.Id, fornecedor.Nome, fornecedor.CnpjCpf, fornecedor.Telefone,
                 fornecedor.Email, fornecedor.Endereco, fornecedor.Observacoes, fornecedor.Ativo,
-                fornecedor.CriadoEm, 0));
+                fornecedor.CriadoEm, 0,
+                fornecedor.Cep, fornecedor.Rua, fornecedor.Numero, fornecedor.Bairro, fornecedor.Cidade, fornecedor.Uf));
     }
 
     [HttpPut("{id:guid}")]
@@ -122,7 +154,7 @@ public class FornecedoresController(AppDbContext db) : ControllerBase
         fornecedor.CnpjCpf = req.CnpjCpf;
         fornecedor.Telefone = req.Telefone;
         fornecedor.Email = req.Email;
-        fornecedor.Endereco = req.Endereco;
+        AplicarEndereco(fornecedor, req);
         fornecedor.Observacoes = req.Observacoes;
         fornecedor.Ativo = req.Ativo;
 
@@ -131,7 +163,8 @@ public class FornecedoresController(AppDbContext db) : ControllerBase
         var qtdProdutos = await db.Produtos.CountAsync(p => p.FornecedorId == id && p.Ativo);
         return Ok(new FornecedorDto(fornecedor.Id, fornecedor.Nome, fornecedor.CnpjCpf, fornecedor.Telefone,
             fornecedor.Email, fornecedor.Endereco, fornecedor.Observacoes, fornecedor.Ativo,
-            fornecedor.CriadoEm, qtdProdutos));
+            fornecedor.CriadoEm, qtdProdutos,
+            fornecedor.Cep, fornecedor.Rua, fornecedor.Numero, fornecedor.Bairro, fornecedor.Cidade, fornecedor.Uf));
     }
 
     [HttpDelete("{id:guid}")]

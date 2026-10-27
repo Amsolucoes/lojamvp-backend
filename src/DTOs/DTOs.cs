@@ -57,13 +57,17 @@ public record SalvarProdutoRequest(
 public record FornecedorDto(
     Guid Id, string Nome, string? CnpjCpf, string? Telefone,
     string? Email, string? Endereco, string? Observacoes,
-    bool Ativo, DateTime CriadoEm, int QtdProdutos
+    bool Ativo, DateTime CriadoEm, int QtdProdutos,
+    string? Cep = null, string? Rua = null, string? Numero = null,
+    string? Bairro = null, string? Cidade = null, string? Uf = null
 );
 
 public record SalvarFornecedorRequest(
     string Nome, string? CnpjCpf, string? Telefone,
     string? Email, string? Endereco, string? Observacoes,
-    bool Ativo = true
+    bool Ativo = true,
+    string? Cep = null, string? Rua = null, string? Numero = null,
+    string? Bairro = null, string? Cidade = null, string? Uf = null
 );
 
 public record ProdutoPrecoItem(Guid Id, decimal PrecoCusto, decimal PrecoVenda);
