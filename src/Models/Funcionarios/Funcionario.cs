@@ -48,7 +48,19 @@ public class Profissional
     public string? Cep { get; set; }
 
     [MaxLength(200)]
-    public string? Endereco { get; set; }
+    public string? Endereco { get; set; } // rua/logradouro (cadastros antigos podem ter o endereço completo aqui)
+
+    [MaxLength(20)]
+    public string? Numero { get; set; }
+
+    [MaxLength(100)]
+    public string? Bairro { get; set; }
+
+    [MaxLength(100)]
+    public string? Cidade { get; set; }
+
+    [MaxLength(2)]
+    public string? Uf { get; set; }
 
     // Vínculo com o lançamento fixo gerado no Financeiro, se TipoRemuneracao = salario_fixo
     public Guid? LancamentoFixoId { get; set; }

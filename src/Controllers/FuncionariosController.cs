@@ -64,6 +64,10 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
                 p.Telefone,
                 p.Cep,
                 p.Endereco,
+                p.Numero,
+                p.Bairro,
+                p.Cidade,
+                p.Uf,
                 p.ComissaoBaseCalculo,
                 p.ComissaoVendasAtiva,
                 p.ComissaoVendasPercentual,
@@ -88,8 +92,29 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         string ComissaoBaseCalculo = "total",
         decimal? ValorDiaria = null,
         bool ComissaoVendasAtiva = false,
-        decimal? ComissaoVendasPercentual = null
+        decimal? ComissaoVendasPercentual = null,
+        string? Numero = null,
+        string? Bairro = null,
+        string? Cidade = null,
+        string? Uf = null
     );
+
+    private static string? Limpa(string? v, int max)
+    {
+        var t = v?.Trim();
+        if (string.IsNullOrEmpty(t)) return null;
+        return t.Length > max ? t[..max] : t;
+    }
+
+    private static void AplicarEndereco(Profissional p, SalvarProfissionalRequest req)
+    {
+        p.Cep = Limpa(req.Cep, 9);
+        p.Endereco = Limpa(req.Endereco, 200);
+        p.Numero = Limpa(req.Numero, 20);
+        p.Bairro = Limpa(req.Bairro, 100);
+        p.Cidade = Limpa(req.Cidade, 100);
+        p.Uf = Limpa(req.Uf, 2)?.ToUpperInvariant();
+    }
 
     [HttpPost]
     [Authorize(Roles = "admin,superadmin")]
@@ -123,12 +148,11 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             SalarioFixo = req.TipoRemuneracao == "salario_fixo" ? req.SalarioFixo : null,
             ValorDiaria = req.TipoRemuneracao == "diaria" ? req.ValorDiaria : null,
             Telefone = req.Telefone,
-            Cep = req.Cep,
-            Endereco = req.Endereco,
             ComissaoBaseCalculo = req.ComissaoBaseCalculo == "servico" ? "servico" : "total",
             ComissaoVendasAtiva = req.ComissaoVendasAtiva,
             ComissaoVendasPercentual = req.ComissaoVendasAtiva ? req.ComissaoVendasPercentual : null,
         };
+        AplicarEndereco(profissional, req);
         db.Profissionais.Add(profissional);
         await db.SaveChangesAsync();
 
@@ -170,6 +194,10 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.Telefone,
             profissional.Cep,
             profissional.Endereco,
+            profissional.Numero,
+            profissional.Bairro,
+            profissional.Cidade,
+            profissional.Uf,
             profissional.ComissaoBaseCalculo,
             profissional.ComissaoVendasAtiva,
             profissional.ComissaoVendasPercentual,
@@ -203,8 +231,7 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
         profissional.SalarioFixo = req.TipoRemuneracao == "salario_fixo" ? req.SalarioFixo : null;
         profissional.ValorDiaria = req.TipoRemuneracao == "diaria" ? req.ValorDiaria : null;
         profissional.Telefone = req.Telefone;
-        profissional.Cep = req.Cep;
-        profissional.Endereco = req.Endereco;
+        AplicarEndereco(profissional, req);
         profissional.ComissaoBaseCalculo = req.ComissaoBaseCalculo == "servico" ? "servico" : "total";
         profissional.ComissaoVendasAtiva = req.ComissaoVendasAtiva;
         profissional.ComissaoVendasPercentual = req.ComissaoVendasAtiva ? req.ComissaoVendasPercentual : null;
@@ -274,6 +301,10 @@ public class FuncionariosController(AppDbContext db, FinanceiroService financeir
             profissional.Telefone,
             profissional.Cep,
             profissional.Endereco,
+            profissional.Numero,
+            profissional.Bairro,
+            profissional.Cidade,
+            profissional.Uf,
             profissional.ComissaoBaseCalculo,
             profissional.ComissaoVendasAtiva,
             profissional.ComissaoVendasPercentual,
