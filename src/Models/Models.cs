@@ -487,6 +487,12 @@ public class Plano
     // IDs dos serviços incluídos, separados por vírgula (ex: "guid1,guid2")
     public string? ServicosIds { get; set; }
 
+    // Máximo de usos dos serviços incluídos por mês (ex: 4). Nulo = ilimitado.
+    public int? LimiteUsosMes { get; set; }
+
+    // Dias da semana em que o plano pode ser usado, ex: "1,2,3,4,5" (0 = domingo ... 6 = sábado). Nulo = todos.
+    public string? DiasSemanaPermitidos { get; set; }
+
     public bool Ativo { get; set; } = true;
 
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
@@ -524,6 +530,9 @@ public class PagamentoPlano
     public decimal Valor { get; set; }
 
     public Guid? VendaId { get; set; }
+
+    // Valor efetivamente recebido (pode incluir juros/multa ou desconto). Nulo = igual ao Valor.
+    public decimal? ValorPago { get; set; }
 
     [MaxLength(20)]
     public string Status { get; set; } = "pendente"; // pago | pendente

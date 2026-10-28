@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using LojaApi.Data;
 using LojaApi.Models;
+using LojaApi.Services;
 
 namespace LojaApi.Controllers;
 
@@ -31,7 +32,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
         var planos = await db.Planos
             .Where(p => p.LojaId == lojaId)
             .OrderByDescending(p => p.Ativo).ThenBy(p => p.Nome)
-            .Select(p => new { p.Id, p.Nome, p.Valor, p.ServicosIds, p.Ativo })
+            .Select(p => new { p.Id, p.Nome, p.Valor, p.ServicosIds, p.Ativo, p.LimiteUsosMes, p.DiasSemanaPermitidos })
             .ToListAsync();
 
         return Ok(planos);
@@ -53,12 +54,14 @@ public class PlanosController(AppDbContext db) : ControllerBase
             Nome = req.Nome.Trim(),
             Valor = req.Valor,
             ServicosIds = req.ServicosIds,
+            LimiteUsosMes = req.LimiteUsosMes is > 0 ? req.LimiteUsosMes : null,
+            DiasSemanaPermitidos = PlanoUsoRegras.NormalizarDias(req.DiasSemana),
             Ativo = true,
         };
         db.Planos.Add(plano);
         await db.SaveChangesAsync();
 
-        return Ok(new { plano.Id, plano.Nome, plano.Valor, plano.ServicosIds, plano.Ativo });
+        return Ok(new { plano.Id, plano.Nome, plano.Valor, plano.ServicosIds, plano.Ativo, plano.LimiteUsosMes, plano.DiasSemanaPermitidos });
     }
 
     // ── Atualizar plano ───────────────────────────────────────────
@@ -72,9 +75,11 @@ public class PlanosController(AppDbContext db) : ControllerBase
         plano.Nome = req.Nome.Trim();
         plano.Valor = req.Valor;
         plano.ServicosIds = req.ServicosIds;
+        plano.LimiteUsosMes = req.LimiteUsosMes is > 0 ? req.LimiteUsosMes : null;
+        plano.DiasSemanaPermitidos = PlanoUsoRegras.NormalizarDias(req.DiasSemana);
         await db.SaveChangesAsync();
 
-        return Ok(new { plano.Id, plano.Nome, plano.Valor, plano.ServicosIds, plano.Ativo });
+        return Ok(new { plano.Id, plano.Nome, plano.Valor, plano.ServicosIds, plano.Ativo, plano.LimiteUsosMes, plano.DiasSemanaPermitidos });
     }
 
     // ── Ativar/desativar plano ────────────────────────────────────
@@ -135,10 +140,16 @@ public class PlanosController(AppDbContext db) : ControllerBase
 
         var planos = await db.Planos
             .Where(p => planoIds.Contains(p.Id))
-            .Select(p => new { p.Id, p.Nome, p.Valor })
+            .Select(p => new { p.Id, p.Nome, p.Valor, p.LimiteUsosMes, p.DiasSemanaPermitidos })
             .ToListAsync();
 
         var agora = DateTime.UtcNow;
+        var (inicioMesUsoUtc, fimMesUsoUtc) = PlanoUsoRegras.IntervaloDoMesUtc(agora);
+        var usosNoMesPorAssinatura = await db.ConsumosPlano
+            .Where(c => assinaturaIds.Contains(c.AssinaturaId) && c.CriadoEm >= inicioMesUsoUtc && c.CriadoEm < fimMesUsoUtc)
+            .GroupBy(c => c.AssinaturaId)
+            .Select(g => new { AssinaturaId = g.Key, Total = g.Count() })
+            .ToListAsync();
         var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
         // Todos os pagamentos dessas assinaturas (não só o mês atual)
@@ -179,6 +190,9 @@ public class PlanosController(AppDbContext db) : ControllerBase
                 mesInicioCobranca = a.MesInicioCobranca,
                 aindaNaoIniciou = a.MesInicioCobranca > mesAtual,
                 totalConsumos = contagemConsumos.FirstOrDefault(x => x.AssinaturaId == a.Id)?.Total ?? 0,
+                usosNoMes = usosNoMesPorAssinatura.FirstOrDefault(x => x.AssinaturaId == a.Id)?.Total ?? 0,
+                limiteUsosMes = pl?.LimiteUsosMes,
+                diasSemanaPermitidos = pl?.DiasSemanaPermitidos,
             };
         })
         .OrderByDescending(x => x.mesesEmAtraso)
@@ -217,6 +231,52 @@ public class PlanosController(AppDbContext db) : ControllerBase
 
         await db.SaveChangesAsync();
         return Ok(new { quitados = pendentes.Count, valorTotal = pendentes.Sum(p => p.Valor) });
+    }
+
+    // ── Pagar meses escolhidos de uma assinatura (com valor pago editável, ex.: juros) ──
+    public record PagarMesItem(Guid PagamentoId, decimal? ValorPago);
+    public record PagarMesesRequest(List<PagarMesItem> Meses);
+
+    [HttpPost("assinantes/{id:guid}/pagar")]
+    public async Task<IActionResult> PagarMeses(Guid id, [FromBody] PagarMesesRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var assinatura = await db.AssinaturasCliente.FirstOrDefaultAsync(a => a.Id == id && a.LojaId == lojaId);
+        if (assinatura is null) return NotFound();
+
+        if (req.Meses is null || req.Meses.Count == 0)
+            return BadRequest(new { erro = "Selecione ao menos um mês para pagar." });
+
+        var plano = await db.Planos.FindAsync(assinatura.PlanoId);
+        var nomePlano = plano?.Nome ?? "Plano";
+        var ids = req.Meses.Select(m => m.PagamentoId).Distinct().ToList();
+        var pagamentos = await db.PagamentosPlano
+            .Where(p => p.AssinaturaId == id && ids.Contains(p.Id))
+            .ToListAsync();
+
+        if (pagamentos.Count != ids.Count)
+            return BadRequest(new { erro = "Algum mês selecionado não foi encontrado." });
+        if (pagamentos.Any(p => p.Status == "pago"))
+            return BadRequest(new { erro = "Algum mês selecionado já está pago." });
+
+        var agora = DateTime.UtcNow;
+        decimal totalRecebido = 0;
+        foreach (var pg in pagamentos)
+        {
+            var item = req.Meses.First(m => m.PagamentoId == pg.Id);
+            var valorPago = item.ValorPago ?? pg.Valor;
+            if (valorPago <= 0)
+                return BadRequest(new { erro = "Informe um valor pago maior que zero." });
+
+            pg.Status = "pago";
+            pg.PagoEm = agora;
+            pg.ValorPago = valorPago;
+            totalRecebido += valorPago;
+            await CriarVendaMensalidadeAsync(pg, lojaId!.Value, assinatura.ClienteId, nomePlano, pg.Valor, valorPago);
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { pagos = pagamentos.Count, valorTotal = totalRecebido });
     }
 
     // ── Vincular cliente a um plano ───────────────────────────────
@@ -343,7 +403,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
 
     // ── Info do plano de um cliente (usado no Caixa) ───────────────
     [HttpGet("cliente/{clienteId:guid}")]
-    public async Task<IActionResult> AssinaturaDoCliente(Guid clienteId)
+    public async Task<IActionResult> AssinaturaDoCliente(Guid clienteId, [FromQuery] DateTime? data)
     {
         var lojaId = await GetLojaId();
         var assinatura = await db.AssinaturasCliente
@@ -366,6 +426,13 @@ public class PlanosController(AppDbContext db) : ControllerBase
             .Split(',', StringSplitOptions.RemoveEmptyEntries)
             .ToList();
 
+        // Regras de uso: limite por mês e dias da semana permitidos (data de referência: hoje, ou ?data= no formato yyyy-MM-dd)
+        var dataRef = data.HasValue ? DateTime.SpecifyKind(data.Value.Date, DateTimeKind.Utc).AddHours(12) : agora;
+        var (inicioMesUtc, fimMesUtc) = PlanoUsoRegras.IntervaloDoMesUtc(dataRef);
+        var usosNoMes = await db.ConsumosPlano.CountAsync(c =>
+            c.AssinaturaId == assinatura.Id && c.CriadoEm >= inicioMesUtc && c.CriadoEm < fimMesUtc);
+        var diaPermitido = PlanoUsoRegras.DiaPermitido(plano.DiasSemanaPermitidos, dataRef);
+
         return Ok(new
         {
             temPlano = true,
@@ -374,6 +441,12 @@ public class PlanosController(AppDbContext db) : ControllerBase
             planoNome = plano.Nome,
             servicosIncluidos,
             emDia = !temAtraso,
+            limiteUsosMes = plano.LimiteUsosMes,
+            usosNoMes,
+            usosRestantes = plano.LimiteUsosMes.HasValue ? Math.Max(0, plano.LimiteUsosMes.Value - usosNoMes) : (int?)null,
+            diasSemanaPermitidos = plano.DiasSemanaPermitidos,
+            diaPermitido,
+            diasPermitidosTexto = PlanoUsoRegras.DescreverDias(plano.DiasSemanaPermitidos),
         });
     }
 
@@ -393,6 +466,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
                 p.Id,
                 p.MesReferencia,
                 p.Valor,
+                p.ValorPago,
                 p.Status,
                 p.PagoEm,
             })
@@ -419,33 +493,50 @@ public class PlanosController(AppDbContext db) : ControllerBase
     }
 
     // ── Helpers de venda (fluxo de caixa) ──────────────────────────
-    private async Task CriarVendaMensalidadeAsync(PagamentoPlano pg, Guid lojaId, Guid clienteId, string nomePlano, decimal valor)
+    private async Task CriarVendaMensalidadeAsync(PagamentoPlano pg, Guid lojaId, Guid clienteId, string nomePlano, decimal valor, decimal? valorPago = null)
     {
         if (pg.VendaId is not null) return;
 
+        // Pagamento com valor diferente da mensalidade (juros/multa ou desconto): a venda registra o valor realmente recebido
+        var recebido = valorPago ?? valor;
         var venda = new Venda
         {
             LojaId = lojaId,
             ClienteId = clienteId,
-            Total = valor,
+            Total = recebido,
             Desconto = 0,
-            TotalFinal = valor,
+            TotalFinal = recebido,
             FormaPagamento = "pix",
             FormasPagamento = null,
             Troco = null,
         };
         db.Vendas.Add(venda);
 
+        var rotulo = valorPago.HasValue ? $"Mensalidade - {nomePlano} ({pg.MesReferencia:MM/yyyy})" : $"Mensalidade - {nomePlano}";
+        var valorMensalidade = recebido > valor ? valor : recebido; // acima do valor: o excedente vira juros/multa
         db.ItensVenda.Add(new ItemVenda
         {
             VendaId = venda.Id,
             ProdutoId = null,
             ServicoId = null,
-            NomeProduto = $"Mensalidade - {nomePlano}",
+            NomeProduto = rotulo,
             Quantidade = 1,
-            PrecoUnitario = valor,
-            Subtotal = valor,
+            PrecoUnitario = valorMensalidade,
+            Subtotal = valorMensalidade,
         });
+        if (recebido > valor)
+        {
+            db.ItensVenda.Add(new ItemVenda
+            {
+                VendaId = venda.Id,
+                ProdutoId = null,
+                ServicoId = null,
+                NomeProduto = $"Juros/multa - {nomePlano} ({pg.MesReferencia:MM/yyyy})",
+                Quantidade = 1,
+                PrecoUnitario = recebido - valor,
+                Subtotal = recebido - valor,
+            });
+        }
 
         pg.VendaId = venda.Id;
     }
@@ -480,6 +571,8 @@ public class PlanosController(AppDbContext db) : ControllerBase
     public record SalvarPlanoRequest(
         string Nome,
         decimal Valor,
-        string? ServicosIds
+        string? ServicosIds,
+        int? LimiteUsosMes = null,
+        List<int>? DiasSemana = null
     );
 }

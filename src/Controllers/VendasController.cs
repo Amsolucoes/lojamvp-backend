@@ -5,6 +5,7 @@ using System.Security.Claims;
 using LojaApi.Data;
 using LojaApi.DTOs;
 using LojaApi.Models;
+using LojaApi.Services;
 using LojaApi.src.Models.Funcionarios;
 
 namespace LojaApi.Controllers;
@@ -80,12 +81,37 @@ public class VendasController(AppDbContext db) : ControllerBase
         }
 
         // ── Validação (só itens de produto validam estoque) ────────────
+        var usosPlanoNestaVenda = new Dictionary<Guid, int>();
         foreach (var item in req.Itens)
         {
             if (item.ServicoId.HasValue)
             {
                 var servico = await db.Servicos.FindAsync(item.ServicoId.Value);
                 if (servico is null) return BadRequest(new { erro = "Serviço não encontrado." });
+
+                // Serviço usado dentro de um plano: respeita os dias da semana e o limite de usos por mês
+                if (item.AssinaturaId.HasValue)
+                {
+                    var assinaturaUso = await db.AssinaturasCliente.FirstOrDefaultAsync(ass => ass.Id == item.AssinaturaId.Value && ass.LojaId == lojaId);
+                    var planoUso = assinaturaUso is null ? null : await db.Planos.FindAsync(assinaturaUso.PlanoId);
+                    if (assinaturaUso is null || planoUso is null)
+                        return BadRequest(new { erro = "Assinatura do plano não encontrada." });
+
+                    var dataUso = dataVendaFinal ?? DateTime.UtcNow;
+                    if (!PlanoUsoRegras.DiaPermitido(planoUso.DiasSemanaPermitidos, dataUso))
+                        return BadRequest(new { erro = $"O plano '{planoUso.Nome}' só pode ser usado em: {PlanoUsoRegras.DescreverDias(planoUso.DiasSemanaPermitidos)}." });
+
+                    if (planoUso.LimiteUsosMes.HasValue)
+                    {
+                        var (inicioMes, fimMes) = PlanoUsoRegras.IntervaloDoMesUtc(dataUso);
+                        var jaUsados = await db.ConsumosPlano.CountAsync(cp =>
+                            cp.AssinaturaId == assinaturaUso.Id && cp.CriadoEm >= inicioMes && cp.CriadoEm < fimMes);
+                        usosPlanoNestaVenda.TryGetValue(assinaturaUso.Id, out var nestaVenda);
+                        if (jaUsados + nestaVenda + 1 > planoUso.LimiteUsosMes.Value)
+                            return BadRequest(new { erro = $"O plano '{planoUso.Nome}' já atingiu o limite de {planoUso.LimiteUsosMes} uso(s) neste mês." });
+                        usosPlanoNestaVenda[assinaturaUso.Id] = nestaVenda + 1;
+                    }
+                }
                 continue; // serviço não tem estoque
             }
 
