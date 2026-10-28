@@ -2238,6 +2238,10 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("valor");
 
+                    b.Property<decimal?>("ValorPago")
+                        .HasColumnType("numeric")
+                        .HasColumnName("valor_pago");
+
                     b.Property<Guid?>("VendaId")
                         .HasColumnType("uuid")
                         .HasColumnName("venda_id");
@@ -2488,6 +2492,14 @@ namespace LojaApi.src.Data.Migrations
                     b.Property<DateTime>("CriadoEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
+
+                    b.Property<string>("DiasSemanaPermitidos")
+                        .HasColumnType("text")
+                        .HasColumnName("dias_semana_permitidos");
+
+                    b.Property<int?>("LimiteUsosMes")
+                        .HasColumnType("integer")
+                        .HasColumnName("limite_usos_mes");
 
                     b.Property<Guid>("LojaId")
                         .HasColumnType("uuid")

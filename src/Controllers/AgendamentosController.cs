@@ -1,5 +1,6 @@
 ﻿using LojaApi.Data;
 using LojaApi.Models;
+using LojaApi.Services;
 using LojaApi.src.Models.Funcionarios;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -115,6 +116,55 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
         return Ok(lista);
     }
 
+    // ── Regras do plano de assinatura ao agendar ──────────────────
+    // Se o cliente tem plano ativo, em dia, que inclui o serviço: o dia da semana precisa ser permitido
+    // e o total de usos do mês (já usados + já agendados) não pode passar do limite do plano.
+    private async Task<string?> ValidarUsoPlanoAsync(Guid lojaId, Guid? clienteId, Guid servicoId, DateTime dataHora, Guid? ignorarAgendamentoId)
+    {
+        if (!clienteId.HasValue) return null;
+
+        var assinatura = await db.AssinaturasCliente.FirstOrDefaultAsync(a =>
+            a.ClienteId == clienteId.Value && a.LojaId == lojaId && a.Status == "ativa");
+        if (assinatura is null) return null;
+
+        var plano = await db.Planos.FindAsync(assinatura.PlanoId);
+        if (plano is null) return null;
+
+        var incluidos = (plano.ServicosIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        if (!incluidos.Contains(servicoId.ToString(), StringComparer.OrdinalIgnoreCase)) return null;
+
+        // Mensalidade em atraso: o plano não cobre o serviço (ele é cobrado normalmente), então não restringe o agendamento
+        var agora = DateTime.UtcNow;
+        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var emAtraso = await db.PagamentosPlano.AnyAsync(p =>
+            p.AssinaturaId == assinatura.Id && p.Status == "pendente" &&
+            (p.MesReferencia < mesAtual || (p.MesReferencia == mesAtual && agora.Day > assinatura.DiaVencimento)));
+        if (emAtraso) return null;
+
+        if (!PlanoUsoRegras.DiaPermitidoLocal(plano.DiasSemanaPermitidos, dataHora))
+            return $"O plano '{plano.Nome}' só pode ser usado em: {PlanoUsoRegras.DescreverDias(plano.DiasSemanaPermitidos)}. Escolha outro dia.";
+
+        if (plano.LimiteUsosMes.HasValue)
+        {
+            var (inicioUtc, fimUtc) = PlanoUsoRegras.IntervaloDoMesUtcDeHorarioLocal(dataHora);
+            var usados = await db.ConsumosPlano.CountAsync(c =>
+                c.AssinaturaId == assinatura.Id && c.CriadoEm >= inicioUtc && c.CriadoEm < fimUtc);
+
+            var inicioLocal = new DateTime(dataHora.Year, dataHora.Month, 1);
+            var fimLocal = inicioLocal.AddMonths(1);
+            var ids = incluidos.Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+            var agendados = await db.Agendamentos.CountAsync(a =>
+                a.LojaId == lojaId && a.ClienteId == clienteId.Value && a.Status != "cancelado" && !a.Pago &&
+                ids.Contains(a.ServicoId) && a.DataHora >= inicioLocal && a.DataHora < fimLocal &&
+                (!ignorarAgendamentoId.HasValue || a.Id != ignorarAgendamentoId.Value));
+
+            if (usados + agendados + 1 > plano.LimiteUsosMes.Value)
+                return $"O plano '{plano.Nome}' permite {plano.LimiteUsosMes} uso(s) por mês e já há {usados + agendados} usado(s) ou agendado(s) neste mês.";
+        }
+
+        return null;
+    }
+
     // ── Criar ─────────────────────────────────────────────────────
     [HttpPost]
     public async Task<IActionResult> Criar([FromBody] SalvarAgendamentoRequest req)
@@ -124,6 +174,9 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
 
         var servico = await db.Servicos.FirstOrDefaultAsync(s => s.Id == req.ServicoId && s.LojaId == lojaId);
         if (servico is null) return BadRequest(new { erro = "Serviço não encontrado." });
+
+        var erroPlano = await ValidarUsoPlanoAsync(lojaId.Value, req.ClienteId, servico.Id, req.DataHora, null);
+        if (erroPlano is not null) return BadRequest(new { erro = erroPlano });
 
         // Nome do cliente: cadastrado ou avulso
         string? nomeCliente = req.NomeCliente;
@@ -177,6 +230,9 @@ public class AgendamentosController(AppDbContext db) : ControllerBase
 
         var servico = await db.Servicos.FirstOrDefaultAsync(s => s.Id == req.ServicoId && s.LojaId == lojaId);
         if (servico is null) return BadRequest(new { erro = "Serviço não encontrado." });
+
+        var erroPlano = await ValidarUsoPlanoAsync(lojaId!.Value, req.ClienteId, servico.Id, req.DataHora, ag.Id);
+        if (erroPlano is not null) return BadRequest(new { erro = erroPlano });
 
         string? nomeCliente = req.NomeCliente;
         if (req.ClienteId.HasValue)
