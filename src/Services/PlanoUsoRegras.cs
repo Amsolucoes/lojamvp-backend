@@ -27,6 +27,19 @@ public static class PlanoUsoRegras
         return (TimeZoneInfo.ConvertTimeToUtc(inicioLocal, Fuso), TimeZoneInfo.ConvertTimeToUtc(fimLocal, Fuso));
     }
 
+    // Início e fim (UTC) do mês de um horário que já está no horário local da loja (ex.: data/hora de um agendamento)
+    public static (DateTime InicioUtc, DateTime FimUtc) IntervaloDoMesUtcDeHorarioLocal(DateTime local)
+    {
+        var inicioLocal = new DateTime(local.Year, local.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        return (TimeZoneInfo.ConvertTimeToUtc(inicioLocal, Fuso), TimeZoneInfo.ConvertTimeToUtc(inicioLocal.AddMonths(1), Fuso));
+    }
+
+    public static bool DiaPermitidoLocal(string? dias, DateTime local)
+    {
+        var lista = LerDias(dias);
+        return lista.Count == 0 || lista.Contains((int)local.DayOfWeek);
+    }
+
     public static List<int> LerDias(string? dias)
         => (dias ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

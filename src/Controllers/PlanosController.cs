@@ -433,6 +433,15 @@ public class PlanosController(AppDbContext db) : ControllerBase
             c.AssinaturaId == assinatura.Id && c.CriadoEm >= inicioMesUtc && c.CriadoEm < fimMesUtc);
         var diaPermitido = PlanoUsoRegras.DiaPermitido(plano.DiasSemanaPermitidos, dataRef);
 
+        // Agendamentos ainda não pagos de serviços do plano, no mês da data de referência (a Agenda soma isso aos usos)
+        var idsServicosPlano = servicosIncluidos.Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+        var mesRefLocal = PlanoUsoRegras.ParaHorarioLocal(dataRef);
+        var iniMesLocal = new DateTime(mesRefLocal.Year, mesRefLocal.Month, 1);
+        var fimMesLocal = iniMesLocal.AddMonths(1);
+        var usosAgendadosNoMes = await db.Agendamentos.CountAsync(ag =>
+            ag.LojaId == lojaId && ag.ClienteId == clienteId && ag.Status != "cancelado" && !ag.Pago &&
+            idsServicosPlano.Contains(ag.ServicoId) && ag.DataHora >= iniMesLocal && ag.DataHora < fimMesLocal);
+
         return Ok(new
         {
             temPlano = true,
@@ -444,6 +453,7 @@ public class PlanosController(AppDbContext db) : ControllerBase
             limiteUsosMes = plano.LimiteUsosMes,
             usosNoMes,
             usosRestantes = plano.LimiteUsosMes.HasValue ? Math.Max(0, plano.LimiteUsosMes.Value - usosNoMes) : (int?)null,
+            usosAgendados = usosAgendadosNoMes,
             diasSemanaPermitidos = plano.DiasSemanaPermitidos,
             diaPermitido,
             diasPermitidosTexto = PlanoUsoRegras.DescreverDias(plano.DiasSemanaPermitidos),
