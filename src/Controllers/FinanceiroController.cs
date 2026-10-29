@@ -1143,7 +1143,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
         if (lojaId is null) return Ok(Array.Empty<object>());
 
         var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId)
-            .Select(c => new { c.Id, c.Nome, c.Limite, c.DiaFechamento, c.DiaVencimento, c.ContaBancariaId, c.Ativo, c.TaxaJurosMensal })
+            .Select(c => new { c.Id, c.Nome, c.Limite, c.DiaFechamento, c.DiaVencimento, c.ContaBancariaId, c.Ativo, c.TaxaJurosMensal, c.Bandeira })
             .ToListAsync();
 
         return Ok(cartoes);
@@ -1164,6 +1164,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
             DiaVencimento = req.DiaVencimento,
             ContaBancariaId = req.ContaBancariaId,
             TaxaJurosMensal = req.TaxaJurosMensal,
+            Bandeira = NormalizarBandeira(req.Bandeira),
         };
         db.CartoesCredito.Add(cartao);
         await db.SaveChangesAsync();
@@ -1183,8 +1184,17 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
         cartao.DiaVencimento = req.DiaVencimento;
         cartao.ContaBancariaId = req.ContaBancariaId;
         cartao.TaxaJurosMensal = req.TaxaJurosMensal;
+        cartao.Bandeira = NormalizarBandeira(req.Bandeira);
         await db.SaveChangesAsync();
         return Ok(new { cartao.Id });
+    }
+
+    private static readonly HashSet<string> BandeirasValidas = ["visa", "mastercard", "elo", "amex", "hipercard", "diners"];
+
+    private static string? NormalizarBandeira(string? valor)
+    {
+        var b = valor?.Trim().ToLowerInvariant();
+        return b is not null && BandeirasValidas.Contains(b) ? b : null;
     }
 
     // ── Lançar uma compra no cartão ────────────────────────────────
@@ -2674,6 +2684,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
             {
                 cartao.Id,
                 cartao.Nome,
+                cartao.Bandeira,
                 cartao.Limite,
                 usado,
                 disponivel = cartao.Limite - usado,
@@ -2967,7 +2978,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
     }
 }
 
-public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId, decimal TaxaJurosMensal = 0);
+public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId, decimal TaxaJurosMensal = 0, string? Bandeira = null);
 public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);
 public record SalvarCategoriaFinanceiraRequest(string Nome, string Tipo, string? Icone);
 public record SalvarContaBancariaRequest(string Nome, decimal SaldoInicial, string? Banco = null, decimal Limite = 0);
