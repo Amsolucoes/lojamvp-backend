@@ -533,6 +533,56 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
             var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             await financeiroService.GerarLoteFixoAsync(fixo, mesAtual);
         }
+        // "Desta data em diante": muda este lançamento e os seguintes ainda em aberto; os anteriores (ex.: meses que
+        // vêm antes do reajuste) ficam como estão. No fixo, o modelo também muda, para os próximos meses saírem certos.
+        else if (modo == "futuras" && lanc.Modo == "fixa" && lanc.LancamentoFixoId.HasValue)
+        {
+            var fixo = await db.LancamentosFixos.FindAsync(lanc.LancamentoFixoId.Value);
+            if (fixo is null) return NotFound();
+
+            var corte = new DateTime(lanc.Vencimento.Year, lanc.Vencimento.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var novoDiaFixo = novoVencimento.Day;
+            var daquiPraFrente = await db.LancamentosFinanceiros
+                .Where(l => l.LancamentoFixoId == fixo.Id && l.Status == "pendente" && l.Vencimento >= corte)
+                .ToListAsync();
+
+            foreach (var p in daquiPraFrente)
+            {
+                p.Descricao = req.Descricao.Trim();
+                p.CategoriaId = req.CategoriaId;
+                p.ContaBancariaId = req.ContaBancariaId;
+                p.Valor = req.Valor;
+                p.Observacao = req.Observacao;
+                var diasNoMes = DateTime.DaysInMonth(p.Vencimento.Year, p.Vencimento.Month);
+                p.Vencimento = new DateTime(p.Vencimento.Year, p.Vencimento.Month, Math.Min(novoDiaFixo, diasNoMes), 12, 0, 0, DateTimeKind.Utc);
+            }
+
+            fixo.Descricao = req.Descricao.Trim();
+            fixo.CategoriaId = req.CategoriaId;
+            fixo.ContaBancariaId = req.ContaBancariaId;
+            fixo.Valor = req.Valor;
+            fixo.Observacao = req.Observacao;
+            fixo.DiaVencimento = novoDiaFixo;
+        }
+        else if (modo == "futuras" && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
+        {
+            var corte = new DateTime(lanc.Vencimento.Year, lanc.Vencimento.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var daquiPraFrente = await db.LancamentosFinanceiros
+                .Where(l => l.GrupoParcelamentoId == lanc.GrupoParcelamentoId.Value && l.Status == "pendente" && l.Vencimento >= corte)
+                .ToListAsync();
+
+            var novoDia = novoVencimento.Day;
+            foreach (var p in daquiPraFrente)
+            {
+                p.Descricao = req.Descricao.Trim();
+                p.CategoriaId = req.CategoriaId;
+                p.ContaBancariaId = req.ContaBancariaId;
+                p.Valor = req.Valor;
+                p.Observacao = req.Observacao;
+                var diasNoMes = DateTime.DaysInMonth(p.Vencimento.Year, p.Vencimento.Month);
+                p.Vencimento = new DateTime(p.Vencimento.Year, p.Vencimento.Month, Math.Min(novoDia, diasNoMes), 12, 0, 0, DateTimeKind.Utc);
+            }
+        }
         else if (modo == "todas" && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
         {
             var pendentes = await db.LancamentosFinanceiros
