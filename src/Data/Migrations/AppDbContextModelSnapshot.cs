@@ -424,6 +424,11 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("ativo");
 
+                    b.Property<string>("Bandeira")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("bandeira");
+
                     b.Property<Guid>("ContaBancariaId")
                         .HasColumnType("uuid")
                         .HasColumnName("conta_bancaria_id");

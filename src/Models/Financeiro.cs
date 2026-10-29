@@ -180,6 +180,10 @@ public class CartaoCredito
     [Column(TypeName = "decimal(5,2)")]
     public decimal TaxaJurosMensal { get; set; } = 0; // % ao mês, usada em pagamento parcial e parcelamento
 
+    // Bandeira do cartão (visa, mastercard, elo, amex, hipercard, diners) — só para exibir o logo
+    [MaxLength(20)]
+    public string? Bandeira { get; set; }
+
     public bool Ativo { get; set; } = true;
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }
