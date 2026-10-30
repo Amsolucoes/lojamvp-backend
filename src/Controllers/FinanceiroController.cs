@@ -482,6 +482,103 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
         return Ok(new { fixo.Id, fixo.Ativa });
     }
 
+    // ── Pagar várias contas de uma vez ────────────────────────────────
+    // forma "conta": paga no débito/dinheiro, saindo da conta bancária escolhida.
+    // forma "cartao": vira compra no cartão de crédito (à vista ou parcelada), mantendo descrição, categoria
+    // e observação; a conta sai de Contas a Pagar e passa a compor a fatura do cartão.
+    public record PagarLoteRequest(List<Guid> Ids, string Forma, Guid? ContaBancariaId, Guid? CartaoId, int Parcelas = 1, DateTime? Data = null);
+
+    [HttpPost("lancamentos/pagar-lote")]
+    public async Task<IActionResult> PagarLote([FromBody] PagarLoteRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
+
+        var ids = (req.Ids ?? []).Distinct().ToList();
+        if (ids.Count == 0) return BadRequest(new { erro = "Selecione ao menos uma conta." });
+
+        var lancs = await db.LancamentosFinanceiros
+            .Where(l => ids.Contains(l.Id) && l.LojaId == lojaId && l.Tipo == "pagar" && l.Status == "pendente" && l.CartaoOrigemId == null)
+            .ToListAsync();
+        if (lancs.Count != ids.Count)
+            return BadRequest(new { erro = "Alguma conta selecionada não está mais pendente. Atualize a lista e tente de novo." });
+
+        var agora = DateTime.UtcNow;
+        var dataBase = DateTime.SpecifyKind((req.Data ?? agora).Date, DateTimeKind.Utc).AddHours(12);
+        var total = lancs.Sum(l => l.Valor);
+
+        if (req.Forma == "conta")
+        {
+            var conta = await db.ContasBancarias.FirstOrDefaultAsync(c => c.Id == req.ContaBancariaId && c.LojaId == lojaId);
+            if (conta is null) return BadRequest(new { erro = "Escolha a conta de onde sai o pagamento." });
+
+            foreach (var l in lancs)
+            {
+                l.ContaBancariaId = conta.Id;
+                l.Status = "pago";
+                l.PagoEm = req.Data.HasValue ? dataBase : agora;
+            }
+        }
+        else if (req.Forma == "cartao")
+        {
+            var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == req.CartaoId && c.LojaId == lojaId);
+            if (cartao is null) return BadRequest(new { erro = "Escolha o cartão de crédito." });
+
+            var parcelas = req.Parcelas;
+            if (parcelas < 1 || parcelas > 24) return BadRequest(new { erro = "Escolha entre 1 e 24 parcelas." });
+
+            foreach (var l in lancs)
+            {
+                if (parcelas == 1)
+                {
+                    db.LancamentosCartao.Add(new LancamentoCartao
+                    {
+                        LojaId = lojaId.Value,
+                        CartaoCreditoId = cartao.Id,
+                        Descricao = l.Descricao,
+                        Valor = l.Valor,
+                        DataCompra = dataBase,
+                        Modo = "avulsa",
+                        CategoriaId = l.CategoriaId,
+                        Observacao = l.Observacao,
+                    });
+                }
+                else
+                {
+                    var grupoId = Guid.NewGuid();
+                    var valorParcela = Math.Round(l.Valor / parcelas, 2);
+                    for (int i = 0; i < parcelas; i++)
+                    {
+                        // a última parcela absorve os centavos da divisão
+                        var valor = i == parcelas - 1 ? l.Valor - valorParcela * (parcelas - 1) : valorParcela;
+                        db.LancamentosCartao.Add(new LancamentoCartao
+                        {
+                            LojaId = lojaId.Value,
+                            CartaoCreditoId = cartao.Id,
+                            Descricao = $"{l.Descricao} ({i + 1}/{parcelas})",
+                            Valor = valor,
+                            DataCompra = dataBase.AddMonths(i),
+                            Modo = "parcelada",
+                            GrupoParcelamentoId = grupoId,
+                            NumeroParcela = i + 1,
+                            TotalParcelas = parcelas,
+                            CategoriaId = l.CategoriaId,
+                            Observacao = l.Observacao,
+                        });
+                    }
+                }
+                db.LancamentosFinanceiros.Remove(l);
+            }
+        }
+        else
+        {
+            return BadRequest(new { erro = "Forma de pagamento inválida." });
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { pagos = lancs.Count, total, forma = req.Forma });
+    }
+
     // ── Marcar lançamento como pago/pendente ──────────────────────────
     [HttpPost("lancamentos/{id:guid}/pagamento")]
     public async Task<IActionResult> MarcarPagamento(Guid id, [FromBody] MarcarPagamentoRequest req)
