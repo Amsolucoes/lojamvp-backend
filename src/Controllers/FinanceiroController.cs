@@ -382,6 +382,160 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
         return Ok(new { grupoParcelamentoId = grupoId, totalGerado = totalParcelas });
     }
 
+    // ── Parcelas de um lançamento parcelado (empréstimo, financiamento...) ──
+    // Permite ver todas as parcelas do grupo, excluir as que não valem mais, marcar quais já foram pagas
+    // e mudar o total de parcelas (ex.: de 80 para 76 depois de adiantar as últimas).
+    private async Task<(LancamentoFinanceiro? Ref, List<LancamentoFinanceiro> Parcelas, string? Erro)> CarregarGrupoAsync(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var lanc = await db.LancamentosFinanceiros.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
+        if (lanc is null) return (null, new List<LancamentoFinanceiro>(), "Lançamento não encontrado.");
+        if (lanc.Modo != "parcelada" || !lanc.GrupoParcelamentoId.HasValue)
+            return (null, new List<LancamentoFinanceiro>(), "Este lançamento não é parcelado.");
+        if (lanc.CartaoOrigemId.HasValue || lanc.FaturaCartaoId.HasValue)
+            return (null, new List<LancamentoFinanceiro>(), "Parcelas de fatura de cartão financiada não podem ser alteradas por aqui.");
+
+        var parcelas = await db.LancamentosFinanceiros
+            .Where(l => l.GrupoParcelamentoId == lanc.GrupoParcelamentoId.Value && l.LojaId == lojaId)
+            .OrderBy(l => l.NumeroParcela).ThenBy(l => l.Vencimento)
+            .ToListAsync();
+        return (lanc, parcelas, null);
+    }
+
+    private static void RenumerarParcelas(List<LancamentoFinanceiro> restantes)
+    {
+        var ordenadas = restantes.OrderBy(l => l.NumeroParcela).ThenBy(l => l.Vencimento).ToList();
+        for (int i = 0; i < ordenadas.Count; i++)
+        {
+            ordenadas[i].NumeroParcela = i + 1;
+            ordenadas[i].TotalParcelas = ordenadas.Count;
+        }
+    }
+
+    [HttpGet("lancamentos/{id:guid}/parcelas")]
+    public async Task<IActionResult> ListarParcelas(Guid id)
+    {
+        var (_, parcelas, erro) = await CarregarGrupoAsync(id);
+        if (erro is not null) return BadRequest(new { erro });
+
+        return Ok(new
+        {
+            total = parcelas.Count,
+            itens = parcelas.Select(p => new { p.Id, numero = p.NumeroParcela, p.Vencimento, p.Valor, p.Status, p.PagoEm }),
+        });
+    }
+
+    public record ParcelasIdsRequest(List<Guid> Ids);
+    public record ParcelasPagamentoRequest(List<Guid> Ids, bool Pago);
+    public record ParcelasTotalRequest(int Total);
+
+    [HttpPost("lancamentos/{id:guid}/parcelas/excluir")]
+    public async Task<IActionResult> ExcluirParcelas(Guid id, [FromBody] ParcelasIdsRequest req)
+    {
+        var (_, parcelas, erro) = await CarregarGrupoAsync(id);
+        if (erro is not null) return BadRequest(new { erro });
+
+        var ids = (req.Ids ?? []).Distinct().ToList();
+        if (ids.Count == 0) return BadRequest(new { erro = "Selecione as parcelas que quer excluir." });
+
+        var alvo = parcelas.Where(p => ids.Contains(p.Id)).ToList();
+        if (alvo.Count != ids.Count) return BadRequest(new { erro = "Alguma parcela selecionada não foi encontrada." });
+        if (alvo.Any(p => p.Status == "pago"))
+            return BadRequest(new { erro = "Parcelas já pagas não podem ser excluídas. Desmarque o pagamento antes, se for o caso." });
+        if (alvo.Count == parcelas.Count)
+            return BadRequest(new { erro = "Para excluir todas as parcelas, exclua o lançamento." });
+
+        db.LancamentosFinanceiros.RemoveRange(alvo);
+        RenumerarParcelas(parcelas.Where(p => !ids.Contains(p.Id)).ToList());
+        await db.SaveChangesAsync();
+        return Ok(new { excluidas = alvo.Count, restantes = parcelas.Count - alvo.Count });
+    }
+
+    [HttpPost("lancamentos/{id:guid}/parcelas/pagamento")]
+    public async Task<IActionResult> MarcarParcelasPagas(Guid id, [FromBody] ParcelasPagamentoRequest req)
+    {
+        var (_, parcelas, erro) = await CarregarGrupoAsync(id);
+        if (erro is not null) return BadRequest(new { erro });
+
+        var ids = (req.Ids ?? []).Distinct().ToList();
+        if (ids.Count == 0) return BadRequest(new { erro = "Selecione as parcelas." });
+
+        var alvo = parcelas.Where(p => ids.Contains(p.Id)).ToList();
+        if (alvo.Count != ids.Count) return BadRequest(new { erro = "Alguma parcela selecionada não foi encontrada." });
+
+        var agora = DateTime.UtcNow;
+        foreach (var p in alvo)
+        {
+            p.Status = req.Pago ? "pago" : "pendente";
+            p.PagoEm = req.Pago ? agora : null;
+        }
+        await db.SaveChangesAsync();
+        return Ok(new { alteradas = alvo.Count });
+    }
+
+    [HttpPost("lancamentos/{id:guid}/parcelas/total")]
+    public async Task<IActionResult> AlterarTotalParcelas(Guid id, [FromBody] ParcelasTotalRequest req)
+    {
+        var (_, parcelas, erro) = await CarregarGrupoAsync(id);
+        if (erro is not null) return BadRequest(new { erro });
+
+        if (req.Total < 1 || req.Total > 360)
+            return BadRequest(new { erro = "O total de parcelas deve ficar entre 1 e 360." });
+
+        var atual = parcelas.Count;
+        if (req.Total == atual) return Ok(new { total = atual });
+
+        if (req.Total < atual)
+        {
+            // Reduzir: remove as últimas parcelas (as de maior número), desde que ainda não estejam pagas
+            var ordenadas = parcelas.OrderBy(p => p.NumeroParcela).ThenBy(p => p.Vencimento).ToList();
+            var remover = ordenadas.Skip(req.Total).ToList();
+            var pagas = remover.Where(p => p.Status == "pago").ToList();
+            if (pagas.Count > 0)
+                return BadRequest(new { erro = $"As parcelas {string.Join(", ", pagas.Select(p => p.NumeroParcela))} já estão pagas e seriam removidas. Desmarque o pagamento delas ou escolha as parcelas a excluir." });
+
+            db.LancamentosFinanceiros.RemoveRange(remover);
+            RenumerarParcelas(ordenadas.Take(req.Total).ToList());
+        }
+        else
+        {
+            // Aumentar: continua a série mensal a partir da última parcela, com os mesmos dados dela
+            var ordenadas = parcelas.OrderBy(p => p.NumeroParcela).ThenBy(p => p.Vencimento).ToList();
+            var ultima = ordenadas[^1];
+            for (int i = 1; i <= req.Total - atual; i++)
+            {
+                db.LancamentosFinanceiros.Add(new LancamentoFinanceiro
+                {
+                    LojaId = ultima.LojaId,
+                    ContaBancariaId = ultima.ContaBancariaId,
+                    Tipo = ultima.Tipo,
+                    Modo = "parcelada",
+                    Descricao = ultima.Descricao,
+                    CategoriaId = ultima.CategoriaId,
+                    Observacao = ultima.Observacao,
+                    Valor = ultima.Valor,
+                    Vencimento = ultima.Vencimento.AddMonths(i),
+                    GrupoParcelamentoId = ultima.GrupoParcelamentoId,
+                    NumeroParcela = atual + i,
+                    Status = "pendente",
+                    Avisar = ultima.Avisar,
+                });
+            }
+            foreach (var p in ordenadas) p.TotalParcelas = req.Total;
+            // as novas parcelas também recebem o total (ajustado depois de salvar, via RenumerarParcelas abaixo)
+        }
+
+        await db.SaveChangesAsync();
+
+        // Garante numeração e total coerentes em todo o grupo (inclui as parcelas recém-criadas)
+        var grupo = await db.LancamentosFinanceiros
+            .Where(l => l.GrupoParcelamentoId == parcelas[0].GrupoParcelamentoId)
+            .ToListAsync();
+        RenumerarParcelas(grupo);
+        await db.SaveChangesAsync();
+        return Ok(new { total = grupo.Count });
+    }
+
     [HttpPost("fixos")]
     public async Task<IActionResult> CriarFixo([FromBody] SalvarLancamentoFixoRequest req)
     {
