@@ -23,6 +23,46 @@ public class ProdutosController(AppDbContext db) : ControllerBase
         return vinculo?.LojaId;
     }
 
+    // Gera códigos de barras EAN-13 de uso interno (prefixo 2 = faixa reservada pela GS1 para uso restrito
+    // à loja). Não são válidos para NF-e/marketplaces, mas funcionam em leitores e etiquetas.
+    // "ignorar" recebe códigos já usados na tela (ainda não salvos) para não repetir dentro do mesmo formulário.
+    [HttpGet("gerar-codigos")]
+    public async Task<IActionResult> GerarCodigos([FromQuery] int quantidade = 1, [FromQuery] string? ignorar = null)
+    {
+        var lojaId = await GetLojaId();
+        quantidade = Math.Clamp(quantidade, 1, 200);
+
+        var usados = new HashSet<string>(
+            (ignorar ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        var doProduto = await db.Produtos
+            .Where(p => p.LojaId == lojaId && p.CodigoBarras != null && p.CodigoBarras.StartsWith("2"))
+            .Select(p => p.CodigoBarras!).ToListAsync();
+        var daVariacao = await db.ProdutoVariacoes
+            .Where(v => v.Produto!.LojaId == lojaId && v.CodigoBarras != null && v.CodigoBarras.StartsWith("2"))
+            .Select(v => v.CodigoBarras!).ToListAsync();
+        usados.UnionWith(doProduto);
+        usados.UnionWith(daVariacao);
+
+        var codigos = new List<string>();
+        while (codigos.Count < quantidade)
+        {
+            var corpo = "2" + Random.Shared.NextInt64(0, 100_000_000_000L).ToString("D11");
+            var codigo = corpo + DigitoVerificadorEan13(corpo);
+            if (!usados.Add(codigo)) continue;
+            codigos.Add(codigo);
+        }
+        return Ok(new { codigos });
+    }
+
+    private static int DigitoVerificadorEan13(string doze)
+    {
+        var soma = 0;
+        for (var i = 0; i < 12; i++)
+            soma += (doze[i] - '0') * (i % 2 == 0 ? 1 : 3);
+        return (10 - soma % 10) % 10;
+    }
+
     [HttpGet]
     public async Task<IActionResult> Listar(
         [FromQuery] string? busca,
