@@ -210,7 +210,7 @@ public class PagamentosController(
             // Busca pagamento no banco pelo ID do MP
             var pagamento = await db.Pagamentos
                 .Include(p => p.Loja)
-                .FirstOrDefaultAsync(p => p.MpPaymentId == mpPaymentId);
+                .FirstOrDefaultAsync(p => p.MpPaymentId == mpPaymentId || p.CobrancaMpPaymentId == mpPaymentId);
 
             if (pagamento is null)
             {
@@ -229,7 +229,7 @@ public class PagamentosController(
                     pagamento.Valor,
                     pagamento.Vencimento,
                     DateTime.UtcNow,
-                    pagamento.FormaPagamento ?? "pix",
+                    pagamento.CobrancaMpPaymentId == mpPaymentId ? "pix" : (pagamento.FormaPagamento ?? "pix"),
                     "Pagamento confirmado via Mercado Pago",
                     null,
                     mpPaymentId

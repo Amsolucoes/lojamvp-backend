@@ -2084,6 +2084,11 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("CobrancaMpPaymentId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("cobranca_mp_payment_id");
+
                     b.Property<DateTime>("CriadoEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
@@ -2140,6 +2145,10 @@ namespace LojaApi.src.Data.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
+
+                    b.Property<DateTime?>("UltimoAvisoCobrancaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultimo_aviso_cobranca_em");
 
                     b.Property<decimal>("Valor")
                         .HasColumnType("decimal(10,2)")

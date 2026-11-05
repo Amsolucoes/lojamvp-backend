@@ -48,6 +48,9 @@ internal class Program
         builder.Services.AddScoped<TurmasService>();
         builder.Services.AddScoped<AlertaEmailService>();
         builder.Services.AddScoped<ComunicadoEmailService>();
+        // Cobrança automática por e-mail (Pix) das mensalidades vencidas — 09:00 de Brasília
+        builder.Services.AddScoped<CobrancaEmailService>();
+        builder.Services.AddHostedService<CobrancaEmailRotinaService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
         builder.Services.AddHostedService<ReservaChacaraRotinaService>();
         // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
