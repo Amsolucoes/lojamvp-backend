@@ -445,6 +445,34 @@ public class ReservaChacaraController(AppDbContext db, ReservaChacaraNotificacao
         return Ok(new { mensagem = "Reserva excluída." });
     }
 
+    // Devolve o PDF do contrato (para o admin enviar pelo WhatsApp ou imprimir), sem enviar e-mail.
+    [HttpGet("{id:int}/contrato-pdf")]
+    public async Task<IActionResult> BaixarContratoPdf(int id)
+    {
+        var lojaId = await GetLojaId();
+        var reserva = await db.Reservas.FirstOrDefaultAsync(r => r.Id == id && r.LojaId == lojaId);
+        if (reserva is null) return NotFound();
+
+        var loja = await db.Lojas.FindAsync(reserva.LojaId);
+        if (loja is null) return NotFound();
+
+        var info = await db.InfosChacara.FirstOrDefaultAsync(i => i.LojaId == reserva.LojaId);
+        var cfg = await db.ConfiguracoesPrecoChacara.FirstOrDefaultAsync(c => c.LojaId == reserva.LojaId)
+            ?? new ConfiguracaoPrecoChacara { LojaId = reserva.LojaId };
+
+        byte[] pdf;
+        try
+        {
+            pdf = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
+        }
+        catch (Exception)
+        {
+            return StatusCode(500, new { erro = "Não foi possível gerar o contrato." });
+        }
+
+        return File(pdf, "application/pdf", $"Contrato-{reserva.DataInicio:yyyy-MM-dd}.pdf");
+    }
+
     [HttpPost("{id:int}/enviar-contrato")]
     public async Task<IActionResult> EnviarContrato(int id)
     {
