@@ -36,7 +36,7 @@ public class ClienteController(AppDbContext db, TenantService tenantService) : C
 
         var agora       = DateTime.UtcNow;
         var diasAtraso  = loja.ProximoVencimento.HasValue
-            ? Math.Max(0, (int)(agora - loja.ProximoVencimento.Value).TotalDays)
+            ? Math.Max(0, TenantService.DiasDeAtraso(loja.ProximoVencimento.Value, agora))
             : 0;
 
         var faturaPendente = loja.Pagamentos

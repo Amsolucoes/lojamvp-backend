@@ -670,7 +670,7 @@ public class AdminController(AppDbContext db, TenantService tenantService, Token
     private static LojaDto ToLojaDto(Loja l, DateTime agora)
     {
         var dias = l.ProximoVencimento.HasValue
-       ? Math.Max(0, (int)(agora - l.ProximoVencimento.Value).TotalDays)
+       ? Math.Max(0, TenantService.DiasDeAtraso(l.ProximoVencimento.Value, agora))
        : 0;
         var (fase, diasRest) = TenantService.CalcularSituacao(l);
         var ultimoLogin = l.Usuarios

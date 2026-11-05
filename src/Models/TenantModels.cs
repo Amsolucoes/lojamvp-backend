@@ -183,6 +183,12 @@ public class Pagamento
     [MaxLength(200)]
     public string? MpBoletoBarcode { get; set; } // Código de barras
 
+    // Cobrança automática por e-mail (rotina diária)
+    public DateTime? UltimoAvisoCobrancaEm { get; set; }  // último e-mail de cobrança enviado
+
+    [MaxLength(100)]
+    public string? CobrancaMpPaymentId { get; set; }      // Pix enviado no e-mail (o webhook também reconhece este id)
+
     public Guid? RegistradoPorId { get; set; }
     public DateTime CriadoEm { get; set; } = DateTime.UtcNow;
 }

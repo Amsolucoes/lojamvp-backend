@@ -11,6 +11,8 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     private string Tk(string? accessToken) => string.IsNullOrWhiteSpace(accessToken) ? AccessToken : accessToken;
     private const string BASE = "https://api.mercadopago.com";
 
+    private static string DocumentoSomenteNumeros(string doc) => new string(doc.Where(char.IsDigit).ToArray());
+
     // ── Criar pagamento Pix ───────────────────────────────────────
     public async Task<MpPaymentResult> CriarPix(
         decimal valor, string descricao,
@@ -32,7 +34,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
                 email = emailPagador,
                 //first_name      = nomePagador.Split(' ').First(),
                 //last_name       = nomePagador.Split(' ').Skip(1).LastOrDefault() ?? "",
-                identification = new { type = "CPF", number = cpfPagador.Replace(".", "").Replace("-", "") },
+                identification = new { type = DocumentoSomenteNumeros(cpfPagador).Length > 11 ? "CNPJ" : "CPF", number = DocumentoSomenteNumeros(cpfPagador) },
             },
         };
 
