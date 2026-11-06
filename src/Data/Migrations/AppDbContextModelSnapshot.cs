@@ -4625,7 +4625,7 @@ namespace LojaApi.src.Data.Migrations
                             AtualizadoEm = new DateTime(2026, 9, 28, 18, 58, 19, 474, DateTimeKind.Utc).AddTicks(3086),
                             Chave = "nf",
                             DisponivelParaAtivar = true,
-                            Nome = "Importação de NF",
+                            Nome = "Entrada de Notas Fiscais",
                             Valor = 29.90m
                         },
                         new
