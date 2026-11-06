@@ -258,7 +258,7 @@ public class AuthController(AppDbContext db, TokenService tokenService, TenantSe
     private static string NomeModulo(string chave) => chave switch
     {
         "financeiro" => "Financeiro (contas a pagar e receber, cartões, balanço)",
-        "nf" => "Entrada de notas fiscais (XML ou manual)",
+        "nf" => "Emissão de notas fiscais",
         "servicos" => "Serviços e agenda",
         "turmas" => "Turmas e alunos",
         "corretora" => "Corretora (apólices, comissões e funil)",
