@@ -22,6 +22,15 @@ public class EstoqueController(AppDbContext db) : ControllerBase
         return vinculo?.LojaId;
     }
 
+    // entrada soma, saída subtrai e ajuste define o total. Entrada e saída precisam de quantidade maior que zero.
+    private static string? ValidarTipo(string tipo, decimal quantidade)
+    {
+        if (tipo != "entrada" && tipo != "saida" && tipo != "ajuste") return "Tipo de movimento inválido.";
+        if (quantidade < 0) return "A quantidade não pode ser negativa.";
+        if (tipo != "ajuste" && quantidade == 0) return "Informe uma quantidade maior que zero.";
+        return null;
+    }
+
     [HttpGet("movimentos")]
     public async Task<IActionResult> Movimentos(
         [FromQuery] Guid? produtoId,
@@ -56,9 +65,18 @@ public class EstoqueController(AppDbContext db) : ControllerBase
         if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId))
             return NotFound(new { erro = "Produto não encontrado." });
 
-        var novoEstoque = req.Tipo == "entrada"
-            ? produto.Estoque + req.Quantidade
-            : req.Quantidade;
+        var erroTipo = ValidarTipo(req.Tipo, req.Quantidade);
+        if (erroTipo is not null) return BadRequest(new { erro = erroTipo });
+
+        if (req.Tipo == "saida" && req.Quantidade > produto.Estoque)
+            return BadRequest(new { erro = $"A quantidade da saída ({req.Quantidade}) é maior que o estoque atual ({produto.Estoque})." });
+
+        var novoEstoque = req.Tipo switch
+        {
+            "entrada" => produto.Estoque + req.Quantidade,
+            "saida"   => produto.Estoque - req.Quantidade,
+            _         => req.Quantidade, // ajuste: define o estoque total
+        };
 
         produto.Estoque = novoEstoque;
         produto.AtualizadoEm = DateTime.UtcNow;
@@ -112,9 +130,18 @@ public class EstoqueController(AppDbContext db) : ControllerBase
 
         if (variacao is null) return NotFound(new { erro = "Variação não encontrada." });
 
-        variacao.Estoque = req.Tipo == "entrada"
-            ? variacao.Estoque + req.Quantidade
-            : req.Quantidade;
+        var erroTipo = ValidarTipo(req.Tipo, req.Quantidade);
+        if (erroTipo is not null) return BadRequest(new { erro = erroTipo });
+
+        if (req.Tipo == "saida" && req.Quantidade > variacao.Estoque)
+            return BadRequest(new { erro = $"A quantidade da saída ({req.Quantidade}) é maior que o estoque atual desta variação ({variacao.Estoque})." });
+
+        variacao.Estoque = req.Tipo switch
+        {
+            "entrada" => variacao.Estoque + req.Quantidade,
+            "saida"   => variacao.Estoque - req.Quantidade,
+            _         => req.Quantidade, // ajuste: define o estoque total da variação
+        };
         variacao.AtualizadoEm = DateTime.UtcNow;
 
         var label = string.Join(" / ", new[] { variacao.Tamanho, variacao.Cor }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -124,7 +151,7 @@ public class EstoqueController(AppDbContext db) : ControllerBase
             ProdutoId = req.ProdutoId,
             Tipo = req.Tipo,
             Quantidade = req.Quantidade,
-            Observacao = $"{req.Observacao ?? (req.Tipo == "entrada" ? "Entrada" : "Ajuste")} - {label}",
+            Observacao = $"{(string.IsNullOrWhiteSpace(req.Observacao) ? (req.Tipo == "entrada" ? "Entrada" : req.Tipo == "saida" ? "Saída" : "Ajuste") : req.Observacao.Trim())} - {label}",
             LojaId = await GetLojaId(),
         });
 

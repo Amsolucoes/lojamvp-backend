@@ -139,7 +139,7 @@ public record VendaDto(
 // ── Estoque ───────────────────────────────────────────────────────
 public record AjusteEstoqueRequest(
     Guid ProdutoId, decimal Quantidade,
-    string Tipo, // entrada | ajuste
+    string Tipo, // entrada | saida | ajuste
     string? Observacao
 );
 
