@@ -1,6 +1,8 @@
 using LojaApi.src.Services;
 
-namespace LojaApi.Services;
+using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Modules.Chacara.Application;
+namespace LojaApi.Modules.Chacara.Infrastructure;
 
 // Roda de hora em hora: expira reservas sem confirmação/pagamento (libera a data) e envia o aviso
 // de 24h das reservas feitas sem pagamento online. A rotina diária (BloqueioAutomaticoService) continua existindo.

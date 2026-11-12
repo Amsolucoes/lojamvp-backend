@@ -1,7 +1,7 @@
 ﻿using System.Text.Json.Serialization;
 using LojaApi.Models;
 
-namespace LojaApi.src.Models;
+namespace LojaApi.Modules.Chacara.Domain;
 
 public class Reserva
 {

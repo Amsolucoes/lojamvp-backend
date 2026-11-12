@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 
-namespace LojaApi.src.Models;
+namespace LojaApi.Modules.Chacara.Domain;
 
 public class AvaliacaoChacara
 {

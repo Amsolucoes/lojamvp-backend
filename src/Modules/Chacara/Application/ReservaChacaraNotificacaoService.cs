@@ -4,7 +4,9 @@ using LojaApi.src.Models;
 using Microsoft.EntityFrameworkCore;
 using Resend;
 
-namespace LojaApi.src.Services;
+using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Modules.Chacara.Infrastructure;
+namespace LojaApi.Modules.Chacara.Application;
 
 public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, ILogger<ReservaChacaraNotificacaoService> logger)
 {

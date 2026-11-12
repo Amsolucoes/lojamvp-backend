@@ -1,30 +1,15 @@
-﻿using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 using LojaApi.Data;
+using LojaApi.Shared.Application;
+using Microsoft.EntityFrameworkCore;
 
-namespace LojaApi.src.Controllers;
+namespace LojaApi.Modules.Chacara.Application;
 
-[ApiController]
-[Route("api/chacara")]
-[Authorize]
-public class ChacaraDashboardController(AppDbContext db) : ControllerBase
+// Painel da chácara: ocupação mês a mês, receita, pendências e próximas reservas.
+public class DashboardChacaraService(AppDbContext db)
 {
-    private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-
-    private async Task<Guid?> GetLojaId()
+    public async Task<Resultado<object>> ObterAsync(Guid? lojaId, int mesesAFrente, int? ano)
     {
-        var vinculo = await db.UsuariosLoja
-            .FirstOrDefaultAsync(ul => ul.UsuarioId == UsuarioId && ul.Ativo);
-        return vinculo?.LojaId;
-    }
-
-    [HttpGet("dashboard")]
-    public async Task<IActionResult> Dashboard([FromQuery] int mesesAFrente = 6, [FromQuery] int? ano = null)
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return Ok(new { });
+        if (lojaId is null) return Resultado.Ok(new { });
 
         var agora = DateTime.UtcNow;
 
@@ -174,7 +159,7 @@ public class ChacaraDashboardController(AppDbContext db) : ControllerBase
         var totalReservas = confirmadas.Count(r => r.DataInicio <= fimPeriodo && r.DataFim >= inicioPeriodo);
         var totalNegociacao = emNegociacao.Count(r => r.DataInicio <= fimPeriodo && r.DataFim >= inicioPeriodo);
 
-        return Ok(new
+        return Resultado.Ok(new
         {
             anoSelecionado = ano,
             anosDisponiveis,

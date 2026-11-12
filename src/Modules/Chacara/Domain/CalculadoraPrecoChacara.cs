@@ -1,6 +1,6 @@
 ﻿using LojaApi.src.Models;
 
-namespace LojaApi.src.Services;
+namespace LojaApi.Modules.Chacara.Domain;
 
 public static class CalculadoraPrecoChacara
 {

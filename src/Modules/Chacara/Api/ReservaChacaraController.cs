@@ -6,7 +6,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
-namespace LojaApi.src.Controllers;
+using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Modules.Chacara.Application;
+using LojaApi.Modules.Chacara.Infrastructure;
+namespace LojaApi.Modules.Chacara.Api;
 
 [ApiController]
 [Route("api/chacara/reservas")]

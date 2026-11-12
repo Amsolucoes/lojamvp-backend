@@ -6,12 +6,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace LojaApi.Controllers;
+using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Modules.Chacara.Application;
+using LojaApi.Modules.Chacara.Infrastructure;
+namespace LojaApi.Modules.Chacara.Api;
 
 [ApiController]
 [Route("api/publico/{slug}/chacara")]
 [AllowAnonymous]
-public class PublicoChacaraController(AppDbContext db, LojaApi.src.Services.ReservaChacaraNotificacaoService notificacao, MercadoPagoService mpService, IConfiguration config) : ControllerBase
+public class PublicoChacaraController(AppDbContext db, ReservaChacaraNotificacaoService notificacao, MercadoPagoService mpService, IConfiguration config) : ControllerBase
 {
     // Credencial do Mercado Pago da loja da chácara: a própria (cifrada no banco) ou, só para a loja da plataforma, a do servidor.
     // Uma loja sem nenhuma das duas NÃO cai na conta da plataforma: o pagamento online fica indisponível.

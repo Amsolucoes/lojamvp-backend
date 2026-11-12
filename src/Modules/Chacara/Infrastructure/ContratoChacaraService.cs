@@ -3,7 +3,9 @@ using LojaApi.src.Models;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 
-namespace LojaApi.src.Services;
+using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Modules.Chacara.Application;
+namespace LojaApi.Modules.Chacara.Infrastructure;
 
 public static class ContratoChacaraService
 {
