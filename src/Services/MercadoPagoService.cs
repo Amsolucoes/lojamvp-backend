@@ -14,7 +14,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     private static string DocumentoSomenteNumeros(string doc) => new string(doc.Where(char.IsDigit).ToArray());
 
     // ── Criar pagamento Pix ───────────────────────────────────────
-    public async Task<MpPaymentResult> CriarPix(
+    public virtual async Task<MpPaymentResult> CriarPix(
         decimal valor, string descricao,
         string emailPagador, string cpfPagador,
         string nomePagador, Guid pagamentoId,
@@ -67,7 +67,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Criar pagamento cartão ────────────────────────────────────
-    public async Task<MpPaymentResult> CriarCartao(
+    public virtual async Task<MpPaymentResult> CriarCartao(
         decimal valor, string descricao,
         string cardToken, int parcelas,
         string emailPagador, string cpfPagador,
@@ -92,7 +92,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Valida um Access Token de cliente (devolve o e-mail da conta MP) ──
-    public async Task<(bool ok, string? email)> ValidarToken(string accessToken)
+    public virtual async Task<(bool ok, string? email)> ValidarToken(string accessToken)
     {
         try
         {
@@ -112,7 +112,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Verificar status de um pagamento ──────────────────────────
-    public async Task<string?> VerificarStatus(string mpPaymentId, string? accessToken = null)
+    public virtual async Task<string?> VerificarStatus(string mpPaymentId, string? accessToken = null)
     {
         try
         {
