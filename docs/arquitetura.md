@@ -74,6 +74,12 @@ if (erro != null) return Resultado.Invalido(erro);
 PostgreSQL, serviços externos trocados por dublês). Como rodar e como escrever: `tests/README.md`.
 Cada módulo migrado deve vir com os seus testes.
 
+## Agente do projeto
+
+`.claude/agents/revisor-testador.md` é um agente do Claude Code que revisa e testa uma mudança antes da entrega
+(suíte completa, teste de mutação com `tools/mutacao/mutar.sh`, migration x modelo, checklist de revisão) e devolve
+um relatório. Ele não altera código de produção.
+
 ## Estado atual
 
 - **Migrado:** Chácara (reservas, site público, pagamento da reserva, preços, horários, períodos especiais,
