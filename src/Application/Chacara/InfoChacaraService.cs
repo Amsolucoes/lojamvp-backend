@@ -1,6 +1,5 @@
 using LojaApi.Data;
 using LojaApi.Domain.Chacara;
-using LojaApi.Services;
 using LojaApi.Shared.Application;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,7 +14,7 @@ public record AtualizarInfoRequest(
 public record SalvarPagamentoRequest(string AccessToken, string PublicKey);
 
 // Dados cadastrais da chácara e a conta do Mercado Pago em que ela recebe os pagamentos.
-public class InfoChacaraService(AppDbContext db, MercadoPagoService mp, IConfiguration config)
+public class InfoChacaraService(AppDbContext db, IPagamentoOnlineChacara mp, IProtetorDeSegredos segredos)
 {
     public async Task<Resultado<object>> ObterAsync(Guid? lojaId)
     {
@@ -51,7 +50,7 @@ public class InfoChacaraService(AppDbContext db, MercadoPagoService mp, IConfigu
         if (lojaId is null) return Resultado.Invalido("Loja não encontrada.");
 
         var info = await ObterOuCriarAsync(lojaId.Value);
-        var token = SegredoService.Decifrar(info.MpAccessTokenCifrado, config);
+        var token = segredos.Decifrar(info.MpAccessTokenCifrado);
 
         return Resultado.Ok(new
         {
@@ -75,7 +74,7 @@ public class InfoChacaraService(AppDbContext db, MercadoPagoService mp, IConfigu
             return Resultado.Invalido("O Mercado Pago não aceitou esse Access Token. Confira se copiou o de produção.");
 
         var info = await ObterOuCriarAsync(lojaId.Value);
-        info.DefinirPagamentoOnline(SegredoService.Cifrar(token, config), req.PublicKey);
+        info.DefinirPagamentoOnline(segredos.Cifrar(token), req.PublicKey);
         await db.SaveChangesAsync();
 
         return Resultado.Ok(new { configurado = true, contaMercadoPago = email });

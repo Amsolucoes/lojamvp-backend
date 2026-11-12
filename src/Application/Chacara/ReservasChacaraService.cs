@@ -1,6 +1,5 @@
 using LojaApi.Data;
 using LojaApi.Domain.Chacara;
-using LojaApi.Infrastructure.Chacara;
 using LojaApi.Shared.Application;
 using Microsoft.EntityFrameworkCore;
 
@@ -28,7 +27,7 @@ public record EditarReservaRequest(
 public record ArquivoContrato(byte[] Pdf, string NomeArquivo);
 
 // Casos de uso das reservas, do ponto de vista do dono da chácara (painel).
-public class ReservasChacaraService(AppDbContext db, ReservaChacaraNotificacaoService notificacao)
+public class ReservasChacaraService(AppDbContext db, ReservaChacaraNotificacaoService notificacao, IGeradorContratoChacara contratos)
 {
     // Marca como "expirada" as reservas pendentes cujo prazo já passou — chamado sob demanda
     // (mesmo padrão usado na Loja de Acessórios), sem precisar de job em segundo plano dedicado.
@@ -386,7 +385,7 @@ public class ReservasChacaraService(AppDbContext db, ReservaChacaraNotificacaoSe
         byte[] pdf;
         try
         {
-            pdf = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
+            pdf = contratos.Gerar(reserva, loja, info, cfg);
         }
         catch (Exception)
         {

@@ -1,6 +1,5 @@
 using LojaApi.Data;
 using LojaApi.Domain.Chacara;
-using LojaApi.Services;
 using LojaApi.Shared.Application;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,7 +13,7 @@ public class PagamentoReservaChacaraService(
     AppDbContext db,
     CredencialMercadoPagoChacaraService credencialMp,
     ReservaChacaraNotificacaoService notificacao,
-    MercadoPagoService mpService)
+    IPagamentoOnlineChacara mpService)
 {
     private const string PaginaNaoEncontrada = "Página não encontrada.";
     private const string ReservaNaoEncontrada = "Reserva não encontrada.";

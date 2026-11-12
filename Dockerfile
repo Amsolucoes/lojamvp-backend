@@ -9,6 +9,7 @@ WORKDIR /src
 COPY ["LojaApi.csproj", "."]
 COPY ["src/Domain/LojaApi.Domain.csproj", "src/Domain/"]
 COPY ["src/Data/LojaApi.Data.csproj", "src/Data/"]
+COPY ["src/Application/LojaApi.Application.csproj", "src/Application/"]
 RUN dotnet restore LojaApi.csproj
 COPY . .
 RUN dotnet build LojaApi.csproj -c Release -o /app/build

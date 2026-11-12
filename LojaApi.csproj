@@ -38,7 +38,12 @@
     <None Remove="src/Data/**" />
     <Content Remove="src/Data/**" />
     <EmbeddedResource Remove="src/Data/**" />
+    <Compile Remove="src/Application/**" />
+    <None Remove="src/Application/**" />
+    <Content Remove="src/Application/**" />
+    <EmbeddedResource Remove="src/Application/**" />
     <ProjectReference Include="src/Domain/LojaApi.Domain.csproj" />
+    <ProjectReference Include="src/Application/LojaApi.Application.csproj" />
     <ProjectReference Include="src/Data/LojaApi.Data.csproj" />
   </ItemGroup>
 
