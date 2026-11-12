@@ -74,6 +74,10 @@ if (erro != null) return Resultado.Invalido(erro);
 PostgreSQL, serviços externos trocados por dublês). Como rodar e como escrever: `tests/README.md`.
 Cada módulo migrado deve vir com os seus testes.
 
+## Como uma mudança chega ao ar
+
+Veja `docs/fluxo-de-entrega.md` (branch → PR → teste local → "pode mesclar" → deploy).
+
 ## Agente do projeto
 
 `.claude/agents/revisor-testador.md` é um agente do Claude Code que revisa e testa uma mudança antes da entrega
