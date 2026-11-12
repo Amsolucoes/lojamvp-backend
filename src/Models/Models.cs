@@ -171,6 +171,10 @@ public class Cliente
 
     public decimal CreditoLoja { get; set; } = 0;
 
+    // Carteira ("fiado"): quanto o cliente pode ficar devendo. Em branco = sem limite.
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? LimiteCarteira { get; set; }
+
     // Navegação
     public ICollection<Venda> Vendas { get; set; } = [];
 }
@@ -220,6 +224,10 @@ public class Venda
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal? CreditoUsado { get; set; }
+
+    // Parte da venda que foi para a carteira do cliente (paga depois). Não entra no caixa até o cliente pagar.
+    [Column(TypeName = "decimal(10,2)")]
+    public decimal? ValorCarteira { get; set; }
 
     // Navegação
     public ICollection<ItemVenda> Itens { get; set; } = [];

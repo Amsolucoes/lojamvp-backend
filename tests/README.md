@@ -1,6 +1,6 @@
 # Testes do backend
 
-Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre o módulo **Chácara**; os próximos módulos migrados ganham a
+Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara** e **Carteira**; os próximos módulos migrados ganham a
 sua pasta ao lado (`tests/LojaApi.Tests/<Modulo>/...` e `Integracao/`).
 
 ## Como rodar
@@ -23,7 +23,7 @@ dotnet test tests/LojaApi.Tests
 
 | Pasta | Tipo | O que prova |
 |---|---|---|
-| `Chacara/Dominio` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, validações |
+| `Chacara/Dominio`, `Carteira/Dominio` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira |
 | `Compartilhado` | Unitários | `Resultado<T>` → 200/400/404/409/500 |
 | `Integracao` | **Integração**, API de verdade + PostgreSQL | Fluxos completos pelo HTTP, com login (JWT), banco real e migrations |
 
@@ -35,6 +35,7 @@ Integração (`Integracao/`):
 - `PagamentoChacaraApiTests` – Pix, cartão e combinado até a confirmação da reserva
 - `IsolamentoEntreLojasApiTests` – uma loja nunca vê nem altera dados de outra (multi-loja)
 - `RotinasChacaraApiTests` – expiração automática e aviso de 24h
+- `CarteiraApiTests` – carteira do cliente (fiado): venda no caixa (inteira ou dividida), limite, recebimento (entra no caixa), extrato, excluir venda/cliente, isolamento entre lojas
 
 ## Como os testes funcionam por dentro
 

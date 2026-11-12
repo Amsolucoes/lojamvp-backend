@@ -5,6 +5,8 @@ using System.Security.Claims;
 using LojaApi.Data;
 using LojaApi.DTOs;
 using LojaApi.Models;
+using LojaApi.Modules.Carteira.Application;
+using LojaApi.Modules.Carteira.Domain;
 using LojaApi.Services;
 using LojaApi.src.Models.Funcionarios;
 
@@ -13,7 +15,7 @@ namespace LojaApi.Controllers;
 [ApiController]
 [Route("api/vendas")]
 [Authorize]
-public class VendasController(AppDbContext db) : ControllerBase
+public class VendasController(AppDbContext db, CarteiraService carteira) : ControllerBase
 {
     private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -170,6 +172,20 @@ public class VendasController(AppDbContext db) : ControllerBase
             CreditoUsado = req.CreditoUsado,
         };
         if (dataVendaFinal.HasValue) venda.CriadaEm = dataVendaFinal.Value;
+
+        // ── Carteira: parte (ou a venda toda) fica para o cliente pagar depois ──
+        var valorDevido = venda.TotalFinal - (req.CreditoUsado ?? 0);
+        var valorCarteira = RegrasCarteira.ValorNaCarteira(req.FormasPagamento, req.FormaPagamento, valorDevido);
+        if (valorCarteira > 0)
+        {
+            if (valorCarteira > valorDevido + 0.01m)
+                return BadRequest(new { erro = "O valor na carteira não pode ser maior que o total da venda." });
+
+            var compra = await carteira.LancarCompraDaVendaAsync(lojaId!.Value, req.ClienteId, venda.Id, valorCarteira, venda.CriadaEm);
+            if (!compra.Sucesso) return BadRequest(new { erro = compra.Mensagem });
+            venda.ValorCarteira = valorCarteira;
+        }
+
         db.Vendas.Add(venda);
 
         // ── Itens ─────────────────────────────────────────────────────
@@ -327,6 +343,10 @@ public class VendasController(AppDbContext db) : ControllerBase
         if (temNfceAutorizada)
             return BadRequest(new { erro = "Não é possível excluir: já existe uma nota fiscal autorizada para esta venda. Cancele a nota antes." });
 
+        // Tira da carteira a parte que o cliente ficou devendo nessa venda
+        var erroCarteira = await carteira.RemoverCompraDaVendaAsync(lojaId ?? Guid.Empty, venda.Id);
+        if (erroCarteira != null) return BadRequest(new { erro = erroCarteira });
+
         // Comissão gerada por essa venda: se já foi paga num fechamento, não dá
         // pra excluir sem bagunçar o fechamento — se ainda tá pendente, estorna junto.
         var comissaoVenda = await db.ComissoesFuncionario
@@ -398,6 +418,7 @@ public class VendasController(AppDbContext db) : ControllerBase
         v.OrigemNome,
         v.CreditoUsado,
         v.FuncionarioId,
-        v.NomeFuncionario
+        v.NomeFuncionario,
+        v.ValorCarteira
     );
 }

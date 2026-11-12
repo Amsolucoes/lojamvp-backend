@@ -6,6 +6,7 @@ using LojaApi.src.Models.Funcionarios;
 using LojaApi.src.Models.OrdemServico;
 using Microsoft.EntityFrameworkCore;
 using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Modules.Carteira.Domain;
 
 namespace LojaApi.Data;
 
@@ -63,6 +64,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NfImportada> NfsImportadas => Set<NfImportada>();
     public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
     public DbSet<CategoriaVideoAjuda> CategoriasVideoAjuda => Set<CategoriaVideoAjuda>();
+    public DbSet<MovimentoCarteira> MovimentosCarteira => Set<MovimentoCarteira>();
     public DbSet<Reserva> Reservas => Set<Reserva>();
     public DbSet<ConfiguracaoPrecoChacara> ConfiguracoesPrecoChacara => Set<ConfiguracaoPrecoChacara>();
     public DbSet<FaixaPrecoChacara> FaixasPrecoChacara => Set<FaixaPrecoChacara>();
@@ -157,6 +159,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .WithMany(c => c.Vendas)
             .HasForeignKey(v => v.ClienteId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // ── Carteira do cliente (fiado) ─────────────────────────────
+        mb.Entity<MovimentoCarteira>().HasOne<Loja>().WithMany()
+            .HasForeignKey(m => m.LojaId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<MovimentoCarteira>().HasOne<Cliente>().WithMany()
+            .HasForeignKey(m => m.ClienteId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<MovimentoCarteira>().HasOne<Venda>().WithMany()
+            .HasForeignKey(m => m.VendaId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<MovimentoCarteira>().HasIndex(m => new { m.LojaId, m.ClienteId });
 
         mb.Entity<Loja>().HasIndex(l => l.Email).IsUnique();
         mb.Entity<Loja>().HasIndex(l => l.SchemaNome).IsUnique();

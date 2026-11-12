@@ -5,13 +5,15 @@ using System.Security.Claims;
 using LojaApi.Data;
 using LojaApi.DTOs;
 using LojaApi.Models;
+using LojaApi.Modules.Carteira.Application;
+using LojaApi.Modules.Carteira.Domain;
 
 namespace LojaApi.Controllers;
 
 [ApiController]
 [Route("api/clientes")]
 [Authorize]
-public class ClientesController(AppDbContext db) : ControllerBase
+public class ClientesController(AppDbContext db, CarteiraService carteira) : ControllerBase
 {
     private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -42,7 +44,10 @@ public class ClientesController(AppDbContext db) : ControllerBase
                 c.Id, c.Nome, c.Telefone, c.Cpf, c.Email,
                 c.Endereco, c.Observacoes, c.CriadoEm,
                 c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal),
-                c.DataNascimento, c.CreditoLoja
+                c.DataNascimento, c.CreditoLoja,
+                db.MovimentosCarteira.Where(m => m.ClienteId == c.Id)
+                    .Sum(m => m.Tipo == TipoMovimentoCarteira.Compra ? m.Valor : -m.Valor),
+                c.LimiteCarteira
             )).ToListAsync();
 
         return Ok(lista);
@@ -62,7 +67,8 @@ public class ClientesController(AppDbContext db) : ControllerBase
             c.Id, c.Nome, c.Telefone, c.Cpf, c.Email,
             c.Endereco, c.Observacoes, c.CriadoEm,
             c.Vendas.Count, c.Vendas.Sum(v => v.TotalFinal),
-            c.DataNascimento, c.CreditoLoja
+            c.DataNascimento, c.CreditoLoja,
+            await carteira.SaldoPorClienteAsync(c.Id), c.LimiteCarteira
         ));
     }
 
@@ -96,7 +102,7 @@ public class ClientesController(AppDbContext db) : ControllerBase
         return CreatedAtAction(nameof(Buscar), new { id = cliente.Id },
             new ClienteDto(cliente.Id, cliente.Nome, cliente.Telefone, cliente.Cpf,
                 cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm, 0, 0, cliente.DataNascimento,
-                cliente.CreditoLoja));
+                cliente.CreditoLoja, 0, cliente.LimiteCarteira));
     }
 
     [HttpPut("{id:guid}")]
@@ -125,7 +131,7 @@ public class ClientesController(AppDbContext db) : ControllerBase
         return Ok(new ClienteDto(cliente.Id, cliente.Nome, cliente.Telefone, cliente.Cpf,
             cliente.Email, cliente.Endereco, cliente.Observacoes, cliente.CriadoEm,
             compras.Count, compras.Sum(v => v.TotalFinal), cliente.DataNascimento,
-            cliente.CreditoLoja));
+            cliente.CreditoLoja, await carteira.SaldoPorClienteAsync(cliente.Id), cliente.LimiteCarteira));
     }
 
     [HttpDelete("{id:guid}")]
@@ -135,6 +141,10 @@ public class ClientesController(AppDbContext db) : ControllerBase
         var lojaId = await GetLojaId();
         var cliente = await db.Clientes.FindAsync(id);
         if (cliente is null || (lojaId.HasValue && cliente.LojaId != lojaId)) return NotFound();
+
+        if (await carteira.SaldoPorClienteAsync(cliente.Id) > 0)
+            return BadRequest(new { erro = "Este cliente tem saldo a pagar na carteira. Receba o pagamento antes de excluir o cadastro." });
+
         db.Clientes.Remove(cliente);
         await db.SaveChangesAsync();
         return NoContent();

@@ -1052,6 +1052,10 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("character varying(300)")
                         .HasColumnName("endereco");
 
+                    b.Property<decimal?>("LimiteCarteira")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("limite_carteira");
+
                     b.Property<Guid?>("LojaId")
                         .HasColumnType("uuid")
                         .HasColumnName("loja_id");
@@ -1931,6 +1935,72 @@ namespace LojaApi.src.Data.Migrations
                         .HasDatabaseName("i_x_lojas_slug");
 
                     b.ToTable("lojas");
+                });
+
+            modelBuilder.Entity("LojaApi.Modules.Carteira.Domain.MovimentoCarteira", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<DateTime>("Data")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("data");
+
+                    b.Property<string>("FormaPagamento")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("forma_pagamento");
+
+                    b.Property<Guid>("LojaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("loja_id");
+
+                    b.Property<Guid?>("MovimentoCaixaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("movimento_caixa_id");
+
+                    b.Property<string>("Observacao")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("observacao");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("tipo");
+
+                    b.Property<decimal>("Valor")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("valor");
+
+                    b.Property<Guid?>("VendaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("venda_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_movimentos_carteira");
+
+                    b.HasIndex("ClienteId")
+                        .HasDatabaseName("i_x_movimentos_carteira_cliente_id");
+
+                    b.HasIndex("VendaId")
+                        .HasDatabaseName("i_x_movimentos_carteira_venda_id");
+
+                    b.HasIndex("LojaId", "ClienteId")
+                        .HasDatabaseName("i_x_movimentos_carteira_loja_id_cliente_id");
+
+                    b.ToTable("movimentos_carteira", (string)null);
                 });
 
             modelBuilder.Entity("LojaApi.Models.MovimentoCaixa", b =>
@@ -3321,6 +3391,10 @@ namespace LojaApi.src.Data.Migrations
                     b.Property<decimal?>("Troco")
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("troco");
+
+                    b.Property<decimal?>("ValorCarteira")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("valor_carteira");
 
                     b.HasKey("Id")
                         .HasName("p_k_vendas");
@@ -6173,6 +6247,29 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Categoria");
 
                     b.Navigation("ContaBancaria");
+                });
+
+            modelBuilder.Entity("LojaApi.Modules.Carteira.Domain.MovimentoCarteira", b =>
+                {
+                    b.HasOne("LojaApi.Models.Cliente", null)
+                        .WithMany()
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_movimentos_carteira_clientes_cliente_id");
+
+                    b.HasOne("LojaApi.Models.Loja", null)
+                        .WithMany()
+                        .HasForeignKey("LojaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_movimentos_carteira_lojas_loja_id");
+
+                    b.HasOne("LojaApi.Models.Venda", null)
+                        .WithMany()
+                        .HasForeignKey("VendaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("f_k_movimentos_carteira_vendas_venda_id");
                 });
 
             modelBuilder.Entity("LojaApi.Models.MovimentoCaixa", b =>
