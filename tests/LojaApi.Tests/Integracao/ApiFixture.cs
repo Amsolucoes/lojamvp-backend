@@ -25,6 +25,8 @@ public sealed class ColecaoApi : ICollectionFixture<ApiFixture>
 public sealed class ApiFixture : IAsyncLifetime
 {
     public const string VariavelDoBanco = "LOJA_TESTES_DB";
+    public const string PerfilChacara = "20000000-0000-0000-0000-00000000000a";
+    public const string PerfilLoja = "20000000-0000-0000-0000-000000000002"; // loja com caixa, produtos e vendas
 
     // Ex.: "Host=localhost;Port=5432;Username=postgres;Password=..." (sem Database: o banco é criado e apagado pelos testes)
     private static readonly string? Servidor = Environment.GetEnvironmentVariable(VariavelDoBanco);
@@ -97,7 +99,7 @@ public sealed class ApiFixture : IAsyncLifetime
     }
 
     // Cria uma loja de chácara nova (cadastro + login), já com o módulo de reservas ativo e um endereço (slug) próprio.
-    public async Task<LojaTeste> NovaLojaAsync(bool moduloReservasAtivo = true)
+    public async Task<LojaTeste> NovaLojaAsync(bool moduloReservasAtivo = true, string perfilId = PerfilChacara)
     {
         var sufixo = Guid.NewGuid().ToString("N")[..10];
         var nome = $"Chácara {sufixo}";
@@ -107,7 +109,7 @@ public sealed class ApiFixture : IAsyncLifetime
         var cadastro = await anonimo.PostAsJsonAsync("/api/auth/signup", new
         {
             nomeLoja = nome,
-            perfilId = "20000000-0000-0000-0000-00000000000a", // perfil "Chácara"
+            perfilId,
             nomeResponsavel = "Dono",
             email,
             senha = "123456",

@@ -82,7 +82,9 @@ public record ClienteDto(
     string? Observacoes, DateTime CriadoEm,
     int TotalCompras, decimal TotalGasto,
     DateTime? DataNascimento,
-    decimal creditoLoja
+    decimal creditoLoja,
+    decimal SaldoCarteira = 0,
+    decimal? LimiteCarteira = null
 );
 
 public record SalvarClienteRequest(
@@ -133,7 +135,8 @@ public record VendaDto(
     string? OrigemNome,
     decimal? CreditoUsado = null,
     Guid? FuncionarioId = null,
-    string? NomeFuncionario = null
+    string? NomeFuncionario = null,
+    decimal? ValorCarteira = null
 );
 
 // ── Estoque ───────────────────────────────────────────────────────

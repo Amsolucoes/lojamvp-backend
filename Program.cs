@@ -1,4 +1,5 @@
 ﻿using LojaApi.Data;
+using LojaApi.Modules.Carteira;
 using LojaApi.Modules.Chacara;
 using LojaApi.Shared;
 using LojaApi.Services;
@@ -57,6 +58,7 @@ internal class Program
         builder.Services.AddSharedKernel();
         // Módulo Chácara (reservas, preços, site público): serviços e rotina horária
         builder.Services.AddChacaraModule();
+        builder.Services.AddCarteiraModule();
         // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
         builder.Services.AddSingleton<PushService>();
         builder.Services.AddHostedService<AvisosVencimentoService>();

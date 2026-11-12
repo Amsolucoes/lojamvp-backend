@@ -77,7 +77,8 @@ Cada módulo migrado deve vir com os seus testes.
 ## Estado atual
 
 - **Migrado:** Chácara (reservas, site público, pagamento da reserva, preços, horários, períodos especiais,
-  fotos, dados da chácara, painel), **com testes**.
+  fotos, dados da chácara, painel) e **Carteira do cliente** ("fiado": compra agora, paga depois), ambos **com testes**.
+  A Carteira se liga ao caixa pelo `VendasController` (`CarteiraService`) sem que o resto de Vendas precise ser migrado.
 - **Ainda no formato antigo** (controllers com a lógica dentro): Financeiro (o maior, ~3.300 linhas), Notas
   fiscais (importação), Administração, Planos/assinantes, Ordem de serviço, Produtos acessório, Corretora,
   Funcionários, Vendas, Turmas, Produtos, Clientes e demais.
