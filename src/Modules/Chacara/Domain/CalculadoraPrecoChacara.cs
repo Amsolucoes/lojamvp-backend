@@ -87,6 +87,27 @@ public static class CalculadoraPrecoChacara
         return new ResultadoCalculo(total, taxaLimpeza, total + taxaLimpeza, detalhamento);
     }
 
+    // Soma (ou desconta) o ajuste dos horários de entrada/saída escolhidos. Pacote fechado tem preço fixo e não muda.
+    public static ResultadoCalculo AplicarAjustesDeHorario(
+        ResultadoCalculo resultado, List<HorarioChacara> horarios, string? horaEntrada, string? horaSaida)
+    {
+        if (resultado.PacoteFechado) return resultado;
+
+        var ajusteEntrada = AjusteHorarioChacaraService.Obter(horarios, "entrada", horaEntrada);
+        var ajusteSaida = AjusteHorarioChacaraService.Obter(horarios, "saida", horaSaida);
+        if (ajusteEntrada == 0 && ajusteSaida == 0) return resultado;
+
+        var detalhamento = new List<string>(resultado.Detalhamento);
+        if (ajusteEntrada != 0) detalhamento.Add($"Entrada às {horaEntrada}: R$ {ajusteEntrada:N2}");
+        if (ajusteSaida != 0) detalhamento.Add($"Saída às {horaSaida}: R$ {ajusteSaida:N2}");
+
+        return resultado with
+        {
+            ValorTotal = resultado.ValorTotal + ajusteEntrada + ajusteSaida,
+            Detalhamento = detalhamento,
+        };
+    }
+
     private static bool EhDiaFimSemana(DateTime d) =>
         d.DayOfWeek == DayOfWeek.Friday || d.DayOfWeek == DayOfWeek.Saturday || d.DayOfWeek == DayOfWeek.Sunday;
 

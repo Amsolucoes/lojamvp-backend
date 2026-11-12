@@ -35,6 +35,12 @@ public class InfoChacara
 
     public Loja? Loja { get; set; }
 
+    // Dados mínimos do locador para o contrato sair completo
+    public bool LocadorCompleto() =>
+        !string.IsNullOrWhiteSpace(LocadorNome)
+        && (LocadorCpf ?? "").Count(char.IsDigit) == 11
+        && !string.IsNullOrWhiteSpace(LocadorEndereco);
+
     private static string? Limpar(string? texto) => string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
 
     // Atualiza os dados cadastrais da chácara (descrição, endereço, horários padrão, locador do contrato...).

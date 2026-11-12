@@ -18,6 +18,10 @@ public static class ChacaraModule
         services.AddScoped<FotosChacaraService>();
         services.AddScoped<InfoChacaraService>();
         services.AddScoped<DashboardChacaraService>();
+        services.AddScoped<ReservasChacaraService>();
+        services.AddScoped<CredencialMercadoPagoChacaraService>();
+        services.AddScoped<SiteChacaraService>();
+        services.AddScoped<PagamentoReservaChacaraService>();
 
         services.AddHostedService<ReservaChacaraRotinaService>();
         return services;

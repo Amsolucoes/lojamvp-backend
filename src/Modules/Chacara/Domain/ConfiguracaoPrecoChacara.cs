@@ -21,6 +21,12 @@ public class ConfiguracaoPrecoChacara
 
     public Loja? Loja { get; set; }
 
+    // Parcelas e taxa do cartão são configuráveis por chácara
+    public int ParcelasMaximas(decimal valor) => valor <= ValorLimiteParcelas ? ParcelasAteLimite : ParcelasAcimaLimite;
+
+    // Repassa a taxa de processamento do Mercado Pago — não confundir com juros de parcelamento, que o MP cobra do cliente à parte.
+    public decimal ComTaxaDoCartao(decimal valor) => Math.Round(valor * (1 + PercentualTaxaCartao / 100m), 2);
+
     // Regras dos campos opcionais do cartão. Devolve a mensagem de erro, ou null se estiver tudo certo.
     public static string? ValidarCartao(decimal? percentualTaxaCartao, int? parcelasAteLimite, int? parcelasAcimaLimite)
     {
