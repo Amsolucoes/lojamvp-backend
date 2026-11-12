@@ -1,4 +1,4 @@
-using static LojaApi.Controllers.AdminController;
+using static LojaApi.Modules.Plataforma.Api.AdminController;
 
 namespace LojaApi.DTOs;
 

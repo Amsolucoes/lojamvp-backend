@@ -1,0 +1,383 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using LojaApi.Data;
+using LojaApi.DTOs;
+using LojaApi.Models;
+using LojaApi.src.Models;
+
+namespace LojaApi.Modules.Produtos.Api;
+
+[ApiController]
+[Route("api/produtos")]
+[Authorize]
+public class ProdutosController(AppDbContext db) : ControllerBase
+{
+    private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    private async Task<Guid?> GetLojaId()
+    {
+        var vinculo = await db.UsuariosLoja
+            .FirstOrDefaultAsync(ul => ul.UsuarioId == UsuarioId && ul.Ativo);
+        return vinculo?.LojaId;
+    }
+
+    // Gera códigos de barras EAN-13 de uso interno (prefixo 2 = faixa reservada pela GS1 para uso restrito
+    // à loja). Não são válidos para NF-e/marketplaces, mas funcionam em leitores e etiquetas.
+    // "ignorar" recebe códigos já usados na tela (ainda não salvos) para não repetir dentro do mesmo formulário.
+    [HttpGet("gerar-codigos")]
+    public async Task<IActionResult> GerarCodigos([FromQuery] int quantidade = 1, [FromQuery] string? ignorar = null)
+    {
+        var lojaId = await GetLojaId();
+        quantidade = Math.Clamp(quantidade, 1, 200);
+
+        var usados = new HashSet<string>(
+            (ignorar ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        var doProduto = await db.Produtos
+            .Where(p => p.LojaId == lojaId && p.CodigoBarras != null && p.CodigoBarras.StartsWith("2"))
+            .Select(p => p.CodigoBarras!).ToListAsync();
+        var daVariacao = await db.ProdutoVariacoes
+            .Where(v => v.Produto!.LojaId == lojaId && v.CodigoBarras != null && v.CodigoBarras.StartsWith("2"))
+            .Select(v => v.CodigoBarras!).ToListAsync();
+        usados.UnionWith(doProduto);
+        usados.UnionWith(daVariacao);
+
+        var codigos = new List<string>();
+        while (codigos.Count < quantidade)
+        {
+            var corpo = "2" + Random.Shared.NextInt64(0, 100_000_000_000L).ToString("D11");
+            var codigo = corpo + DigitoVerificadorEan13(corpo);
+            if (!usados.Add(codigo)) continue;
+            codigos.Add(codigo);
+        }
+        return Ok(new { codigos });
+    }
+
+    private static int DigitoVerificadorEan13(string doze)
+    {
+        var soma = 0;
+        for (var i = 0; i < 12; i++)
+            soma += (doze[i] - '0') * (i % 2 == 0 ? 1 : 3);
+        return (10 - soma % 10) % 10;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Listar(
+        [FromQuery] string? busca,
+        [FromQuery] string? categoria,
+        [FromQuery] bool? ativo,
+        [FromQuery] Guid? marcaId)
+    {
+        var lojaId = await GetLojaId();
+        var q = db.Produtos.Include(p => p.Variacoes).Include(p => p.Marca).Include(p => p.Fornecedor).AsQueryable();
+
+        if (lojaId.HasValue)
+            q = q.Where(p => p.LojaId == lojaId);
+
+        if (!string.IsNullOrWhiteSpace(busca))
+            q = q.Where(p => p.Nome.ToLower().Contains(busca.ToLower()) ||
+                              (p.CodigoBarras != null && p.CodigoBarras.Contains(busca)));
+        if (!string.IsNullOrWhiteSpace(categoria))
+            q = q.Where(p => p.Categoria == categoria);
+        if (ativo.HasValue)
+            q = q.Where(p => p.Ativo == ativo.Value);
+        if (marcaId.HasValue)
+            q = q.Where(p => p.MarcaId == marcaId.Value);
+
+        var lista = await q.OrderBy(p => p.Nome).Select(p => ToDto(p)).ToListAsync();
+        return Ok(lista);
+    }
+
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> Buscar(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var p = await db.Produtos.Include(x => x.Variacoes).Include(x => x.Marca).Include(x => x.Fornecedor).FirstOrDefaultAsync(x => x.Id == id);
+        if (p is null || (lojaId.HasValue && p.LojaId != lojaId)) return NotFound();
+        return Ok(ToDto(p));
+    }
+
+    [HttpPost]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Criar([FromBody] SalvarProdutoRequest req)
+    {
+        var lojaId = await GetLojaId();
+
+        if (!string.IsNullOrWhiteSpace(req.CodigoBarras))
+        {
+            var jaExiste = await db.Produtos.AnyAsync(p => p.CodigoBarras == req.CodigoBarras && p.LojaId == lojaId);
+            if (jaExiste)
+                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outro produto da sua loja." });
+        }
+
+        var produto = new Produto
+        {
+            Nome = req.Nome,
+            Descricao = req.Descricao,
+            Categoria = req.Categoria,
+            PrecoCusto = req.PrecoCusto,
+            PrecoVenda = req.PrecoVenda,
+            Estoque = req.Estoque,
+            EstoqueMinimo = req.EstoqueMinimo,
+            CodigoBarras = req.CodigoBarras,
+            Ativo = req.Ativo,
+            TipoVenda = req.TipoVenda,
+            UnidadeMedida = req.UnidadeMedida,
+            MarcaId = req.MarcaId,
+            FornecedorId = req.FornecedorId,
+            LojaId = lojaId,
+        };
+        db.Produtos.Add(produto);
+
+        if (req.Estoque > 0)
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = produto.Id,
+                Tipo = "entrada",
+                Quantidade = req.Estoque,
+                Observacao = "Estoque inicial",
+                LojaId = lojaId,
+            });
+
+        await db.SaveChangesAsync();
+
+        var produtoComMarca = await db.Produtos.Include(p => p.Marca).Include(p => p.Fornecedor).FirstAsync(p => p.Id == produto.Id);
+        return CreatedAtAction(nameof(Buscar), new { id = produto.Id }, ToDto(produtoComMarca));
+    }
+
+    [HttpPut("{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] SalvarProdutoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var produto = await db.Produtos.FindAsync(id);
+        if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(req.CodigoBarras) && req.CodigoBarras != produto.CodigoBarras)
+        {
+            var jaExiste = await db.Produtos.AnyAsync(p => p.CodigoBarras == req.CodigoBarras && p.LojaId == lojaId && p.Id != id);
+            if (jaExiste)
+                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outro produto da sua loja." });
+        }
+
+        produto.Nome = req.Nome; produto.Descricao = req.Descricao;
+        produto.Categoria = req.Categoria; produto.PrecoCusto = req.PrecoCusto;
+        produto.PrecoVenda = req.PrecoVenda; produto.EstoqueMinimo = req.EstoqueMinimo;
+        produto.CodigoBarras = req.CodigoBarras; produto.Ativo = req.Ativo;
+        produto.TipoVenda = req.TipoVenda;
+        produto.UnidadeMedida = req.UnidadeMedida;
+        produto.MarcaId = req.MarcaId;
+        produto.FornecedorId = req.FornecedorId;
+        produto.AtualizadoEm = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+
+        var produtoComMarca = await db.Produtos.Include(p => p.Variacoes).Include(p => p.Marca).Include(p => p.Fornecedor).FirstAsync(p => p.Id == produto.Id);
+        return Ok(ToDto(produtoComMarca));
+    }
+
+    // ── Atualização de custo/venda em lote (tela de Precificação) ──────
+    [HttpPut("precos-em-lote")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarPrecosEmLote([FromBody] AtualizarPrecosEmLoteRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (req.Produtos.Count == 0) return Ok(new { atualizados = 0 });
+
+        var ids = req.Produtos.Select(p => p.Id).ToList();
+        var produtos = await db.Produtos
+            .Where(p => ids.Contains(p.Id) && (!lojaId.HasValue || p.LojaId == lojaId))
+            .ToListAsync();
+
+        var porId = req.Produtos.ToDictionary(p => p.Id);
+        foreach (var produto in produtos)
+        {
+            var item = porId[produto.Id];
+            produto.PrecoCusto = item.PrecoCusto;
+            produto.PrecoVenda = item.PrecoVenda;
+            produto.AtualizadoEm = DateTime.UtcNow;
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new { atualizados = produtos.Count });
+    }
+
+    // ── Ativar/inativar em lote (seleção múltipla na lista de Produtos) ──
+    [HttpPut("status-em-lote")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarStatusEmLote([FromBody] AtualizarStatusEmLoteRequest req)
+    {
+        var lojaId = await GetLojaId();
+        if (req.Ids.Count == 0) return Ok(new { atualizados = 0 });
+
+        var atualizados = await db.Produtos
+            .Where(p => req.Ids.Contains(p.Id) && (!lojaId.HasValue || p.LojaId == lojaId))
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(p => p.Ativo, req.Ativo)
+                .SetProperty(p => p.AtualizadoEm, DateTime.UtcNow));
+
+        return Ok(new { atualizados });
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> Deletar(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var produto = await db.Produtos.FindAsync(id);
+        if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
+
+        // Bloqueia se o produto já foi vendido
+        var temVendas = await db.ItensVenda.AnyAsync(i => i.ProdutoId == id);
+        if (temVendas)
+            return BadRequest(new { erro = "Não é possível excluir: este produto já tem vendas registradas. Você pode apenas inativá-lo." });
+
+        // Remove variações e movimentos vinculados, depois o produto
+        await db.ProdutoVariacoes.Where(v => v.ProdutoId == id).ExecuteDeleteAsync();
+        await db.Movimentos.Where(m => m.ProdutoId == id).ExecuteDeleteAsync();
+        await db.Produtos.Where(p => p.Id == id).ExecuteDeleteAsync();
+
+        return Ok(new { mensagem = "Produto excluído com sucesso." });
+    }
+
+    // ── Variações ─────────────────────────────────────────────────────
+    [HttpGet("{id:guid}/variacoes")]
+    public async Task<IActionResult> ListarVariacoes(Guid id)
+    {
+        var lojaId = await GetLojaId();
+        var produto = await db.Produtos.FindAsync(id);
+        if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
+
+        var variacoes = await db.ProdutoVariacoes
+            .Where(v => v.ProdutoId == id)
+            .OrderBy(v => v.Tamanho).ThenBy(v => v.Cor)
+            .Select(v => new ProdutoVariacaoDto(
+                v.Id, v.Tamanho, v.Cor, v.OutroCampo,
+                v.CodigoBarras, v.Estoque, v.EstoqueMinimo, v.Ativo))
+            .ToListAsync();
+
+        return Ok(variacoes);
+    }
+
+    [HttpPost("{id:guid}/variacoes")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AdicionarVariacao(Guid id, [FromBody] SalvarVariacaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var produto = await db.Produtos.FindAsync(id);
+        if (produto is null || (lojaId.HasValue && produto.LojaId != lojaId)) return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(req.CodigoBarras))
+        {
+            var jaExiste = await db.ProdutoVariacoes
+                .Include(v => v.Produto)
+                .AnyAsync(v => v.CodigoBarras == req.CodigoBarras && v.Produto!.LojaId == lojaId);
+            if (jaExiste)
+                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outra variação da sua loja." });
+        }
+
+        var variacao = new ProdutoVariacao
+        {
+            ProdutoId = id,
+            Tamanho = req.Tamanho,
+            Cor = req.Cor,
+            OutroCampo = req.OutroCampo,
+            CodigoBarras = string.IsNullOrWhiteSpace(req.CodigoBarras) ? null : req.CodigoBarras,
+            Estoque = req.Estoque,
+            EstoqueMinimo = req.EstoqueMinimo,
+        };
+        db.ProdutoVariacoes.Add(variacao);
+        await db.SaveChangesAsync();
+
+        return Ok(new ProdutoVariacaoDto(
+            variacao.Id, variacao.Tamanho, variacao.Cor,
+            variacao.OutroCampo, variacao.CodigoBarras, variacao.Estoque,
+            variacao.EstoqueMinimo, variacao.Ativo));
+    }
+
+    [HttpPut("{id:guid}/variacoes/{varId:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> AtualizarVariacao(Guid id, Guid varId, [FromBody] SalvarVariacaoRequest req)
+    {
+        var lojaId = await GetLojaId();
+        var variacao = await db.ProdutoVariacoes
+            .FirstOrDefaultAsync(v => v.Id == varId && v.ProdutoId == id);
+        if (variacao is null) return NotFound();
+
+        if (!string.IsNullOrWhiteSpace(req.CodigoBarras) && req.CodigoBarras != variacao.CodigoBarras)
+        {
+            var jaExiste = await db.ProdutoVariacoes
+                .Include(v => v.Produto)
+                .AnyAsync(v => v.CodigoBarras == req.CodigoBarras && v.Produto!.LojaId == lojaId && v.Id != varId);
+            if (jaExiste)
+                return Conflict(new { erro = $"O código de barras '{req.CodigoBarras}' já está cadastrado em outra variação da sua loja." });
+        }
+
+        var estoqueAnterior = variacao.Estoque;
+
+        variacao.Tamanho = req.Tamanho;
+        variacao.Cor = req.Cor;
+        variacao.OutroCampo = req.OutroCampo;
+        variacao.CodigoBarras = string.IsNullOrWhiteSpace(req.CodigoBarras) ? null : req.CodigoBarras;
+        variacao.Estoque = req.Estoque;
+        variacao.EstoqueMinimo = req.EstoqueMinimo;
+        variacao.AtualizadoEm = DateTime.UtcNow;
+
+        // Estoque mudou editando o produto direto (fora da tela Estoque) — registra o
+        // movimento mesmo assim, senão a diferença fica invisível no histórico.
+        if (req.Estoque != estoqueAnterior)
+        {
+            var produtoNome = await db.Produtos.Where(p => p.Id == id).Select(p => p.Nome).FirstOrDefaultAsync();
+            var label = string.Join(" / ", new[] { req.Tamanho, req.Cor }.Where(s => !string.IsNullOrWhiteSpace(s)));
+            db.Movimentos.Add(new MovimentoEstoque
+            {
+                ProdutoId = id,
+                Tipo = "ajuste",
+                Quantidade = req.Estoque,
+                Observacao = $"Editado via cadastro do produto" + (label != "" ? $" ({label})" : ""),
+                LojaId = lojaId,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        return Ok(new ProdutoVariacaoDto(
+            variacao.Id, variacao.Tamanho, variacao.Cor,
+            variacao.OutroCampo, variacao.CodigoBarras, variacao.Estoque,
+            variacao.EstoqueMinimo, variacao.Ativo));
+    }
+
+    [HttpDelete("{id:guid}/variacoes/{varId:guid}")]
+    [Authorize(Roles = "admin,superadmin")]
+    public async Task<IActionResult> RemoverVariacao(Guid id, Guid varId)
+    {
+        var variacao = await db.ProdutoVariacoes
+            .FirstOrDefaultAsync(v => v.Id == varId && v.ProdutoId == id);
+        if (variacao is null) return NotFound();
+
+        variacao.Ativo = false;
+        variacao.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    private static ProdutoDto ToDto(Produto p) => new(
+        p.Id, p.Nome, p.Descricao, p.Categoria,
+        p.PrecoCusto, p.PrecoVenda,
+        p.Variacoes.Where(v => v.Ativo).Sum(v => v.Estoque) > 0
+            ? p.Variacoes.Where(v => v.Ativo).Sum(v => v.Estoque)
+            : p.Estoque,
+        p.EstoqueMinimo,
+        p.CodigoBarras, p.Ativo,
+        p.CriadoEm, p.AtualizadoEm,
+        p.TipoVenda, p.UnidadeMedida,
+        p.Variacoes.Where(v => v.Ativo).Select(v => new ProdutoVariacaoDto(
+            v.Id, v.Tamanho, v.Cor, v.OutroCampo, v.CodigoBarras,
+            v.Estoque, v.EstoqueMinimo, v.Ativo)).ToList(),
+        p.MarcaId,
+        p.Marca?.Nome,
+        p.FornecedorId,
+        p.Fornecedor?.Nome
+        );
+}

@@ -19,7 +19,8 @@ src/
     Application/                  <- Resultado<T>, ILojaAtual (loja do usuário logado)
     Api/                          <- ParaResposta(): traduz Resultado em 200/400/404/409/500
   Data/                           <- AppDbContext e Migrations
-  Controllers, Services, Models   <- módulos ainda NÃO migrados (ver "Estado atual")
+  Controllers/                    <- (vazia: todo controller agora mora na pasta do seu módulo)
+  Services, Models, DTOs          <- ainda compartilhados (ver "Estado atual")
 ```
 
 ## O que vai em cada camada
@@ -86,12 +87,26 @@ um relatório. Ele não altera código de produção.
 
 ## Estado atual
 
-- **Migrado:** Chácara (reservas, site público, pagamento da reserva, preços, horários, períodos especiais,
-  fotos, dados da chácara, painel) e **Carteira do cliente** ("fiado": compra agora, paga depois), ambos **com testes**.
-  A Carteira se liga ao caixa pelo `VendasController` (`CarteiraService`) sem que o resto de Vendas precise ser migrado.
-- **Ainda no formato antigo** (controllers com a lógica dentro): Financeiro (o maior, ~3.300 linhas), Notas
-  fiscais (importação), Administração, Planos/assinantes, Ordem de serviço, Produtos acessório, Corretora,
-  Funcionários, Vendas, Turmas, Produtos, Clientes e demais.
+Todo controller mora em `src/Modules/<Modulo>/Api`. Só alguns módulos já estão **de verdade** em camadas (Domain/Application);
+nos demais, a pasta `Api` ainda tem a lógica dentro do controller (migrar é o próximo passo).
+
+| Módulo (pasta) | Controllers | Camadas |
+|---|---|---|
+| **Chacara** | reservas, site público, preços, horários, períodos, fotos, dados, painel | ✅ Domain/Application/Infrastructure/Api + testes |
+| **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Api + testes |
+| **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Api` (a migrar) |
+| **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | só `Api` |
+| **Fiscal** | EmissaoFiscal | só `Api` |
+| **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Api` |
+| **Clientes** | Clientes (cadastro de clientes da loja) | só `Api` |
+| **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | só `Api` |
+| **Equipe** | Funcionarios, Comissoes | só `Api` |
+| **Corretora** | Corretora | só `Api` |
+| **Turmas** | Turmas | só `Api` |
+| **OrdemServico** | OrdemServico, Patrimonio | só `Api` |
+| **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma) | só `Api` |
+| **Plataforma** | Admin, Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Pagamentos (assinatura), Push | só `Api` |
+| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | só `Api` |
 
 ## Próximos passos sugeridos
 
