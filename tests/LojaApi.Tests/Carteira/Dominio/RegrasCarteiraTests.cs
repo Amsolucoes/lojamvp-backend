@@ -1,4 +1,4 @@
-using LojaApi.Modules.Carteira.Domain;
+using LojaApi.Domain.Carteira;
 
 namespace LojaApi.Tests.Carteira.Dominio;
 

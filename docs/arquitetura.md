@@ -6,22 +6,29 @@ os controllers sejam só a "porta de entrada" HTTP.
 
 ## Estrutura
 
+As pastas são **por camada** e, dentro de cada camada, **uma subpasta por módulo de negócio**:
+
 ```
 src/
-  Modules/
-    Chacara/                      <- um módulo de negócio = uma pasta
-      ChacaraModule.cs            <- registra os serviços do módulo (Program.cs só chama AddChacaraModule())
-      Domain/                     <- o coração: entidades e regras de negócio
-      Application/                <- casos de uso (o que o sistema FAZ), um serviço por assunto
-      Infrastructure/             <- coisas técnicas do módulo: PDF do contrato, rotina em segundo plano
-      Api/                        <- controllers finos (HTTP)
-  Shared/                         <- usado por todos os módulos
-    Application/                  <- Resultado<T>, ILojaAtual (loja do usuário logado)
-    Api/                          <- ParaResposta(): traduz Resultado em 200/400/404/409/500
-  Data/                           <- AppDbContext e Migrations
-  Controllers/                    <- (vazia: todo controller agora mora na pasta do seu módulo)
-  Services, Models, DTOs          <- ainda compartilhados (ver "Estado atual")
+  Controllers/<Modulo>/      <- SÓ controllers (HTTP). Ex.: Controllers/Chacara/ReservaChacaraController.cs
+  Application/<Modulo>/      <- casos de uso (o que o sistema FAZ), um serviço por assunto
+  Domain/<Modulo>/           <- o coração: entidades e regras de negócio (sem banco, sem HTTP)
+  Infrastructure/<Modulo>/   <- detalhes técnicos (PDF, rotinas em segundo plano) e o registro do módulo (<Modulo>Module.cs)
+  Shared/                    <- usado por todos os módulos: Resultado<T>, ILojaAtual, ParaResposta()
+  Data/                      <- AppDbContext e Migrations
+  Services, Models, DTOs     <- ainda compartilhados (código dos módulos ainda não migrados)
 ```
+
+Namespaces seguem as pastas: `LojaApi.Controllers.<Modulo>`, `LojaApi.Application.<Modulo>`, `LojaApi.Domain.<Modulo>`,
+`LojaApi.Infrastructure.<Modulo>`.
+
+Hoje só **Chacara** e **Carteira** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
+dentro do controller) e, ao serem migrados, ganham `Application/<Modulo>` e `Domain/<Modulo>`.
+
+> **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
+> estrangeiras depende disso. Por isso o `AppDbContext` fixa, para toda entidade em `LojaApi.Domain.*`, o nome da FK como
+> `f_k_<tabela>_<tabela principal>_<colunas>` (igual ao que já está no banco). Ao criar um módulo novo, confira com
+> `dotnet ef dbcontext script` que o DDL não mudou.
 
 ## O que vai em cada camada
 
@@ -30,7 +37,7 @@ src/
 | **Domain** | Entidades com comportamento (`Reserva.Confirmar`, `ConfiguracaoPrecoChacara.ParcelasMaximas`), constantes de status, cálculos puros (`CalculadoraPrecoChacara`), regras da agenda | só do .NET | banco, HTTP, e-mail, qualquer serviço externo |
 | **Application** | Casos de uso: carregam do banco, chamam as regras do Domain, salvam, devolvem `Resultado<T>` | Domain, `AppDbContext`, Infrastructure | `ControllerBase`, `IActionResult`, qualquer coisa de HTTP |
 | **Infrastructure** | Integrações e detalhes técnicos: PDF (QuestPDF), rotinas (`BackgroundService`) | Domain | — |
-| **Api** | Controllers: leem a requisição, descobrem a loja (`ILojaAtual`), chamam **um** caso de uso, devolvem `ParaResposta(this)` | Application | regra de negócio e acesso direto ao banco |
+| **Controllers** | Controllers: leem a requisição, descobrem a loja (`ILojaAtual`), chamam **um** caso de uso, devolvem `ParaResposta(this)` | Application | regra de negócio e acesso direto ao banco |
 
 Regra prática: *se você está escrevendo um `if` de negócio dentro de um controller, ele está no lugar errado.*
 
@@ -61,8 +68,8 @@ if (erro != null) return Resultado.Invalido(erro);
 
 ## Como criar um novo módulo
 
-1. Crie `src/Modules/<Modulo>/{Domain,Application,Infrastructure,Api}`.
-2. Mova as entidades para `Domain` (namespace `LojaApi.Modules.<Modulo>.Domain`) e atualize os nomes no
+1. Crie `src/Domain/<Modulo>`, `src/Application/<Modulo>` e `src/Infrastructure/<Modulo>` (os controllers já estão em `src/Controllers/<Modulo>`).
+2. Mova as entidades para `src/Domain/<Modulo>` (namespace `LojaApi.Domain.<Modulo>`) e atualize os nomes no
    `AppDbContextModelSnapshot.cs`. **Não** altere tabelas/colunas.
 3. Para cada controller: crie o serviço de aplicação com a lógica (copie, não reescreva) e deixe o controller fino.
 4. Crie `<Modulo>Module.cs` com `AddXModule()` e chame no `Program.cs`.
@@ -87,26 +94,26 @@ um relatório. Ele não altera código de produção.
 
 ## Estado atual
 
-Todo controller mora em `src/Modules/<Modulo>/Api`. Só alguns módulos já estão **de verdade** em camadas (Domain/Application);
-nos demais, a pasta `Api` ainda tem a lógica dentro do controller (migrar é o próximo passo).
+Todo controller mora em `src/Controllers/<Modulo>`. Só alguns módulos já estão **de verdade** em camadas (Domain/Application);
+nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo).
 
-| Módulo (pasta) | Controllers | Camadas |
+| Módulo | Controllers | Camadas |
 |---|---|---|
-| **Chacara** | reservas, site público, preços, horários, períodos, fotos, dados, painel | ✅ Domain/Application/Infrastructure/Api + testes |
-| **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Api + testes |
-| **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Api` (a migrar) |
-| **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | só `Api` |
-| **Fiscal** | EmissaoFiscal | só `Api` |
-| **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Api` |
-| **Clientes** | Clientes (cadastro de clientes da loja) | só `Api` |
-| **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | só `Api` |
-| **Equipe** | Funcionarios, Comissoes | só `Api` |
-| **Corretora** | Corretora | só `Api` |
-| **Turmas** | Turmas | só `Api` |
-| **OrdemServico** | OrdemServico, Patrimonio | só `Api` |
-| **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma) | só `Api` |
-| **Plataforma** | Admin, Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Pagamentos (assinatura), Push | só `Api` |
-| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | só `Api` |
+| **Chacara** | reservas, site público, preços, horários, períodos, fotos, dados, painel | ✅ Domain/Application/Infrastructure/Controllers + testes |
+| **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Controllers + testes |
+| **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Controllers` (a migrar) |
+| **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | só `Controllers` |
+| **Fiscal** | EmissaoFiscal | só `Controllers` |
+| **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Controllers` |
+| **Clientes** | Clientes (cadastro de clientes da loja) | só `Controllers` |
+| **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | só `Controllers` |
+| **Equipe** | Funcionarios, Comissoes | só `Controllers` |
+| **Corretora** | Corretora | só `Controllers` |
+| **Turmas** | Turmas | só `Controllers` |
+| **OrdemServico** | OrdemServico, Patrimonio | só `Controllers` |
+| **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma) | só `Controllers` |
+| **Plataforma** | Admin, Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Pagamentos (assinatura), Push | só `Controllers` |
+| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | só `Controllers` |
 
 ## Próximos passos sugeridos
 

@@ -1,4 +1,4 @@
-using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Domain.Chacara;
 
 namespace LojaApi.Tests.Chacara.Dominio;
 

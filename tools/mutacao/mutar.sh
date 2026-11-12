@@ -3,7 +3,7 @@
 # Se os testes continuam passando, eles NÃO protegem aquela regra. O arquivo é restaurado no fim, sempre.
 #
 # uso: tools/mutacao/mutar.sh <arquivo.cs> '<expressão sed>' '<filtro dotnet test>' '<descrição do bug>'
-#   ex: tools/mutacao/mutar.sh src/Modules/Chacara/Domain/RegrasAgenda.cs \
+#   ex: tools/mutacao/mutar.sh src/Domain/Chacara/RegrasAgenda.cs \
 #         's/(r.ExpiraEm == null || r.ExpiraEm > agora)/true/' 'FullyQualifiedName~Chacara' 'pendente vencida ocupa a agenda'
 # Saída: "DETECTADO" (algum teste falhou = bom) ou "NÃO DETECTADO" (os testes não pegaram o bug).
 # Precisa de LOJA_TESTES_DB (veja tests/README.md) para rodar os testes de integração.

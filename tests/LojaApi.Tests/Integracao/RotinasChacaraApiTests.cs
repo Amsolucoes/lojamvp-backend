@@ -1,4 +1,4 @@
-using LojaApi.Modules.Chacara.Application;
+using LojaApi.Application.Chacara;
 using LojaApi.Tests.Chacara.Dominio;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
