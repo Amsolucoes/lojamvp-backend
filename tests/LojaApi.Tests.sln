@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LojaApi", "..\LojaApi.csproj", "{EB3B4DBE-5F4A-49F2-9B9F-085012C7A7A4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LojaApi.Tests", "LojaApi.Tests\LojaApi.Tests.csproj", "{C7DF0445-E736-46AA-A568-20D8D6730129}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EB3B4DBE-5F4A-49F2-9B9F-085012C7A7A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EB3B4DBE-5F4A-49F2-9B9F-085012C7A7A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EB3B4DBE-5F4A-49F2-9B9F-085012C7A7A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EB3B4DBE-5F4A-49F2-9B9F-085012C7A7A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C7DF0445-E736-46AA-A568-20D8D6730129}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7DF0445-E736-46AA-A568-20D8D6730129}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7DF0445-E736-46AA-A568-20D8D6730129}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7DF0445-E736-46AA-A568-20D8D6730129}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

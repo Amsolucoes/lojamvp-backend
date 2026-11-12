@@ -3,6 +3,13 @@
 Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara** e **Carteira**; os próximos módulos migrados ganham a
 sua pasta ao lado (`tests/LojaApi.Tests/<Modulo>/...` e `Integracao/`).
 
+## No Visual Studio
+
+Abra **`tests/LojaApi.Tests.sln`** (API + testes juntos): os testes aparecem no *Gerenciador de Testes* e dá para rodar
+e depurar um por um. A solução da raiz (`LojaApi.sln`) continua só com a API, de propósito: é ela que o Dockerfile
+compila no deploy, e assim o deploy não puxa pacotes de teste. Para os testes de integração, defina a variável
+`LOJA_TESTES_DB` (veja abaixo) antes de abrir o Visual Studio (Configurações do sistema → Variáveis de ambiente).
+
 ## Como rodar
 
 ```bash
