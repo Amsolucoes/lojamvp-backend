@@ -1,6 +1,6 @@
 ﻿using LojaApi.Data;
-using LojaApi.Modules.Carteira;
-using LojaApi.Modules.Chacara;
+using LojaApi.Infrastructure.Carteira;
+using LojaApi.Infrastructure.Chacara;
 using LojaApi.Shared;
 using LojaApi.Services;
 using LojaApi.src.Middleware;

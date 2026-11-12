@@ -8,7 +8,7 @@ using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using System.Security.Claims;
 
-namespace LojaApi.src.Controllers.OrdemServico;
+namespace LojaApi.Controllers.OrdemServico;
 
 [ApiController]
 [Route("api/ordemservico/patrimonio")]

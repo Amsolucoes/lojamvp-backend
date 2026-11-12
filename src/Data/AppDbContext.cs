@@ -5,8 +5,8 @@ using LojaApi.src.Models.Fiscal;
 using LojaApi.src.Models.Funcionarios;
 using LojaApi.src.Models.OrdemServico;
 using Microsoft.EntityFrameworkCore;
-using LojaApi.Modules.Chacara.Domain;
-using LojaApi.Modules.Carteira.Domain;
+using LojaApi.Domain.Chacara;
+using LojaApi.Domain.Carteira;
 
 namespace LojaApi.Data;
 
@@ -558,6 +558,25 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             foreach (var idx in entity.GetIndexes())
                 idx.SetDatabaseName(ToSnakeCase(idx.GetDatabaseName()!));
         }
+
+        // Entidades dos módulos (namespace LojaApi.Domain.*): nome da FK determinístico. O EF percorre os tipos em ordem alfabética
+        // do nome completo e, no laço acima, o nome padrão da FK depende de a tabela da outra ponta já ter sido renomeada ou não;
+        // então mover o namespace de uma entidade mudaria o nome no modelo (e geraria ruído numa futura migration).
+        // O padrão abaixo reproduz os nomes que já existem no banco: f_k_<tabela>_<tabela principal>_<colunas>.
+        // Exceção histórica: este nome já nasceu com dois sublinhados e é o que está no banco.
+        var nomesHistoricosDeFk = new Dictionary<string, string>
+        {
+            ["avaliacoes_chacara|reservas"] = "f_k_avaliacoes_chacara__reservas_reserva_id",
+        };
+        foreach (var entity in mb.Model.GetEntityTypes().Where(e => e.ClrType.Namespace?.StartsWith("LojaApi.Domain.") == true))
+            foreach (var fk in entity.GetForeignKeys())
+            {
+                var tabela = entity.GetTableName();
+                var principal = fk.PrincipalEntityType.GetTableName();
+                fk.SetConstraintName(nomesHistoricosDeFk.TryGetValue($"{tabela}|{principal}", out var historico)
+                    ? historico
+                    : $"f_k_{tabela}_{principal}_{string.Join("_", fk.Properties.Select(p => p.GetColumnName()))}");
+            }
 
         // Seed — usuário admin padrão
         mb.Entity<Usuario>().HasData(new Usuario

@@ -1,0 +1,717 @@
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+using LojaApi.Data;
+using LojaApi.DTOs;
+using LojaApi.Models;
+using LojaApi.Services;
+
+namespace LojaApi.Controllers.Plataforma;
+
+[ApiController]
+[Route("api/admin")]
+[Authorize(Roles = "superadmin")]
+public class AdminController(AppDbContext db, TenantService tenantService, TokenService tokenService,
+    MercadoPagoService mpService, ComunicadoEmailService comunicadoEmailService) : ControllerBase
+{
+    private Guid AdminId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    public record AlterarTrialRequest(DateTime TrialAte);
+    public record ProjecaoMensalDto(Guid Id, string Nome, decimal MensalidadeValor, int MensalidadeDia, DateTime? ProximoVencimento, string Status);
+
+    // ── Dashboard ─────────────────────────────────────────────────
+    [HttpGet("dashboard")]
+    public async Task<IActionResult> Dashboard()
+    {
+        var lojas = await db.Lojas.Include(l => l.Pagamentos).Where(l => !l.EhTeste).ToListAsync();
+        var agora = DateTime.UtcNow;
+
+        var atrasadas = lojas
+            .Where(l => l.ProximoVencimento.HasValue &&
+                        (agora - l.ProximoVencimento.Value).TotalDays > 0 &&
+                        l.Status != StatusLoja.Cancelado)
+            .Select(l => ToResumoDto(l, agora))
+            .ToList();
+
+        var ultimosPagamentos = await db.Pagamentos
+            .Include(p => p.Loja)
+            .Where(p => p.Status == "pago" && !p.Loja!.EhTeste)
+            .OrderByDescending(p => p.PagoEm)
+            .Take(10)
+            .Select(p => ToDto(p))
+            .ToListAsync();
+
+        // Projeção detalhada: lojas ativas OU em trial (real, não teste) — receita confirmada + esperada
+        var lojasAtivas = lojas.Where(l => l.Status == StatusLoja.Ativo).ToList();
+        var lojasProjecao = lojas.Where(l => l.Status == StatusLoja.Ativo || l.Status == StatusLoja.Trial).ToList();
+        var projecaoMensal = lojasProjecao
+            .OrderByDescending(l => l.Status == StatusLoja.Ativo) // ativas primeiro
+            .ThenByDescending(l => l.MensalidadeValor)
+            .Select(l => new ProjecaoMensalDto(l.Id, l.Nome, l.MensalidadeValor, l.MensalidadeDia, l.ProximoVencimento, l.Status.ToString()))
+            .ToList();
+
+        return Ok(new DashboardAdminDto(
+            TotalLojas: lojas.Count,
+            LojasAtivas: lojas.Count(l => l.Status == StatusLoja.Ativo),
+            LojasTrial: lojas.Count(l => l.Status == StatusLoja.Trial),
+            LojasBloqueadas: lojas.Count(l => l.Status == StatusLoja.Bloqueado),
+            LojasEmAtraso: atrasadas.Count,
+            ReceitaMensal: lojasAtivas.Sum(l => l.MensalidadeValor),
+            ReceitaTotal: lojas.SelectMany(l => l.Pagamentos).Where(p => p.Status == "pago").Sum(p => p.Valor),
+            LojasAtrasadas: atrasadas,
+            UltimosPagamentos: ultimosPagamentos,
+            ProjecaoMensal: projecaoMensal
+        ));
+    }
+
+    // ── Listar lojas ──────────────────────────────────────────────
+    [HttpGet("lojas")]
+    public async Task<IActionResult> Listar([FromQuery] string? status, [FromQuery] string? busca)
+    {
+        var q = db.Lojas.Include(l => l.Pagamentos).Include(l => l.Usuarios).ThenInclude(ul => ul.Usuario).AsQueryable();
+
+        if (!string.IsNullOrEmpty(status) && Enum.TryParse<StatusLoja>(status, true, out var s))
+            q = q.Where(l => l.Status == s);
+
+        if (!string.IsNullOrEmpty(busca))
+            q = q.Where(l => l.Nome.ToLower().Contains(busca.ToLower()) ||
+                              l.Email.Contains(busca) ||
+                              (l.Cnpj != null && l.Cnpj.Contains(busca)));
+
+        var agora = DateTime.UtcNow;
+        var lista = await q.OrderByDescending(l => l.CriadoEm).ToListAsync();
+        return Ok(lista.Select(l => ToLojaDto(l, agora)));
+    }
+
+    // ── Buscar loja ───────────────────────────────────────────────
+    [HttpGet("lojas/{id:guid}")]
+    public async Task<IActionResult> Buscar(Guid id)
+    {
+        var loja = await db.Lojas
+            .Include(l => l.Pagamentos)
+            .Include(l => l.Usuarios).ThenInclude(u => u.Usuario)
+            .FirstOrDefaultAsync(l => l.Id == id);
+
+        return loja is null ? NotFound() : Ok(ToLojaDto(loja, DateTime.UtcNow));
+    }
+
+    // ── Criar loja ────────────────────────────────────────────────
+    [HttpPost("lojas")]
+    public async Task<IActionResult> Criar([FromBody] CriarLojaRequest req)
+    {
+        if (await db.Lojas.AnyAsync(l => l.Email.ToLower() == req.Email.ToLower()))
+            return Conflict(new { erro = "E-mail já cadastrado." });
+
+        if (!string.IsNullOrEmpty(req.Cnpj) && await db.Lojas.AnyAsync(l => l.Cnpj == req.Cnpj))
+            return Conflict(new { erro = "CNPJ já cadastrado." });
+
+        var loja = new Loja
+        {
+            Nome = req.Nome,
+            Email = req.Email,
+            Cnpj = req.Cnpj,
+            Cpf = req.Cpf,
+            Telefone = req.Telefone,
+            Endereco = req.Endereco,
+            CorPrimaria = req.CorPrimaria,
+            MensalidadeDia = req.MensalidadeDia,
+            MensalidadeValor = req.MensalidadeValor,
+            TipoPlano = req.TipoPlano ?? "loja",
+            ModulosAtivos = req.ModulosAtivos ?? "",
+            EhTeste = req.EhTeste,
+            Status = StatusLoja.Trial,
+            TrialAte = DateTime.UtcNow.AddDays(7),
+            SchemaNome = TenantService.GerarSchemaNome(req.Nome),
+        };
+        db.Lojas.Add(loja);
+
+        // Usuário admin da loja
+        var usuario = new Usuario
+        {
+            Nome      = req.AdminNome,
+            Email     = req.AdminEmail,
+            SenhaHash = BCrypt.Net.BCrypt.HashPassword(req.AdminSenha),
+            Role      = "admin",
+        };
+        db.Usuarios.Add(usuario);
+
+        db.UsuariosLoja.Add(new UsuarioLoja
+        {
+            LojaId    = loja.Id,
+            UsuarioId = usuario.Id,
+            Role      = "admin",
+        });
+
+        // Primeira fatura (vence ao fim do trial)
+        db.Pagamentos.Add(new Pagamento
+        {
+            LojaId     = loja.Id,
+            Valor      = req.MensalidadeValor,
+            Status     = "pendente",
+            Vencimento = loja.TrialAte,
+        });
+
+        await db.SaveChangesAsync();
+
+        // Aplica o perfil escolhido (categorias, serviços, tipo de plano)
+        if (!string.IsNullOrEmpty(req.PerfilId) && Guid.TryParse(req.PerfilId, out var perfilGuid))
+        {
+            var perfil = await db.PerfisLoja
+                .Include(p => p.Categorias)
+                .Include(p => p.Servicos)
+                .FirstOrDefaultAsync(p => p.Id == perfilGuid);
+            if (perfil != null)
+            {
+                foreach (var cat in perfil.Categorias.OrderBy(c => c.Ordem))
+                    db.CategoriasLoja.Add(new CategoriaLoja
+                    {
+                        LojaId = loja.Id,
+                        Nome = cat.Nome,
+                        Ordem = cat.Ordem,
+                        TipoTamanho = cat.TipoTamanho,
+                    });
+
+                foreach (var s in perfil.Servicos.OrderBy(s => s.Ordem))
+                    db.Servicos.Add(new Servico
+                    {
+                        LojaId = loja.Id,
+                        Nome = s.Nome,
+                        Categoria = s.Categoria,
+                        Preco = s.Preco,
+                        DuracaoMin = s.DuracaoMin,
+                        Ativo = true,
+                    });
+
+                // Só aplica o tipo do perfil se o admin não definiu módulos manualmente
+                if (string.IsNullOrEmpty(loja.ModulosAtivos))
+                {
+                    loja.TipoPlano = perfil.TipoPlanoAplica;
+                    if (perfil.TipoPlanoAplica == "servicos" || perfil.TipoPlanoAplica == "loja_modulos")
+                        loja.ModulosAtivos = "servicos";
+                }
+
+                await db.SaveChangesAsync();
+            }
+        }
+
+        return CreatedAtAction(nameof(Buscar), new { id = loja.Id }, ToLojaDto(loja, DateTime.UtcNow));
+    }
+
+    // ── Backup completo da loja (JSON) ────────────────────────────
+    [HttpGet("lojas/{id:guid}/backup")]
+    public async Task<IActionResult> Backup(Guid id)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        // AsNoTracking em tudo: sem isso, o EF faz "relationship fixup" automático entre
+        // entidades carregadas na mesma instância de contexto (ex: liga ItemVenda.Produto
+        // ao Produto já carregado antes, e vice-versa), criando um grafo muito mais profundo
+        // e ramificado do que os Include() pedem — e estourando o limite de profundidade do
+        // serializador JSON (64 níveis), mesmo com IgnoreCycles configurado. Sem rastreamento,
+        // esse encaixe automático não acontece, e cada entidade fica isolada.
+        var produtos = await db.Produtos.Where(p => p.LojaId == id)
+            .Include(p => p.Variacoes).AsNoTracking().ToListAsync();
+        var clientes = await db.Clientes.Where(c => c.LojaId == id).AsNoTracking().ToListAsync();
+        var vendas = await db.Vendas.Where(v => v.LojaId == id)
+            .Include(v => v.Itens).AsNoTracking().ToListAsync();
+        var trocas = await db.Trocas.Where(t => t.LojaId == id)
+            .Include(t => t.Itens).AsNoTracking().ToListAsync();
+        var movimentos = await db.Movimentos.Where(m => m.LojaId == id).AsNoTracking().ToListAsync();
+        var categorias = await db.CategoriasLoja.Where(c => c.LojaId == id).AsNoTracking().ToListAsync();
+        var pagamentos = await db.Pagamentos.Where(p => p.LojaId == id).AsNoTracking().ToListAsync();
+
+        var backup = new
+        {
+            geradoEm = DateTime.UtcNow,
+            loja = new { loja.Id, loja.Nome, loja.Email, loja.Cnpj, loja.Cpf, loja.Telefone, loja.Endereco, loja.Status, loja.CriadoEm },
+            categorias,
+            produtos,
+            clientes,
+            vendas,
+            trocas,
+            movimentos,
+            pagamentos,
+            totais = new
+            {
+                produtos = produtos.Count,
+                clientes = clientes.Count,
+                vendas = vendas.Count,
+                trocas = trocas.Count,
+            }
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(backup, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true,
+            ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles,
+        });
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var nomeArquivo = $"backup-{loja.Nome.Replace(" ", "-").ToLower()}-{DateTime.UtcNow:yyyy-MM-dd}.json";
+        return File(bytes, "application/json", nomeArquivo);
+    }
+
+    // ── Deletar loja (e todos os dados) ───────────────────────────
+    // Remove tudo que tem loja_id (qualquer módulo, inclusive os criados depois desta rotina) em passes
+    // sucessivos: o que ainda é referenciado por outra tabela (FK sem cascade) é repetido no passe seguinte,
+    // depois que quem o referencia já foi apagado. Tudo numa transação: se algo ficar preso, nada é apagado
+    // e o erro devolve a tabela e o motivo.
+    [HttpDelete("lojas/{id:guid}")]
+    public async Task<IActionResult> Deletar(Guid id)
+    {
+        var loja = await db.Lojas.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
+        if (loja is null) return NotFound();
+
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var usuarioIds = await db.UsuariosLoja.Where(ul => ul.LojaId == id).Select(ul => ul.UsuarioId).ToListAsync();
+
+        var tabelas = await db.Database
+            .SqlQueryRaw<string>("SELECT DISTINCT table_name AS \"Value\" FROM information_schema.columns WHERE table_schema = 'public' AND column_name = 'loja_id' AND table_name <> 'lojas'")
+            .ToListAsync();
+
+        var pendentes = new List<string>(tabelas);
+        var ultimosErros = new Dictionary<string, string>();
+
+        for (var passe = 0; passe < 12 && pendentes.Count > 0; passe++)
+        {
+            var progresso = false;
+            foreach (var tabela in pendentes.ToList())
+            {
+                await tx.CreateSavepointAsync("sp_del");
+                try
+                {
+                    await db.Database.ExecuteSqlRawAsync($"DELETE FROM \"{tabela}\" WHERE loja_id = {{0}}", id);
+                    await tx.ReleaseSavepointAsync("sp_del");
+                    pendentes.Remove(tabela);
+                    ultimosErros.Remove(tabela);
+                    progresso = true;
+                }
+                catch (Exception ex)
+                {
+                    await tx.RollbackToSavepointAsync("sp_del");
+                    ultimosErros[tabela] = (ex.InnerException ?? ex).Message;
+                }
+            }
+            if (!progresso) break;
+        }
+
+        if (pendentes.Count > 0)
+        {
+            await tx.RollbackAsync();
+            var detalhe = string.Join(" | ", pendentes.Select(t => $"{t}: {ultimosErros.GetValueOrDefault(t)}"));
+            return StatusCode(500, new { erro = $"Não foi possível excluir: {detalhe}" });
+        }
+
+        try
+        {
+            // Usuários que só pertenciam a esta loja
+            await tx.CreateSavepointAsync("sp_usr");
+            await db.Usuarios
+                .Where(u => usuarioIds.Contains(u.Id) && !db.UsuariosLoja.Any(ul => ul.UsuarioId == u.Id))
+                .ExecuteDeleteAsync();
+            await tx.ReleaseSavepointAsync("sp_usr");
+        }
+        catch
+        {
+            await tx.RollbackToSavepointAsync("sp_usr"); // usuário preso a outro registro: não impede a exclusão da loja
+        }
+
+        try
+        {
+            await db.Lojas.Where(l => l.Id == id).ExecuteDeleteAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            return StatusCode(500, new { erro = $"Não foi possível excluir a loja: {(ex.InnerException ?? ex).Message}" });
+        }
+
+        await tx.CommitAsync();
+        return Ok(new { mensagem = "Loja e todos os dados foram removidos." });
+    }
+
+    // ── Deletar apenas produtos, vendas, trocas e ajustes de caixa (mantém clientes, usuários e a loja) ──
+    [HttpDelete("lojas/{id:guid}/produtos-e-vendas")]
+    public async Task<IActionResult> DeletarProdutosEVendas(Guid id)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        var produtos = await db.Produtos.Where(p => p.LojaId == id).Select(p => p.Id).ToListAsync();
+
+        // Variações, movimentos de estoque e mapeamentos de NF importada dos produtos.
+        // (produto_variacoes, movimentos e nf_produto_mapeamentos já são ON DELETE CASCADE
+        // no banco, mas deletamos explícito aqui pra manter o mesmo padrão do Deletar() da loja inteira)
+        await db.ProdutoVariacoes.Where(v => produtos.Contains(v.ProdutoId)).ExecuteDeleteAsync();
+        await db.Movimentos.Where(m => m.LojaId == id).ExecuteDeleteAsync();
+        await db.NfProdutoMapeamentos.Where(m => produtos.Contains(m.ProdutoId)).ExecuteDeleteAsync();
+
+        // Ajustes de caixa (reforço/sangria) e o espelho no Financeiro, se algum ajuste
+        // tiver sido feito com conta bancária vinculada (AjusteContaBancariaId não é FK
+        // de verdade no banco, então precisa limpar manual — mesma lógica do Excluir() do
+        // MovimentosCaixaController, só que em lote aqui)
+        var ajustesContaVinculados = await db.MovimentosCaixa
+            .Where(m => m.LojaId == id && m.AjusteContaBancariaId.HasValue)
+            .Select(m => m.AjusteContaBancariaId!.Value)
+            .ToListAsync();
+        await db.AjustesContaBancaria.Where(a => ajustesContaVinculados.Contains(a.Id)).ExecuteDeleteAsync();
+        await db.MovimentosCaixa.Where(m => m.LojaId == id).ExecuteDeleteAsync();
+
+        // Itens de troca e trocas
+        var trocas = await db.Trocas.Where(t => t.LojaId == id).Select(t => t.Id).ToListAsync();
+        await db.ItensTroca.Where(i => trocas.Contains(i.TrocaId)).ExecuteDeleteAsync();
+        await db.Trocas.Where(t => t.LojaId == id).ExecuteDeleteAsync();
+
+        // Itens de venda e vendas
+        var vendas = await db.Vendas.Where(v => v.LojaId == id).Select(v => v.Id).ToListAsync();
+        await db.ItensVenda.Where(i => vendas.Contains(i.VendaId)).ExecuteDeleteAsync();
+        await db.Vendas.Where(v => v.LojaId == id).ExecuteDeleteAsync();
+
+        // Produtos
+        await db.Produtos.Where(p => p.LojaId == id).ExecuteDeleteAsync();
+
+        // Observação: itens_orcamento_servico.produto_id e agendamentos.venda_id são
+        // ON DELETE SET NULL no banco — ficam com produto/venda nulos automaticamente,
+        // mantendo a descrição/nome já salvos na própria linha (histórico de OS e
+        // agendamentos não é afetado). Clientes, Usuários e a Loja permanecem intactos.
+
+        return Ok(new { mensagem = "Produtos, vendas, trocas e ajustes de caixa foram removidos. Clientes e usuários foram mantidos." });
+    }
+
+    // ── Acessar loja como suporte (gera token do admin da loja) ───
+    [HttpPost("lojas/{id:guid}/acessar")]
+    public async Task<IActionResult> AcessarComoSuporte(Guid id)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        // Pega o usuário admin da loja
+        var vinculo = await db.UsuariosLoja
+            .Include(ul => ul.Usuario)
+            .FirstOrDefaultAsync(ul => ul.LojaId == id && ul.Role == "admin" && ul.Ativo);
+
+        if (vinculo is null || vinculo.Usuario is null)
+            return NotFound(new { erro = "Esta loja não tem um administrador ativo." });
+
+        var token = tokenService.GerarToken(vinculo.Usuario, ehSuporte: true);
+
+        return Ok(new
+        {
+            token,
+            nome = vinculo.Usuario.Nome,
+            email = vinculo.Usuario.Email,
+            role = vinculo.Usuario.Role,
+            nomeLoja = loja.Nome,
+        });
+    }
+
+    // ── Atualizar loja ────────────────────────────────────────────
+    [HttpPut("lojas/{id:guid}")]
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarLojaRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        loja.Nome             = req.Nome;
+        loja.Email            = req.Email;
+        loja.Cnpj             = req.Cnpj;
+        loja.Cpf              = req.Cpf;
+        loja.Telefone         = req.Telefone;
+        loja.Endereco         = req.Endereco;
+        loja.CorPrimaria      = req.CorPrimaria;
+        loja.LogoUrl          = req.LogoUrl;
+        loja.MensalidadeDia   = req.MensalidadeDia;
+        loja.MensalidadeValor = req.MensalidadeValor;
+        if (req.TipoPlano is not null) loja.TipoPlano = req.TipoPlano;
+        if (req.ModulosAtivos is not null) loja.ModulosAtivos = req.ModulosAtivos;
+        if (req.EhTeste is not null) loja.EhTeste = req.EhTeste.Value;
+        loja.AtualizadoEm     = DateTime.UtcNow;
+
+        await db.SaveChangesAsync();
+        return Ok(ToLojaDto(loja, DateTime.UtcNow));
+    }
+
+    // ── Alterar status (bloquear/desbloquear) ─────────────────────
+    [HttpPatch("lojas/{id:guid}/status")]
+    public async Task<IActionResult> AlterarStatus(Guid id, [FromBody] AlterarStatusLojaRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        if (!Enum.TryParse<StatusLoja>(req.Status, true, out var novoStatus))
+            return BadRequest(new { erro = "Status inválido." });
+
+        loja.Status       = novoStatus;
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = $"Status alterado para {novoStatus}." });
+    }
+
+    // ── Registrar pagamento manual ────────────────────────────────
+    [HttpPost("pagamentos")]
+    public async Task<IActionResult> RegistrarPagamento([FromBody] RegistrarPagamentoManualRequest req)
+    {
+        var vencimentoUtc = DateTime.SpecifyKind(req.Vencimento, DateTimeKind.Utc);
+        var pagoEmUtc = DateTime.SpecifyKind(req.PagoEm, DateTimeKind.Utc);
+
+        var ok = await tenantService.RegistrarPagamentoAsync(
+            req.LojaId, req.Valor, vencimentoUtc,
+            pagoEmUtc, req.FormaPagamento,
+            req.Observacao, AdminId);
+
+        return ok
+            ? Ok(new { mensagem = "Pagamento registrado e loja reativada." })
+            : NotFound(new { erro = "Loja não encontrada." });
+    }
+
+    // ── Listar pagamentos de uma loja ─────────────────────────────
+    [HttpGet("lojas/{id:guid}/pagamentos")]
+    public async Task<IActionResult> Pagamentos(Guid id)
+    {
+        var lista = await db.Pagamentos
+            .Include(p => p.Loja)
+            .Where(p => p.LojaId == id)
+            .OrderByDescending(p => p.Vencimento)
+            .Select(p => ToDto(p))
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    [HttpPatch("lojas/{id}/plano")]
+    [Authorize(Roles = "superadmin")]
+    public async Task<IActionResult> AtualizarPlano(Guid id, [FromBody] AtualizarPlanoRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        loja.TipoPlano = req.TipoPlano;
+        loja.ModulosAtivos = req.ModulosAtivos ?? "";
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.Id, loja.TipoPlano, loja.ModulosAtivos });
+    }
+
+    // ── Trocar e-mail (login do usuário e/ou contato da loja) ─────
+    [HttpPatch("lojas/{id:guid}/email")]
+    public async Task<IActionResult> TrocarEmail(Guid id, [FromBody] TrocarEmailRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        var novoEmail = req.NovoEmail?.Trim().ToLower();
+        if (string.IsNullOrWhiteSpace(novoEmail) || !novoEmail.Contains('@'))
+            return BadRequest(new { erro = "E-mail inválido." });
+
+        if (!req.TrocarLogin && !req.TrocarLoja)
+            return BadRequest(new { erro = "Escolha ao menos um e-mail para trocar." });
+
+        // Descobre o usuário admin da loja
+        var vinculo = await db.UsuariosLoja
+            .Include(ul => ul.Usuario)
+            .FirstOrDefaultAsync(ul => ul.LojaId == id && ul.Role == "admin");
+
+        // Valida duplicidade do e-mail de login
+        if (req.TrocarLogin)
+        {
+            if (vinculo?.Usuario is null)
+                return BadRequest(new { erro = "Usuário admin da loja não encontrado." });
+
+            var emailEmUso = await db.Usuarios
+                .AnyAsync(u => u.Email.ToLower() == novoEmail && u.Id != vinculo.Usuario.Id);
+            if (emailEmUso)
+                return Conflict(new { erro = "Este e-mail já está em uso por outro usuário." });
+        }
+
+        // Valida duplicidade do e-mail da loja
+        if (req.TrocarLoja)
+        {
+            var lojaEmailEmUso = await db.Lojas
+                .AnyAsync(l => l.Email.ToLower() == novoEmail && l.Id != id);
+            if (lojaEmailEmUso)
+                return Conflict(new { erro = "Este e-mail já está em uso por outra loja." });
+        }
+
+        // Aplica
+        if (req.TrocarLogin && vinculo?.Usuario is not null)
+            vinculo.Usuario.Email = novoEmail;
+
+        if (req.TrocarLoja)
+            loja.Email = novoEmail;
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { mensagem = "E-mail atualizado com sucesso." });
+    }
+
+    // ── Atualizar valor da mensalidade (e opcionalmente a assinatura) ─────
+    [HttpPatch("lojas/{id:guid}/valor")]
+    public async Task<IActionResult> AtualizarValor(Guid id, [FromBody] AtualizarValorRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound(new { erro = "Loja não encontrada." });
+
+        if (req.NovoValor <= 0)
+            return BadRequest(new { erro = "Valor inválido." });
+
+        // Atualiza o valor da loja (vale para próximas faturas)
+        loja.MensalidadeValor = req.NovoValor;
+
+        // Se pediu para sincronizar E a loja tem assinatura ativa no MP
+        bool sincronizou = false;
+        string? avisoMp = null;
+
+        if (req.SincronizarAssinatura)
+        {
+            if (string.IsNullOrEmpty(loja.MpPreapprovalId) || loja.AssinaturaStatus != "authorized")
+            {
+                avisoMp = "A loja não tem assinatura ativa para sincronizar. Só o valor das próximas faturas foi alterado.";
+            }
+            else
+            {
+                sincronizou = await mpService.AtualizarValorAssinatura(loja.MpPreapprovalId, req.NovoValor);
+                if (!sincronizou)
+                    avisoMp = "O valor da loja foi alterado, mas não foi possível atualizar a assinatura no Mercado Pago. Tente novamente ou verifique manualmente.";
+            }
+        }
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new
+        {
+            mensagem = sincronizou
+                ? "Valor atualizado na loja e na assinatura recorrente."
+                : "Valor atualizado.",
+            aviso = avisoMp,
+            sincronizou,
+        });
+    }
+
+    // ── Disparar verificação de bloqueio manualmente (teste/admin) ─────
+    [HttpPost("verificar-bloqueios")]
+    public async Task<IActionResult> VerificarBloqueios()
+    {
+        await tenantService.VerificarStatusAsync();
+        return Ok(new { mensagem = "Verificação de bloqueios executada." });
+    }
+
+    // ── Enviar comunicado por e-mail para lojas (novidades, avisos, etc.) ─
+    public record EnviarComunicadoRequest(List<Guid>? LojaIds, bool TodasLojas, string Assunto, string CorpoHtml, List<string>? EmailsExtras = null);
+
+    [HttpGet("comunicados")]
+    public async Task<IActionResult> ListarComunicados()
+    {
+        var lista = await db.ComunicadosEnviados
+            .OrderByDescending(c => c.EnviadoEm)
+            .Select(c => new
+            {
+                c.Id,
+                c.Assunto,
+                c.CorpoHtml,
+                c.TodasLojas,
+                c.TotalEnviados,
+                c.TotalFalhas,
+                DestinatariosSucesso = c.DestinatariosSucesso.Split(',', StringSplitOptions.RemoveEmptyEntries),
+                DestinatariosFalha = c.DestinatariosFalha.Split(',', StringSplitOptions.RemoveEmptyEntries),
+                c.EnviadoEm,
+            })
+            .ToListAsync();
+
+        return Ok(lista);
+    }
+
+    [HttpPost("comunicados/enviar")]
+    public async Task<IActionResult> EnviarComunicado([FromBody] EnviarComunicadoRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.Assunto) || string.IsNullOrWhiteSpace(req.CorpoHtml))
+            return BadRequest(new { erro = "Preencha assunto e mensagem." });
+
+        var temExtras = req.EmailsExtras != null && req.EmailsExtras.Count > 0;
+        if (!req.TodasLojas && (req.LojaIds is null || req.LojaIds.Count == 0) && !temExtras)
+            return BadRequest(new { erro = "Selecione ao menos uma loja, informe um e-mail extra, ou marque \"Todas as lojas\"." });
+
+        var resultado = await comunicadoEmailService.EnviarAsync(req.LojaIds, req.TodasLojas, req.Assunto, req.CorpoHtml, req.EmailsExtras);
+
+        return Ok(new
+        {
+            mensagem = $"{resultado.TotalEnviados} e-mail(s) enviado(s)." + (resultado.TotalFalhas > 0 ? $" {resultado.TotalFalhas} falharam." : ""),
+            resultado.TotalEnviados,
+            resultado.TotalFalhas,
+            resultado.Falhas,
+        });
+    }
+
+    [HttpPatch("lojas/{id:guid}/trial")]
+    public async Task<IActionResult> AlterarTrial(Guid id, [FromBody] AlterarTrialRequest req)
+    {
+        var loja = await db.Lojas.FindAsync(id);
+        if (loja is null) return NotFound();
+
+        loja.TrialAte = DateTime.SpecifyKind(req.TrialAte.Date, DateTimeKind.Utc).AddHours(23).AddMinutes(59);
+
+        // Se a loja estava bloqueada por trial vencido, reativa como trial de novo
+        if (loja.Status == StatusLoja.Bloqueado)
+            loja.Status = StatusLoja.Trial;
+
+        loja.AtualizadoEm = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        return Ok(new { loja.Id, loja.TrialAte, loja.Status });
+    }
+
+    // ── Mappers ───────────────────────────────────────────────────
+    private static LojaDto ToLojaDto(Loja l, DateTime agora)
+    {
+        var dias = l.ProximoVencimento.HasValue
+       ? Math.Max(0, TenantService.DiasDeAtraso(l.ProximoVencimento.Value, agora))
+       : 0;
+        var (fase, diasRest) = TenantService.CalcularSituacao(l);
+        var ultimoLogin = l.Usuarios
+            .Where(ul => ul.Usuario != null)
+            .Select(ul => ul.Usuario!.UltimoLoginEm)
+            .Where(d => d.HasValue)
+            .OrderByDescending(d => d)
+            .FirstOrDefault();
+        return new(
+            l.Id, l.Nome, l.Email, l.Cnpj, l.Cpf, l.Telefone, l.Endereco,
+            l.CorPrimaria, l.LogoUrl, l.Status.ToString(),
+            l.TrialAte, l.MensalidadeDia, l.MensalidadeValor,
+            l.ProximoVencimento, l.UltimaCobranca,
+            l.SchemaNome, l.CriadoEm,
+            l.Usuarios.Count,
+            l.Pagamentos.Where(p => p.Status == "pago").Sum(p => p.Valor),
+            EmAtraso: dias > 0, DiasAtraso: dias,
+            Promocional: l.Promocional,
+            Fase: fase, DiasRestantes: diasRest,
+            TipoPlano: l.TipoPlano, ModulosAtivos: l.ModulosAtivos,
+            EhTeste: l.EhTeste,
+            AssinaturaStatus: l.AssinaturaStatus,
+            AssinaturaCartaoFinal: l.AssinaturaCartaoFinal,
+            UltimoLoginEm: ultimoLogin
+        );
+    }
+
+    private static LojaResumoDto ToResumoDto(Loja l, DateTime agora)
+    {
+        var dias = l.ProximoVencimento.HasValue
+            ? Math.Max(0, (int)(agora - l.ProximoVencimento.Value).TotalDays) : 0;
+        return new(l.Id, l.Nome, l.Email, l.Status.ToString(),
+            l.ProximoVencimento, l.MensalidadeValor, dias > 0, dias);
+    }
+
+    private static PagamentoDto ToDto(Pagamento p) => new(
+        p.Id, p.LojaId, p.Loja?.Nome ?? "",
+        p.Valor, p.Status, p.Vencimento, p.PagoEm,
+        p.FormaPagamento, p.Observacao,
+        p.MpQrCode, p.MpQrCodeBase64,
+        p.MpBoletoUrl, p.MpBoletoBarcode,
+        p.CriadoEm
+    );
+}

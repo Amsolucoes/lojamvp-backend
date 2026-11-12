@@ -1,4 +1,4 @@
-using LojaApi.Modules.Chacara.Domain;
+using LojaApi.Domain.Chacara;
 using LojaApi.Tests.Chacara.Dominio;
 using Microsoft.EntityFrameworkCore;
 

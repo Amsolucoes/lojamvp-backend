@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
-namespace LojaApi.src.Controllers.OrdemServico;
+namespace LojaApi.Controllers.OrdemServico;
 
 [ApiController]
 [Route("api/ordemservico")]
