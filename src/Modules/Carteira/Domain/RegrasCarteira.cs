@@ -80,4 +80,43 @@ public static class RegrasCarteira
         }
         return resultado;
     }
+
+    // ── Quem pagou o quê ─────────────────────────────────────────────────────
+    // Cada pagamento quita as compras mais antigas primeiro (como um extrato). Daqui sai, para cada venda na carteira,
+    // quanto ainda está em aberto e por qual forma/dia foi sendo paga — o fluxo de caixa mostra isso como "Carteira → Pix".
+
+    public record CompraParaAlocar(Guid VendaId, DateTime Data, DateTime CriadoEm, decimal Valor);
+    public record PagamentoParaAlocar(Guid Id, DateTime Data, DateTime CriadoEm, decimal Valor, string Forma);
+    public record PartePaga(Guid PagamentoId, DateTime Data, string Forma, decimal Valor);
+    public record CompraAlocada(Guid VendaId, decimal Valor, decimal EmAberto, List<PartePaga> Pagamentos);
+    public record PagamentoAlocado(Guid PagamentoId, List<(Guid VendaId, decimal Valor)> Abateu);
+
+    public static (List<CompraAlocada> Compras, List<PagamentoAlocado> Pagamentos) AlocarPagamentos(
+        IEnumerable<CompraParaAlocar> compras, IEnumerable<PagamentoParaAlocar> pagamentos)
+    {
+        var fila = compras
+            .OrderBy(c => c.Data.Date).ThenBy(c => c.CriadoEm)
+            .Select(c => (Compra: c, Restante: c.Valor, Partes: new List<PartePaga>()))
+            .ToList();
+        var pagamentosAlocados = new List<PagamentoAlocado>();
+
+        foreach (var pg in pagamentos.OrderBy(p => p.Data.Date).ThenBy(p => p.CriadoEm))
+        {
+            var sobra = pg.Valor;
+            var abateu = new List<(Guid, decimal)>();
+            for (var i = 0; i < fila.Count && sobra > 0; i++)
+            {
+                if (fila[i].Restante <= 0) continue;
+                var parte = Math.Min(sobra, fila[i].Restante);
+                fila[i] = (fila[i].Compra, fila[i].Restante - parte, fila[i].Partes);
+                fila[i].Partes.Add(new PartePaga(pg.Id, pg.Data, pg.Forma, parte));
+                abateu.Add((fila[i].Compra.VendaId, parte));
+                sobra -= parte;
+            }
+            pagamentosAlocados.Add(new PagamentoAlocado(pg.Id, abateu));
+        }
+
+        var comprasAlocadas = fila.Select(f => new CompraAlocada(f.Compra.VendaId, f.Compra.Valor, f.Restante, f.Partes)).ToList();
+        return (comprasAlocadas, pagamentosAlocados);
+    }
 }

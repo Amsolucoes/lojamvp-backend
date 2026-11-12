@@ -138,6 +138,51 @@ public class CarteiraService(AppDbContext db)
         return Resultado.Ok(new { total = itens.Sum(i => i.saldo), clientes = itens });
     }
 
+    // Para o fluxo de caixa: cada venda na carteira com o que falta receber (e por onde já foi paga) e cada recebimento
+    // com as vendas que ele quitou. Assim a tela mostra "Carteira → Pix" em vez de um "ajuste de caixa" solto.
+    public async Task<Resultado<object>> MovimentacaoAsync(Guid? lojaId)
+    {
+        if (lojaId is null) return Resultado.Invalido(LojaNaoEncontrada);
+
+        var movimentos = await db.MovimentosCarteira.AsNoTracking().Where(m => m.LojaId == lojaId).ToListAsync();
+        var nomes = await db.Clientes.AsNoTracking()
+            .Where(c => c.LojaId == lojaId && db.MovimentosCarteira.Any(m => m.ClienteId == c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Nome);
+
+        var vendas = new List<object>();
+        var recebimentos = new List<object>();
+
+        // cada cliente tem a sua própria fila: o pagamento de um não quita a compra de outro
+        foreach (var grupo in movimentos.GroupBy(m => m.ClienteId))
+        {
+            var compras = grupo.Where(m => m.EhCompra() && m.VendaId.HasValue)
+                .Select(m => new RegrasCarteira.CompraParaAlocar(m.VendaId!.Value, m.Data, m.CriadoEm, m.Valor));
+            var pagamentos = grupo.Where(m => !m.EhCompra())
+                .Select(m => new RegrasCarteira.PagamentoParaAlocar(m.Id, m.Data, m.CriadoEm, m.Valor, m.FormaPagamento ?? ""));
+            var (comprasAlocadas, pagamentosAlocados) = RegrasCarteira.AlocarPagamentos(compras, pagamentos);
+            var nome = nomes.GetValueOrDefault(grupo.Key, "");
+
+            foreach (var c in comprasAlocadas)
+                vendas.Add(new
+                {
+                    vendaId = c.VendaId, clienteId = grupo.Key, valor = c.Valor, emAberto = c.EmAberto,
+                    pagamentos = c.Pagamentos.Select(p => new { pagamentoId = p.PagamentoId, data = p.Data, forma = p.Forma, valor = p.Valor }),
+                });
+
+            foreach (var pg in grupo.Where(m => !m.EhCompra()))
+            {
+                var alocado = pagamentosAlocados.First(a => a.PagamentoId == pg.Id);
+                recebimentos.Add(new
+                {
+                    id = pg.Id, movimentoCaixaId = pg.MovimentoCaixaId, clienteId = grupo.Key, clienteNome = nome,
+                    forma = pg.FormaPagamento, valor = pg.Valor, data = pg.Data,
+                    abateu = alocado.Abateu.Select(a => new { vendaId = a.VendaId, valor = a.Valor }),
+                });
+            }
+        }
+        return Resultado.Ok(new { vendas, recebimentos });
+    }
+
     // ── Ações ────────────────────────────────────────────────────────────────
 
     public async Task<Resultado<object>> DefinirLimiteAsync(Guid? lojaId, Guid clienteId, DefinirLimiteCarteiraRequest req)

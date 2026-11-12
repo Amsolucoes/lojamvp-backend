@@ -189,3 +189,74 @@ public class MovimentoCarteiraTests
         Assert.Null(m.Observacao);
     }
 }
+
+public class AlocacaoDePagamentosTests
+{
+    private static RegrasCarteira.CompraParaAlocar Compra(int dia, decimal valor, Guid? id = null) =>
+        new(id ?? Guid.NewGuid(), new DateTime(2030, 6, dia, 15, 0, 0, DateTimeKind.Utc), new DateTime(2030, 6, dia, 15, 0, 0, DateTimeKind.Utc), valor);
+
+    private static RegrasCarteira.PagamentoParaAlocar Pagamento(int dia, decimal valor, string forma = "pix", Guid? id = null) =>
+        new(id ?? Guid.NewGuid(), new DateTime(2030, 6, dia, 12, 0, 0, DateTimeKind.Utc), new DateTime(2030, 6, dia, 18, 0, 0, DateTimeKind.Utc), valor, forma);
+
+    [Fact]
+    public void Pagamento_que_cobre_a_compra_inteira_quita_e_guarda_a_forma()
+    {
+        var c = Compra(1, 100m);
+        var pg = Pagamento(1, 100m, "pix");
+
+        var (compras, pagamentos) = RegrasCarteira.AlocarPagamentos([c], [pg]);
+
+        Assert.Equal(0m, compras.Single().EmAberto);
+        var parte = compras.Single().Pagamentos.Single();
+        Assert.Equal(("pix", 100m), (parte.Forma, parte.Valor));
+        Assert.Equal((c.VendaId, 100m), pagamentos.Single().Abateu.Single());
+    }
+
+    [Fact]
+    public void Pagamento_parcial_deixa_o_resto_em_aberto()
+    {
+        var (compras, _) = RegrasCarteira.AlocarPagamentos([Compra(1, 100m)], [Pagamento(2, 30m, "dinheiro")]);
+        Assert.Equal(70m, compras.Single().EmAberto);
+        Assert.Equal(30m, compras.Single().Pagamentos.Single().Valor);
+    }
+
+    [Fact]
+    public void Pagamento_maior_que_a_primeira_compra_passa_para_a_proxima()
+    {
+        var a = Compra(1, 100m); var b = Compra(5, 50m);
+        var pg = Pagamento(10, 120m, "pix");
+
+        var (compras, pagamentos) = RegrasCarteira.AlocarPagamentos([b, a], [pg]);   // fora de ordem de propósito
+
+        Assert.Equal(0m, compras.Single(x => x.VendaId == a.VendaId).EmAberto);
+        Assert.Equal(30m, compras.Single(x => x.VendaId == b.VendaId).EmAberto);     // 50 - 20
+        Assert.Equal([(a.VendaId, 100m), (b.VendaId, 20m)], pagamentos.Single().Abateu);
+    }
+
+    [Fact]
+    public void Varios_pagamentos_com_formas_diferentes_na_mesma_compra()
+    {
+        var c = Compra(1, 100m);
+        var (compras, _) = RegrasCarteira.AlocarPagamentos([c], [Pagamento(2, 40m, "dinheiro"), Pagamento(3, 60m, "pix")]);
+
+        var partes = compras.Single().Pagamentos;
+        Assert.Equal(0m, compras.Single().EmAberto);
+        Assert.Equal([("dinheiro", 40m), ("pix", 60m)], partes.Select(p => (p.Forma, p.Valor)));
+    }
+
+    [Fact]
+    public void Sem_pagamentos_tudo_continua_em_aberto()
+    {
+        var (compras, pagamentos) = RegrasCarteira.AlocarPagamentos([Compra(1, 100m), Compra(2, 50m)], []);
+        Assert.Equal([100m, 50m], compras.Select(c => c.EmAberto));
+        Assert.Empty(pagamentos);
+    }
+
+    [Fact]
+    public void Pagamento_de_hoje_ao_meio_dia_e_compra_de_hoje_a_tarde_ainda_se_encontram()
+    {
+        // o pagamento é gravado ao meio-dia do dia; a compra tem a hora exata (depois do meio-dia): a ordem é por dia
+        var (compras, _) = RegrasCarteira.AlocarPagamentos([Compra(3, 100m)], [Pagamento(3, 100m)]);
+        Assert.Equal(0m, compras.Single().EmAberto);
+    }
+}
