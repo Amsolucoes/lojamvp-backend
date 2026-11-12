@@ -16,6 +16,11 @@ public class CarteiraController(CarteiraService servico, ILojaAtual lojaAtual) :
     public async Task<IActionResult> Devedores() =>
         (await servico.DevedoresAsync(await lojaAtual.ObterIdAsync(User))).ParaResposta(this);
 
+    // Vendas na carteira (o que falta receber de cada uma) e recebimentos — usado pelo fluxo de caixa
+    [HttpGet("api/carteira/movimentacao")]
+    public async Task<IActionResult> Movimentacao() =>
+        (await servico.MovimentacaoAsync(await lojaAtual.ObterIdAsync(User))).ParaResposta(this);
+
     // Saldo, limite, compras em aberto e extrato de um cliente
     [HttpGet("api/clientes/{clienteId:guid}/carteira")]
     public async Task<IActionResult> Obter(Guid clienteId) =>

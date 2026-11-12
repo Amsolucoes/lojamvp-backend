@@ -366,6 +366,92 @@ public class CarteiraApiTests(ApiFixture api)
         Assert.Equal(300m, r.GetProperty("clientes")[0].GetProperty("saldo").GetDecimal());
     }
 
+    // ── Fluxo de caixa: venda na carteira que vai sendo quitada ──────────────
+
+    [FatoIntegracao]
+    public async Task Movimentacao_mostra_o_que_falta_receber_de_cada_venda_e_por_onde_foi_paga()
+    {
+        var c = await PrepararAsync();
+        var venda = await Vender(c, quantidade: 1, formas: Formas(("dinheiro", 30m), ("carteira", 70m)), formaPrincipal: "dinheiro");
+        var vendaId = venda.Json.GetProperty("id").GetGuid();
+
+        var antes = (await c.Loja.Painel.Get("/api/carteira/movimentacao")).Json;
+        var v0 = antes.GetProperty("vendas").EnumerateArray().Single();
+        Assert.Equal(vendaId, v0.GetProperty("vendaId").GetGuid());
+        Assert.Equal(70m, v0.GetProperty("emAberto").GetDecimal());
+        Assert.Equal(0, v0.GetProperty("pagamentos").GetArrayLength());
+
+        await Receber(c, 70m, "pix");
+
+        var depois = (await c.Loja.Painel.Get("/api/carteira/movimentacao")).Json;
+        var v1 = depois.GetProperty("vendas").EnumerateArray().Single();
+        Assert.Equal(0m, v1.GetProperty("emAberto").GetDecimal());
+        var parte = v1.GetProperty("pagamentos").EnumerateArray().Single();
+        Assert.Equal("pix", parte.GetProperty("forma").GetString());
+        Assert.Equal(70m, parte.GetProperty("valor").GetDecimal());
+
+        var rec = depois.GetProperty("recebimentos").EnumerateArray().Single();
+        Assert.Equal("Maria da Carteira", rec.GetProperty("clienteNome").GetString());
+        Assert.Equal(vendaId, rec.GetProperty("abateu")[0].GetProperty("vendaId").GetGuid());
+        // o recebimento aponta para a entrada criada no caixa (o fluxo de caixa usa isso para não contá-la como "ajuste")
+        var entradaCaixa = (await c.Loja.Painel.Get("/api/movimentos-caixa")).Json.EnumerateArray().Single();
+        Assert.Equal(entradaCaixa.GetProperty("id").GetGuid(), rec.GetProperty("movimentoCaixaId").GetGuid());
+    }
+
+    [FatoIntegracao]
+    public async Task Movimentacao_de_uma_loja_nao_inclui_clientes_de_outra()
+    {
+        var a = await PrepararAsync();
+        var b = await PrepararAsync();
+        await Vender(a);
+        await Receber(a, 40m);
+
+        var daB = (await b.Loja.Painel.Get("/api/carteira/movimentacao")).Json;
+        Assert.Equal(0, daB.GetProperty("vendas").GetArrayLength());
+        Assert.Equal(0, daB.GetProperty("recebimentos").GetArrayLength());
+        Assert.Equal(401, (await a.Loja.Site.Get("/api/carteira/movimentacao")).Codigo);
+    }
+
+    // ── Conta bancária (Financeiro) ──────────────────────────────────────────
+
+    [FatoIntegracao]
+    public async Task Recebimento_pode_ser_lancado_numa_conta_bancaria_e_desfazer_tira_de_la()
+    {
+        var c = await PrepararAsync();
+        var conta = await c.Loja.Painel.Post("/api/financeiro/contas", new { nome = "Conta Pix", saldoInicial = 0, banco = "Nubank", limite = 0 });
+        conta.DeveSerSucesso();
+        var contaId = conta.Json.GetProperty("id").GetGuid();
+        await Vender(c);
+
+        var recebimento = await c.Loja.Painel.Post($"/api/clientes/{c.ClienteId}/carteira/pagamentos",
+            new { valor = 100m, formaPagamento = "pix", data = (string?)null, observacao = (string?)null, contaBancariaId = contaId });
+        recebimento.DeveSerSucesso();
+
+        var ajustes = await api.NoBancoAsync(db => db.AjustesContaBancaria.AsNoTracking().Where(a => a.ContaBancariaId == contaId).ToListAsync());
+        var ajuste = Assert.Single(ajustes);
+        Assert.Equal(("entrada", 100m), (ajuste.Tipo, ajuste.Valor));
+        Assert.Contains("carteira", ajuste.Observacao, StringComparison.OrdinalIgnoreCase);
+        var entradaCaixa = (await c.Loja.Painel.Get("/api/movimentos-caixa")).Json.EnumerateArray().Single();
+        Assert.Equal(contaId, entradaCaixa.GetProperty("contaBancariaId").GetGuid());
+
+        (await c.Loja.Painel.Delete($"/api/clientes/{c.ClienteId}/carteira/pagamentos/{recebimento.Json.GetProperty("id").GetGuid()}")).DeveSerSucesso();
+        Assert.Empty(await api.NoBancoAsync(db => db.AjustesContaBancaria.AsNoTracking().Where(a => a.ContaBancariaId == contaId).ToListAsync()));
+    }
+
+    [FatoIntegracao]
+    public async Task Conta_bancaria_de_outra_loja_e_ignorada_no_recebimento()
+    {
+        var a = await PrepararAsync();
+        var b = await PrepararAsync();
+        var contaDaB = (await b.Loja.Painel.Post("/api/financeiro/contas", new { nome = "Conta da B", saldoInicial = 0, banco = "X", limite = 0 })).Json.GetProperty("id").GetGuid();
+        await Vender(a);
+
+        (await a.Loja.Painel.Post($"/api/clientes/{a.ClienteId}/carteira/pagamentos",
+            new { valor = 100m, formaPagamento = "pix", data = (string?)null, observacao = (string?)null, contaBancariaId = contaDaB })).DeveSerSucesso();
+
+        Assert.Empty(await api.NoBancoAsync(db => db.AjustesContaBancaria.AsNoTracking().Where(x => x.ContaBancariaId == contaDaB).ToListAsync()));
+    }
+
     // ── Segurança: uma loja não mexe na carteira de outra ────────────────────
 
     [FatoIntegracao]
