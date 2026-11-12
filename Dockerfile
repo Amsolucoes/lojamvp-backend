@@ -8,6 +8,7 @@ WORKDIR /src
 # (Ao criar um projeto novo, acrescente a linha COPY dele aqui.)
 COPY ["LojaApi.csproj", "."]
 COPY ["src/Domain/LojaApi.Domain.csproj", "src/Domain/"]
+COPY ["src/Data/LojaApi.Data.csproj", "src/Data/"]
 RUN dotnet restore LojaApi.csproj
 COPY . .
 RUN dotnet build LojaApi.csproj -c Release -o /app/build

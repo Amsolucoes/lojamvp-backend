@@ -9,6 +9,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{89BCD9F5-AE8
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LojaApi.Domain", "src\Domain\LojaApi.Domain.csproj", "{F3F51426-AF16-42BA-9B16-92D4502B011F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LojaApi.Data", "src\Data\LojaApi.Data.csproj", "{3BB638E0-3730-4C8F-8616-F412E227AF5C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -23,6 +25,10 @@ Global
 		{F3F51426-AF16-42BA-9B16-92D4502B011F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F3F51426-AF16-42BA-9B16-92D4502B011F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F3F51426-AF16-42BA-9B16-92D4502B011F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3BB638E0-3730-4C8F-8616-F412E227AF5C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3BB638E0-3730-4C8F-8616-F412E227AF5C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3BB638E0-3730-4C8F-8616-F412E227AF5C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3BB638E0-3730-4C8F-8616-F412E227AF5C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -32,5 +38,6 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{F3F51426-AF16-42BA-9B16-92D4502B011F} = {89BCD9F5-AE81-4AF0-90B9-13A9A98A2181}
+		{3BB638E0-3730-4C8F-8616-F412E227AF5C} = {89BCD9F5-AE81-4AF0-90B9-13A9A98A2181}
 	EndGlobalSection
 EndGlobal
