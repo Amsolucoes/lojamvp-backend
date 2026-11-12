@@ -5,6 +5,7 @@ using LojaApi.src.Models.Fiscal;
 using LojaApi.src.Models.Funcionarios;
 using LojaApi.src.Models.OrdemServico;
 using Microsoft.EntityFrameworkCore;
+using LojaApi.Modules.Chacara.Domain;
 
 namespace LojaApi.Data;
 

@@ -1,4 +1,6 @@
 ﻿using LojaApi.Data;
+using LojaApi.Modules.Chacara;
+using LojaApi.Shared;
 using LojaApi.Services;
 using LojaApi.src.Middleware;
 using LojaApi.src.Services;
@@ -52,11 +54,12 @@ internal class Program
         builder.Services.AddScoped<CobrancaEmailService>();
         builder.Services.AddHostedService<CobrancaEmailRotinaService>();
         builder.Services.AddHostedService<BloqueioAutomaticoService>();
-        builder.Services.AddHostedService<ReservaChacaraRotinaService>();
+        builder.Services.AddSharedKernel();
+        // Módulo Chácara (reservas, preços, site público): serviços e rotina horária
+        builder.Services.AddChacaraModule();
         // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
         builder.Services.AddSingleton<PushService>();
         builder.Services.AddHostedService<AvisosVencimentoService>();
-        builder.Services.AddScoped<ReservaChacaraNotificacaoService>();
         builder.Services.AddScoped<OrdemServicoNotificacaoService>();
         // Sem provedor terceirizado contratado ainda — troca fácil quando um for integrado.
         builder.Services.AddScoped<IProvedorFiscal, ProvedorFiscalNaoConfigurado>();

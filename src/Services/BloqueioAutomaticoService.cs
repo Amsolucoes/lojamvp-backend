@@ -1,4 +1,5 @@
 ﻿using LojaApi.src.Services;
+using LojaApi.Modules.Chacara.Application;
 
 namespace LojaApi.Services;
 

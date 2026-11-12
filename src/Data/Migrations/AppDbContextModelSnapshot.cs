@@ -3468,7 +3468,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("avaliacoes_acessorio");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.AvaliacaoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.AvaliacaoChacara", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -3613,7 +3613,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("categorias_video_ajuda");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.ConfiguracaoPrecoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.ConfiguracaoPrecoChacara", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -3749,7 +3749,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("configuracoes_etiqueta");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.FaixaPrecoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.FaixaPrecoChacara", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -3947,7 +3947,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("emissoes_fiscais");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.FotoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.FotoChacara", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -4251,7 +4251,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("profissionais");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.HorarioChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.HorarioChacara", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -4292,7 +4292,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("horarios_chacara");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.InfoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.InfoChacara", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -5441,7 +5441,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("pedidos_acessorio");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.PeriodoEspecialChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.PeriodoEspecialChacara", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -5551,7 +5551,7 @@ namespace LojaApi.src.Data.Migrations
                     b.ToTable("produtos_acessorio");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.Reserva", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.Reserva", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -6405,9 +6405,9 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Produto");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.AvaliacaoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.AvaliacaoChacara", b =>
                 {
-                    b.HasOne("LojaApi.src.Models.Reserva", "Reserva")
+                    b.HasOne("LojaApi.Modules.Chacara.Domain.Reserva", "Reserva")
                         .WithMany()
                         .HasForeignKey("ReservaId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -6417,7 +6417,7 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Reserva");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.ConfiguracaoPrecoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.ConfiguracaoPrecoChacara", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
                         .WithMany()
@@ -6429,7 +6429,7 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Loja");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.FaixaPrecoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.FaixaPrecoChacara", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
                         .WithMany()
@@ -6474,7 +6474,7 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Venda");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.FotoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.FotoChacara", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
                         .WithMany()
@@ -6530,7 +6530,7 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Profissional");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.HorarioChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.HorarioChacara", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
                         .WithMany()
@@ -6542,7 +6542,7 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Loja");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.InfoChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.InfoChacara", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
                         .WithMany()
@@ -6742,7 +6742,7 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Profissional");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.PeriodoEspecialChacara", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.PeriodoEspecialChacara", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
                         .WithMany()
@@ -6754,7 +6754,7 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("Loja");
                 });
 
-            modelBuilder.Entity("LojaApi.src.Models.Reserva", b =>
+            modelBuilder.Entity("LojaApi.Modules.Chacara.Domain.Reserva", b =>
                 {
                     b.HasOne("LojaApi.Models.Loja", "Loja")
                         .WithMany()
