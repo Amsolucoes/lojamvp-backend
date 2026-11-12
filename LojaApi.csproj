@@ -28,4 +28,13 @@
     <InternalsVisibleTo Include="LojaApi.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Camadas em projetos próprios (cada uma tem o seu .csproj dentro da pasta) -->
+    <Compile Remove="src/Domain/**" />
+    <None Remove="src/Domain/**" />
+    <Content Remove="src/Domain/**" />
+    <EmbeddedResource Remove="src/Domain/**" />
+    <ProjectReference Include="src/Domain/LojaApi.Domain.csproj" />
+  </ItemGroup>
+
 </Project>

@@ -1,5 +1,4 @@
-﻿using LojaApi.Models;
-
+﻿
 namespace LojaApi.Domain.Chacara;
 
 public class InfoChacara
@@ -33,7 +32,6 @@ public class InfoChacara
     [System.Text.Json.Serialization.JsonIgnore]
     public bool MpContaPlataforma { get; set; }
 
-    public Loja? Loja { get; set; }
 
     // Dados mínimos do locador para o contrato sair completo
     public bool LocadorCompleto() =>

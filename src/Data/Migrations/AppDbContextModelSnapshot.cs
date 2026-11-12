@@ -6516,26 +6516,22 @@ namespace LojaApi.src.Data.Migrations
 
             modelBuilder.Entity("LojaApi.Domain.Chacara.ConfiguracaoPrecoChacara", b =>
                 {
-                    b.HasOne("LojaApi.Models.Loja", "Loja")
+                    b.HasOne("LojaApi.Models.Loja", null)
                         .WithMany()
                         .HasForeignKey("LojaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_configuracoes_preco_chacara_lojas_loja_id");
-
-                    b.Navigation("Loja");
                 });
 
             modelBuilder.Entity("LojaApi.Domain.Chacara.FaixaPrecoChacara", b =>
                 {
-                    b.HasOne("LojaApi.Models.Loja", "Loja")
+                    b.HasOne("LojaApi.Models.Loja", null)
                         .WithMany()
                         .HasForeignKey("LojaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_faixas_preco_chacara_lojas_loja_id");
-
-                    b.Navigation("Loja");
                 });
 
             modelBuilder.Entity("LojaApi.src.Models.Fiscal.ConfiguracaoFiscal", b =>
@@ -6573,14 +6569,12 @@ namespace LojaApi.src.Data.Migrations
 
             modelBuilder.Entity("LojaApi.Domain.Chacara.FotoChacara", b =>
                 {
-                    b.HasOne("LojaApi.Models.Loja", "Loja")
+                    b.HasOne("LojaApi.Models.Loja", null)
                         .WithMany()
                         .HasForeignKey("LojaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_fotos_chacara_lojas_loja_id");
-
-                    b.Navigation("Loja");
                 });
 
             modelBuilder.Entity("LojaApi.src.Models.Funcionarios.ComissaoFuncionario", b =>
@@ -6629,26 +6623,22 @@ namespace LojaApi.src.Data.Migrations
 
             modelBuilder.Entity("LojaApi.Domain.Chacara.HorarioChacara", b =>
                 {
-                    b.HasOne("LojaApi.Models.Loja", "Loja")
+                    b.HasOne("LojaApi.Models.Loja", null)
                         .WithMany()
                         .HasForeignKey("LojaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_horarios_chacara_lojas_loja_id");
-
-                    b.Navigation("Loja");
                 });
 
             modelBuilder.Entity("LojaApi.Domain.Chacara.InfoChacara", b =>
                 {
-                    b.HasOne("LojaApi.Models.Loja", "Loja")
+                    b.HasOne("LojaApi.Models.Loja", null)
                         .WithMany()
                         .HasForeignKey("LojaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_infos_chacara_lojas_loja_id");
-
-                    b.Navigation("Loja");
                 });
 
             modelBuilder.Entity("LojaApi.src.Models.InscricaoSessao", b =>
@@ -6841,26 +6831,22 @@ namespace LojaApi.src.Data.Migrations
 
             modelBuilder.Entity("LojaApi.Domain.Chacara.PeriodoEspecialChacara", b =>
                 {
-                    b.HasOne("LojaApi.Models.Loja", "Loja")
+                    b.HasOne("LojaApi.Models.Loja", null)
                         .WithMany()
                         .HasForeignKey("LojaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_periodos_especiais_chacara_lojas_loja_id");
-
-                    b.Navigation("Loja");
                 });
 
             modelBuilder.Entity("LojaApi.Domain.Chacara.Reserva", b =>
                 {
-                    b.HasOne("LojaApi.Models.Loja", "Loja")
+                    b.HasOne("LojaApi.Models.Loja", null)
                         .WithMany()
                         .HasForeignKey("LojaId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("f_k_reservas_lojas_loja_id");
-
-                    b.Navigation("Loja");
                 });
 
             modelBuilder.Entity("LojaApi.src.Models.SessaoTurma", b =>

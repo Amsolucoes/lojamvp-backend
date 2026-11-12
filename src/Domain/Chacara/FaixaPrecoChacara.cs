@@ -1,4 +1,3 @@
-using LojaApi.Models;
 
 namespace LojaApi.Domain.Chacara;
 
@@ -12,7 +11,6 @@ public class FaixaPrecoChacara
     public decimal ValorDiariaFimSemana { get; set; } // sex-dom, 1 dia
     public decimal ValorPacote2DiasFimSemana { get; set; } // sex+sáb ou sáb+dom
 
-    public Loja? Loja { get; set; }
 
     public static FaixaPrecoChacara Criar(Guid lojaId, int pessoasAte, decimal semana, decimal fimSemana, decimal pacote2Dias) => new()
     {

@@ -1,4 +1,3 @@
-using LojaApi.Models;
 
 namespace LojaApi.Domain.Chacara;
 
@@ -12,7 +11,6 @@ public class PeriodoEspecialChacara
     public DateTime DataFim { get; set; }
     public decimal ValorTotal { get; set; } // valor do período INTEIRO como cadastrado
 
-    public Loja? Loja { get; set; }
 
     public static string? ValidarDatas(DateTime inicio, DateTime fim) =>
         fim.Date < inicio.Date ? "Data final não pode ser antes da data inicial." : null;

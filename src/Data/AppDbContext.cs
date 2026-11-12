@@ -362,7 +362,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasDefaultValue("xml");
 
         mb.Entity<Reserva>()
-            .HasOne(r => r.Loja).WithMany()
+            .HasOne<Loja>().WithMany()
             .HasForeignKey(r => r.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<Reserva>()
@@ -384,7 +384,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasColumnType("decimal(10,2)");
 
         mb.Entity<ConfiguracaoPrecoChacara>()
-            .HasOne(c => c.Loja).WithMany()
+            .HasOne<Loja>().WithMany()
             .HasForeignKey(c => c.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<ConfiguracaoPrecoChacara>()
@@ -392,7 +392,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .IsUnique();
 
         mb.Entity<FaixaPrecoChacara>()
-            .HasOne(f => f.Loja).WithMany()
+            .HasOne<Loja>().WithMany()
             .HasForeignKey(f => f.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<FaixaPrecoChacara>()
@@ -406,7 +406,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .Property(f => f.ValorPacote2DiasFimSemana).HasColumnType("decimal(10,2)");
 
         mb.Entity<HorarioChacara>()
-            .HasOne(h => h.Loja).WithMany()
+            .HasOne<Loja>().WithMany()
             .HasForeignKey(h => h.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<HorarioChacara>()
@@ -417,14 +417,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .Property(h => h.Ajuste).HasColumnType("decimal(10,2)");
 
         mb.Entity<FotoChacara>()
-            .HasOne(f => f.Loja).WithMany()
+            .HasOne<Loja>().WithMany()
             .HasForeignKey(f => f.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<FotoChacara>()
             .HasIndex(f => new { f.LojaId, f.Ordem });
 
         mb.Entity<InfoChacara>()
-            .HasOne(i => i.Loja).WithMany()
+            .HasOne<Loja>().WithMany()
             .HasForeignKey(i => i.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<InfoChacara>()
@@ -432,7 +432,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .IsUnique();
 
         mb.Entity<PeriodoEspecialChacara>()
-            .HasOne(p => p.Loja).WithMany()
+            .HasOne<Loja>().WithMany()
             .HasForeignKey(p => p.LojaId).OnDelete(DeleteBehavior.Cascade);
 
         mb.Entity<PeriodoEspecialChacara>()
