@@ -1,4 +1,5 @@
 using LojaApi.Tests.Chacara.Dominio;
+using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 
 namespace LojaApi.Tests.Integracao;
@@ -145,6 +146,79 @@ public class PagamentoChacaraApiTests(ApiFixture api)
         var (loja2, id2) = await ReservaPendenteAsync(documento: null);
         await loja2.Site.Post(Pag(loja2, id2, "escolher"), new { formaPagamento = "pix" });
         Assert.Equal("CPF é obrigatório para gerar o Pix.", (await loja2.Site.Post(Pag(loja2, id2, "pix"))).Erro);
+    }
+
+    // ── O Mercado Pago certo para cada loja ──────────────────────────────────
+    // O dinheiro tem que cair na conta da PRÓPRIA chácara: o token dela tem que chegar ao Mercado Pago em toda chamada.
+
+    private async Task<(LojaTeste Loja, int Id, string Token)> ReservaComTokenProprioAsync()
+    {
+        var loja = await api.PrepararParaReservasAsync();
+        var token = "APP_USR-so-desta-loja-" + Guid.NewGuid().ToString("N")[..10];
+        (await loja.Painel.Put("/api/chacara/info/pagamento", new { accessToken = token, publicKey = "APP_USR-pk" })).DeveSerSucesso();
+        var id = (await loja.ReservarPeloSiteAsync(Datas.Sexta(), Datas.Domingo())).Id;
+        return (loja, id, token);
+    }
+
+    [FatoIntegracao]
+    public async Task Cartao_e_cobrado_com_o_access_token_da_propria_chacara()
+    {
+        var (loja, id, token) = await ReservaComTokenProprioAsync();
+        await loja.Site.Post(Pag(loja, id, "escolher"), new { formaPagamento = "cartao" });
+
+        (await loja.Site.Post(Pag(loja, id, "cartao"), new { token = "tok-ok", parcelas = 1 })).DeveSerSucesso();
+
+        Assert.Contains(api.MercadoPago.CobrancasDeCartao, c => c.TokenDaLoja == token);
+    }
+
+    [FatoIntegracao]
+    public async Task Consulta_de_status_do_pagamento_usa_o_access_token_da_propria_chacara()
+    {
+        var (loja, id, token) = await ReservaComTokenProprioAsync();
+        await loja.Site.Post(Pag(loja, id, "escolher"), new { formaPagamento = "pix" });
+        await loja.Site.Post(Pag(loja, id, "pix"));
+        var pagamentoId = (await api.ReservaNoBancoAsync(id)).MpPaymentId!;
+
+        await loja.Site.Get(Pag(loja, id, "status"));
+
+        Assert.Contains(api.MercadoPago.StatusConsultados, s => s.PagamentoId == pagamentoId && s.TokenDaLoja == token);
+    }
+
+    [FatoIntegracao]
+    public async Task Duas_chacaras_cobram_cada_uma_com_o_seu_token()
+    {
+        var (lojaA, idA, tokenA) = await ReservaComTokenProprioAsync();
+        var (lojaB, idB, tokenB) = await ReservaComTokenProprioAsync();
+        foreach (var (loja, id) in new[] { (lojaA, idA), (lojaB, idB) })
+        {
+            await loja.Site.Post(Pag(loja, id, "escolher"), new { formaPagamento = "pix" });
+            await loja.Site.Post(Pag(loja, id, "pix"));
+        }
+
+        Assert.Contains(api.MercadoPago.PixCriados, p => p.TokenDaLoja == tokenA);
+        Assert.Contains(api.MercadoPago.PixCriados, p => p.TokenDaLoja == tokenB);
+        Assert.NotEqual(tokenA, tokenB);
+    }
+
+    [FatoIntegracao]
+    public async Task Access_token_fica_cifrado_no_banco_e_so_volta_em_claro_para_o_Mercado_Pago()
+    {
+        var loja = await api.PrepararParaReservasAsync();
+        var token = "APP_USR-segredo-" + Guid.NewGuid().ToString("N")[..10];
+        (await loja.Painel.Put("/api/chacara/info/pagamento", new { accessToken = token, publicKey = "APP_USR-pk" })).DeveSerSucesso();
+
+        var gravado = await api.NoBancoAsync(db => db.InfosChacara.AsNoTracking().Where(i => i.LojaId == loja.Id).Select(i => i.MpAccessTokenCifrado).SingleAsync());
+
+        Assert.False(string.IsNullOrWhiteSpace(gravado));
+        Assert.NotEqual(token, gravado);                 // não está em texto puro
+        Assert.DoesNotContain(token, gravado!);
+        Assert.DoesNotContain("APP_USR", gravado!);
+
+        // e mesmo cifrado, o Mercado Pago recebe o original (prova de que decifrar funciona)
+        var id = (await loja.ReservarPeloSiteAsync(Datas.Sexta(), Datas.Domingo())).Id;
+        await loja.Site.Post(Pag(loja, id, "escolher"), new { formaPagamento = "pix" });
+        await loja.Site.Post(Pag(loja, id, "pix"));
+        Assert.Contains(api.MercadoPago.PixCriados, p => p.TokenDaLoja == token);
     }
 
     // ── Cartão ───────────────────────────────────────────────────────────────
