@@ -1,0 +1,7 @@
+# Não precisam ir para a imagem de produção
+tests/
+tools/
+docs/
+.git/
+**/bin/
+**/obj/

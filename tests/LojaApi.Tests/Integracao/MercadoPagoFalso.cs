@@ -1,0 +1,47 @@
+using System.Collections.Concurrent;
+using LojaApi.Services;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace LojaApi.Tests.Integracao;
+
+// Mercado Pago "de mentira" para os testes: não chama a internet e deixa o teste decidir o que o MP responde.
+//  - Access Token que começa com "APP_USR" é aceito; qualquer outro é recusado.
+//  - Pix nasce "pending" até o teste chamar Aprovar(...).
+//  - Cartão é aprovado na hora, a não ser que o token do cartão seja "cartao-recusado".
+public sealed class MercadoPagoFalso() : MercadoPagoService(new ConfigurationBuilder().Build(), NullLogger<MercadoPagoService>.Instance)
+{
+    private readonly ConcurrentDictionary<string, string> _status = new();
+
+    public ConcurrentQueue<(decimal Valor, string TokenDaLoja)> PixCriados { get; } = new();
+    public ConcurrentQueue<(decimal Valor, int Parcelas)> CobrancasDeCartao { get; } = new();
+
+    public void Aprovar(string mpPaymentId) => _status[mpPaymentId] = "approved";
+
+    public override Task<(bool ok, string? email)> ValidarToken(string accessToken) =>
+        Task.FromResult(accessToken.StartsWith("APP_USR") ? (true, (string?)"conta@mp.test") : (false, (string?)null));
+
+    public override Task<MpPaymentResult> CriarPix(decimal valor, string descricao, string emailPagador, string cpfPagador,
+        string nomePagador, Guid pagamentoId, DateTime? expiraEm = null, string? accessToken = null)
+    {
+        var id = "pix-" + Guid.NewGuid().ToString("N");
+        _status[id] = "pending";
+        PixCriados.Enqueue((valor, accessToken ?? ""));
+        return Task.FromResult(new MpPaymentResult { MpPaymentId = id, Status = "pending", QrCode = "000201-qr-de-teste", QrCodeBase64 = "QkFTRTY0" });
+    }
+
+    public override Task<MpPaymentResult> CriarCartao(decimal valor, string descricao, string cardToken, int parcelas,
+        string emailPagador, string cpfPagador, string nomePagador, Guid pagamentoId, string? accessToken = null)
+    {
+        CobrancasDeCartao.Enqueue((valor, parcelas));
+        if (cardToken == "cartao-recusado")
+            return Task.FromResult(new MpPaymentResult { Erro = "Cartão recusado pelo banco emissor." });
+
+        var id = "cartao-" + Guid.NewGuid().ToString("N");
+        _status[id] = "approved";
+        return Task.FromResult(new MpPaymentResult { MpPaymentId = id, Status = "approved" });
+    }
+
+    public override Task<string?> VerificarStatus(string mpPaymentId, string? accessToken = null) =>
+        Task.FromResult(_status.TryGetValue(mpPaymentId, out var s) ? s : null);
+}

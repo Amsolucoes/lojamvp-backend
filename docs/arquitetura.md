@@ -65,12 +65,19 @@ if (erro != null) return Resultado.Invalido(erro);
    `AppDbContextModelSnapshot.cs`. **Não** altere tabelas/colunas.
 3. Para cada controller: crie o serviço de aplicação com a lógica (copie, não reescreva) e deixe o controller fino.
 4. Crie `<Modulo>Module.cs` com `AddXModule()` e chame no `Program.cs`.
-5. Prove que nada mudou com `tools/regressao` (e confira rotas e modelo do banco; veja o README de lá).
+5. Escreva os testes do módulo (unitários do `Domain` + integração pela API) seguindo `tests/README.md`.
+6. Se for uma refatoração, prove que nada mudou com `tools/regressao` (e confira rotas e modelo do banco; veja o README de lá).
+
+## Testes
+
+`tests/LojaApi.Tests` tem testes **unitários** (regras do Domain, sem banco) e de **integração** (API de verdade +
+PostgreSQL, serviços externos trocados por dublês). Como rodar e como escrever: `tests/README.md`.
+Cada módulo migrado deve vir com os seus testes.
 
 ## Estado atual
 
 - **Migrado:** Chácara (reservas, site público, pagamento da reserva, preços, horários, períodos especiais,
-  fotos, dados da chácara, painel).
+  fotos, dados da chácara, painel), **com testes**.
 - **Ainda no formato antigo** (controllers com a lógica dentro): Financeiro (o maior, ~3.300 linhas), Notas
   fiscais (importação), Administração, Planos/assinantes, Ordem de serviço, Produtos acessório, Corretora,
   Funcionários, Vendas, Turmas, Produtos, Clientes e demais.
