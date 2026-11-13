@@ -1,6 +1,6 @@
 using LojaApi.Domain.Chacara;
 
-namespace LojaApi.Tests.Domain.ChacaraTeste;
+namespace LojaApi.Tests.Domain.Entities.ChacaraTeste;
 
 public class ReservaTests
 {

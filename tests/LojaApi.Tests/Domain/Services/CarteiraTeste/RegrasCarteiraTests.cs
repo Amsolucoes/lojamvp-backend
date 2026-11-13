@@ -1,6 +1,6 @@
 using LojaApi.Domain.Carteira;
 
-namespace LojaApi.Tests.Domain.CarteiraTeste;
+namespace LojaApi.Tests.Domain.Services.CarteiraTeste;
 
 public class RegrasCarteiraTests
 {

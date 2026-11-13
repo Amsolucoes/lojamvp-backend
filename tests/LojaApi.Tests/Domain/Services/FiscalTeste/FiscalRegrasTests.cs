@@ -1,6 +1,6 @@
 using LojaApi.Domain.Fiscal;
 
-namespace LojaApi.Tests.Domain.FiscalTeste;
+namespace LojaApi.Tests.Domain.Services.FiscalTeste;
 
 public class FiscalRegrasTests
 {

@@ -1,6 +1,6 @@
 using LojaApi.Domain.Turmas;
 
-namespace LojaApi.Tests.Domain.TurmasTeste;
+namespace LojaApi.Tests.Domain.Services.TurmasTeste;
 
 public class TurmasRegrasTests
 {
