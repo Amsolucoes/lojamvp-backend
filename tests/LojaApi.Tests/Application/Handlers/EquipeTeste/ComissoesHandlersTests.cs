@@ -4,17 +4,20 @@ using LojaApi.Shared.Application;
 using LojaApi.src.Models.Funcionarios;
 using LojaApi.Tests.Suporte.Falsos;
 
-namespace LojaApi.Tests.Application.Services.EquipeTeste;
+namespace LojaApi.Tests.Application.Handlers.EquipeTeste;
 
-// Service das comissões, testado com repositório em memória (sem banco, sem HTTP).
-public class ComissoesServiceTests
+// Handlers das comissões, testados com repositório em memória (sem banco, sem HTTP).
+public class ComissoesHandlersTests
 {
     private static readonly Guid Loja = Guid.NewGuid();
     private static readonly Guid OutraLoja = Guid.NewGuid();
     private static readonly DateTime Hoje = DateTime.UtcNow.Date;
 
     private readonly RepositorioEquipeFalso _repo = new();
-    private ComissoesService Servico() => new(_repo);
+
+    private Task<Resultado<object>> ResumoComissoes(Guid? loja, DateTime? de, DateTime? ate) => new ResumoComissoesQueryHandler(_repo).HandleAsync(new(loja, de, ate));
+    private Task<Resultado<object>> FecharComissoes(Guid? loja, FecharComissaoRequest req) => new FecharComissoesCommandHandler(_repo).HandleAsync(new(loja, req));
+    private Task<Resultado<object>> DesfazerFechamento(Guid? loja, Guid id) => new DesfazerFechamentoCommandHandler(_repo).HandleAsync(new(loja, id));
 
     private Profissional Profissional(string nome = "Joana", decimal? diaria = null)
     {
@@ -44,12 +47,12 @@ public class ComissoesServiceTests
         var bia = Profissional("Bia", 120);
         Comissao(ana.Id, 10); Comissao(ana.Id, 10); Comissao(bia.Id, 30); Comissao(bia.Id, 99, "pago");
 
-        var r = await Servico().ResumoAsync(Loja, null, null);
+        var r = await ResumoComissoes(Loja, null, null);
 
         var lista = Assert.IsType<List<ResumoComissaoProfissionalDto>>(r.Valor);
         Assert.Equal([("Bia", 30m, 1), ("Ana", 20m, 2)], lista.Select(x => (x.ProfissionalNome, x.ValorTotal, x.QtdAtendimentos)).ToList());
         Assert.Equal(120m, lista[0].ValorDiaria);
-        Assert.Empty((IEnumerable<object>)(await Servico().ResumoAsync(null, null, null)).Valor!);   // sem loja: vazio
+        Assert.Empty((IEnumerable<object>)(await ResumoComissoes(null, null, null)).Valor!);   // sem loja: vazio
     }
 
     // ── Fechar ───────────────────────────────────────────────────────────────
@@ -59,12 +62,12 @@ public class ComissoesServiceTests
     {
         var p = Profissional();
 
-        Assert.Equal((TipoResultado.Invalido, "Loja não encontrada."), ((await Servico().FecharAsync(null, Fechar(p.Id))) is var a ? (a.Tipo, a.Mensagem) : default));
-        var inexistente = await Servico().FecharAsync(Loja, Fechar(Guid.NewGuid()));
+        Assert.Equal((TipoResultado.Invalido, "Loja não encontrada."), ((await FecharComissoes(null, Fechar(p.Id))) is var a ? (a.Tipo, a.Mensagem) : default));
+        var inexistente = await FecharComissoes(Loja, Fechar(Guid.NewGuid()));
         Assert.Equal((TipoResultado.NaoEncontrado, "Profissional não encontrado."), (inexistente.Tipo, inexistente.Mensagem));
-        Assert.Equal("Quantidade de diárias inválida.", (await Servico().FecharAsync(Loja, Fechar(p.Id, diarias: -1))).Mensagem);
-        Assert.Equal("Este profissional não tem valor de diária cadastrado.", (await Servico().FecharAsync(Loja, Fechar(p.Id, diarias: 2))).Mensagem);
-        Assert.Equal("Nenhuma comissão pendente encontrada nesse período, e nenhuma diária informada.", (await Servico().FecharAsync(Loja, Fechar(p.Id))).Mensagem);
+        Assert.Equal("Quantidade de diárias inválida.", (await FecharComissoes(Loja, Fechar(p.Id, diarias: -1))).Mensagem);
+        Assert.Equal("Este profissional não tem valor de diária cadastrado.", (await FecharComissoes(Loja, Fechar(p.Id, diarias: 2))).Mensagem);
+        Assert.Equal("Nenhuma comissão pendente encontrada nesse período, e nenhuma diária informada.", (await FecharComissoes(Loja, Fechar(p.Id))).Mensagem);
         Assert.Empty(_repo.Fechamentos);
         Assert.Equal(0, _repo.Salvamentos);
     }
@@ -77,7 +80,7 @@ public class ComissoesServiceTests
         var contaAlheia = Guid.NewGuid();
         _repo.Contas.Add((contaAlheia, OutraLoja));
 
-        var r = await Servico().FecharAsync(Loja, Fechar(p.Id, conta: contaAlheia));
+        var r = await FecharComissoes(Loja, Fechar(p.Id, conta: contaAlheia));
 
         Assert.Equal((TipoResultado.Invalido, "Conta bancária não encontrada."), (r.Tipo, r.Mensagem));
         Assert.Equal("pendente", comissao.Status);
@@ -94,7 +97,7 @@ public class ComissoesServiceTests
         var foraDoPeriodo = Comissao(p.Id, 500, criadoEm: DateTime.UtcNow.AddDays(-30));
         var jaPaga = Comissao(p.Id, 700, "pago");
 
-        var r = await Servico().FecharAsync(Loja, Fechar(p.Id, diarias: 2));
+        var r = await FecharComissoes(Loja, Fechar(p.Id, diarias: 2));
 
         Assert.True(r.Sucesso);
         var fechamento = Assert.Single(_repo.Fechamentos);
@@ -113,9 +116,9 @@ public class ComissoesServiceTests
         var conta = ContaDaLoja();
         Comissao(p.Id, 40);
 
-        await Servico().FecharAsync(Loja, Fechar(p.Id, conta: conta));
+        await FecharComissoes(Loja, Fechar(p.Id, conta: conta));
         Comissao(p.Id, 10);
-        await Servico().FecharAsync(Loja, Fechar(p.Id, conta: conta, vencimento: Hoje.AddDays(20)));
+        await FecharComissoes(Loja, Fechar(p.Id, conta: conta, vencimento: Hoje.AddDays(20)));
 
         Assert.Equal(2, _repo.Lancamentos.Count);
         var primeiro = _repo.Lancamentos[0];
@@ -136,16 +139,16 @@ public class ComissoesServiceTests
         var p = Profissional();
         var conta = ContaDaLoja();
         var comissao = Comissao(p.Id, 40);
-        await Servico().FecharAsync(Loja, Fechar(p.Id, conta: conta));
+        await FecharComissoes(Loja, Fechar(p.Id, conta: conta));
         var fechamentoId = _repo.Fechamentos.Single().Id;
 
-        var r = await Servico().DesfazerFechamentoAsync(Loja, fechamentoId);
+        var r = await DesfazerFechamento(Loja, fechamentoId);
 
         Assert.True(r.Sucesso);
         Assert.Equal(("pendente", null, null), (comissao.Status, comissao.PagoEm?.ToString(), comissao.FechamentoId?.ToString()));
         Assert.Empty(_repo.Fechamentos);
         Assert.Empty(_repo.Lancamentos);
-        Assert.Equal(TipoResultado.NaoEncontrado, (await Servico().DesfazerFechamentoAsync(Loja, fechamentoId)).Tipo);
+        Assert.Equal(TipoResultado.NaoEncontrado, (await DesfazerFechamento(Loja, fechamentoId)).Tipo);
     }
 
     [Fact]
@@ -153,11 +156,11 @@ public class ComissoesServiceTests
     {
         var p = Profissional();
         var comissao = Comissao(p.Id, 40);
-        await Servico().FecharAsync(Loja, Fechar(p.Id, conta: ContaDaLoja()));
+        await FecharComissoes(Loja, Fechar(p.Id, conta: ContaDaLoja()));
         var fechamentoId = _repo.Fechamentos.Single().Id;
         _repo.Lancamentos.Single().Status = "pago";
 
-        var r = await Servico().DesfazerFechamentoAsync(Loja, fechamentoId);
+        var r = await DesfazerFechamento(Loja, fechamentoId);
 
         Assert.Equal((TipoResultado.Invalido, "Essa comissão já foi paga no Financeiro. Estorne o lançamento lá antes de desfazer o fechamento."), (r.Tipo, r.Mensagem));
         Assert.Single(_repo.Fechamentos);
@@ -169,10 +172,10 @@ public class ComissoesServiceTests
     {
         var p = Profissional();
         Comissao(p.Id, 40);
-        await Servico().FecharAsync(Loja, Fechar(p.Id));
+        await FecharComissoes(Loja, Fechar(p.Id));
         var fechamentoId = _repo.Fechamentos.Single().Id;
 
-        Assert.Equal(TipoResultado.NaoEncontrado, (await Servico().DesfazerFechamentoAsync(OutraLoja, fechamentoId)).Tipo);
+        Assert.Equal(TipoResultado.NaoEncontrado, (await DesfazerFechamento(OutraLoja, fechamentoId)).Tipo);
         Assert.Single(_repo.Fechamentos);
     }
 }

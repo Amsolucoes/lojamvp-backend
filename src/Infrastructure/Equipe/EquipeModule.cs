@@ -8,8 +8,7 @@ public static class EquipeModule
     {
         services.AddScoped<IEquipeRepository, EquipeRepository>();
         services.AddScoped<ILancamentoFixoFinanceiro, LancamentoFixoFinanceiroAdapter>();
-        services.AddScoped<FuncionariosService>();
-        services.AddScoped<ComissoesService>();
+        services.AddHandlersDoModulo("Equipe");   // todos os handlers de Application/Handlers/Equipe
         return services;
     }
 }

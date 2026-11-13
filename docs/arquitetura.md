@@ -39,7 +39,10 @@ Application/
   Dtos/<Modulo>/<Modulo>Dtos.cs            <- o que a API DEVOLVE (records "…Dto"); um arquivo por módulo
   Requests/<Modulo>/<Modulo>Requests.cs    <- o que a API RECEBE no corpo (records "…Request"); um arquivo por módulo
   Interfaces/<Modulo>/I<Nome>.cs           <- repositórios (I<Modulo>Repository) e portas (IProvedorFiscal...); um arquivo por interface
-  Services/<Modulo>/<Nome>Service.cs       <- casos de uso (regras de negócio); um arquivo por service
+  Services/<Modulo>/<Nome>Service.cs       <- casos de uso (regras de negócio); um arquivo por service (padrão antigo, ainda usado pela maioria dos módulos)
+  Commands/<Modulo>/<Modulo>Commands.cs    <- o que MUDA dados (records "…Command"); só nos módulos em Command/Handler
+  Queries/<Modulo>/<Modulo>Queries.cs      <- o que só LÊ (records "…Query"); só nos módulos em Command/Handler
+  Handlers/<Modulo>/<Nome>Handler.cs       <- um handler por Command/Query (o caso de uso); só nos módulos em Command/Handler
   Shared/Resultado.cs                      <- Resultado<T> (+ Interfaces/Shared/ILojaAtual.cs e Services/Shared/LojaAtualService.cs)
 ```
 - **O nome do tipo termina com o que ele é**: `ClienteDto`, `SalvarClienteRequest`, `ClientesService`, e as interfaces começam com `I`
@@ -47,6 +50,17 @@ Application/
 - **Namespace por módulo, não por pasta**: tudo de um módulo é `LojaApi.Application.<Modulo>`, em qualquer pasta de tipo
   (quem usa um módulo importa um namespace só). A pasta só organiza os arquivos.
 - Ao criar um módulo novo, crie o arquivo dele em cada pasta de tipo (só as que ele precisar).
+
+### Command e Handler (padrão novo, piloto na Equipe)
+Em vez de um service com vários métodos, **cada caso de uso é um Command (ou Query) e um Handler**, sem biblioteca de mediador:
+
+- `Commands/<Modulo>`: records que **mudam** dados (`CriarFuncionarioCommand(LojaId, Req)`); `Queries/<Modulo>`: records que só **leem** (`ResumoComissoesQuery`).
+- `Handlers/<Modulo>/<Nome>Handler.cs`: implementa `ICommandHandler<T>` ou `IQueryHandler<T>` (`Interfaces/Shared/IHandlers.cs`), recebe o
+  repository pelo construtor e devolve `Resultado<object>`. O nome é sempre `<Mensagem>Handler` (um teste de arquitetura confere).
+- O controller recebe o handler que a ação precisa por `[FromServices]` e chama `HandleAsync(new(lojaId, ...))`.
+- O registro é automático: `services.AddHandlersDoModulo("<Modulo>")` no `<Modulo>Module` acha todos os handlers do namespace.
+- O que dois handlers compartilham fica em uma classe de apoio na mesma pasta (`FuncionarioApoio`). O repository continua igual.
+- Consultas pesadas podem, no futuro, trocar o repository por Dapper só no lado das Queries, sem mexer nos Commands.
 
 ### Portas: como o Application fala com o mundo externo sem depender dele
 O Application não pode referenciar a API. O que vem de fora (Mercado Pago, criptografia de segredos, gerador de PDF) entra por
@@ -57,7 +71,7 @@ Os testes trocam o Mercado Pago por um falso exatamente por esse caminho.
 ### Service x Repository (módulos novos)
 Nos módulos migrados a partir de **Ajuda, Clientes, Fiscal, Turmas, Corretora e Equipe** a camada Application separa as duas coisas:
 
-- **Service** (`Application/Services/<Modulo>/<X>Service.cs`): as regras de negócio e a orquestração. Devolve `Resultado<T>`. **Não usa o `AppDbContext`.**
+- **Service** (`Application/Services/<Modulo>/<X>Service.cs`) ou, na Equipe, **Handler** (`Application/Handlers/<Modulo>`, veja "Command e Handler"): as regras de negócio e a orquestração. Devolve `Resultado<T>`. **Não usa o `AppDbContext`.**
 - **Repository** (interface `I<Modulo>Repository` em `Application/Interfaces/<Modulo>`, implementação EF Core em `Infrastructure/<Modulo>`): só lê e grava,
   com métodos nomeados pelo que fazem (`ObterTurmaAsync`, `CpfJaCadastradoAsync`, `ListarApolicesAsync`...). Sem repository genérico (o EF já é
   um). Expõe `SalvarAsync()` para gravar o que o service alterou. A implementação mora na API (e não no `Data`) porque o Application já
@@ -146,7 +160,7 @@ if (erro != null) return Resultado.Invalido(erro);
 
 `tests/LojaApi.Tests` tem testes **unitários** (regras do Domain e services com repository falso, sem banco) e de **integração**
 (API de verdade + PostgreSQL, serviços externos trocados por dublês). As pastas espelham os projetos do `src`
-(`Domain/AggregatesModel/<Modulo>Teste`, `Application/Services/<Modulo>Teste`, `Api/<Modulo>Teste`). Como rodar e como escrever: `tests/README.md`.
+(`Domain/AggregatesModel/<Modulo>Teste`, `Application/Services/<Modulo>Teste`, `Application/Handlers/<Modulo>Teste`, `Api/<Modulo>Teste`). Como rodar e como escrever: `tests/README.md`.
 Cada módulo migrado deve vir com os seus testes.
 
 ## Como uma mudança chega ao ar
@@ -170,17 +184,17 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 | **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Controllers + testes |
 | **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Controllers` (a migrar) |
 | **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | só `Controllers` |
-| **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
+| **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
 | **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Controllers` |
-| **Clientes** | Clientes (cadastro de clientes da loja) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
+| **Clientes** | Clientes (cadastro de clientes da loja) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
 | **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | ✅ Domain/Application/Infrastructure/Controllers + testes |
-| **Equipe** | Funcionarios, Comissoes (o salário fixo entra no Financeiro pela porta `ILancamentoFixoFinanceiro`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
-| **Corretora** | Corretora (seguradoras, funil, apólices) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
-| **Turmas** | Turmas (matrícula, sessões, remarcação; rotina que gera as sessões) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
+| **Equipe** | Funcionarios, Comissoes (o salário fixo entra no Financeiro pela porta `ILancamentoFixoFinanceiro`) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
+| **Corretora** | Corretora (seguradoras, funil, apólices) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
+| **Turmas** | Turmas (matrícula, sessões, remarcação; rotina que gera as sessões) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
 | **OrdemServico** | OrdemServico, Patrimonio | só `Controllers` |
 | **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma) | só `Controllers` |
 | **Plataforma** | Admin, Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Pagamentos (assinatura), Push | só `Controllers` |
-| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
+| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
 
 ## Próximos passos sugeridos
 
