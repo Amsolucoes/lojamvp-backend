@@ -4,9 +4,9 @@ API REST para o sistema de gestão de loja. PostgreSQL + JWT + Entity Framework 
 
 ## Stack
 
-- **Runtime**: .NET 8
+- **Runtime**: .NET 10
 - **Framework**: ASP.NET Core Web API
-- **ORM**: Entity Framework Core 8
+- **ORM**: Entity Framework Core 10
 - **Banco**: PostgreSQL (Npgsql)
 - **Auth**: JWT Bearer (8h de expiração)
 - **Docs**: Swagger UI em `/swagger`
@@ -14,14 +14,14 @@ API REST para o sistema de gestão de loja. PostgreSQL + JWT + Entity Framework 
 ## Rodar localmente
 
 ### Pré-requisitos
-- .NET 8 SDK → https://dotnet.microsoft.com/download
+- .NET 10 SDK → https://dotnet.microsoft.com/download
 - PostgreSQL rodando na porta 5432
 
 ### Passos
 
 ```bash
 # 1. Instalar EF Tools (uma vez só)
-dotnet tool install --global dotnet-ef
+dotnet tool install --global dotnet-ef    # ou "dotnet tool update --global dotnet-ef" se já tiver (use a versão 10.x)
 
 # 2. Criar o banco (se não existir)
 # No psql ou pgAdmin: CREATE DATABASE loja_db;

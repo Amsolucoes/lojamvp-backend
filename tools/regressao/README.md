@@ -7,11 +7,11 @@ Rodando o roteiro no build de **antes** e no de **depois** e comparando, qualque
 
 ```bash
 dotnet build LojaApi.csproj -c Release
-cp -r bin/Release/net8.0 /tmp/build-antes          # guarde o build ANTES de refatorar
+cp -r bin/Release/net10.0 /tmp/build-antes          # guarde o build ANTES de refatorar
 # ... refatora ...
 dotnet build LojaApi.csproj -c Release
 tools/regressao/comparar.sh /tmp/build-antes base   # grava resultado-base.json
-tools/regressao/comparar.sh bin/Release/net8.0 novo # grava resultado-novo.json
+tools/regressao/comparar.sh bin/Release/net10.0 novo # grava resultado-novo.json
 tools/regressao/diff.py                             # precisa terminar em "DIFERENÇAS: 0"
 ```
 
