@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="Resend" Version="0.6.0" />
+    <!-- O Resend 0.6.0 traz o WebUtilities 8.0.20, com vulnerabilidade alta (GHSA-x33c-w48q-qrgc). Fixar aqui a versão corrigida. -->
+    <PackageReference Include="Microsoft.AspNetCore.WebUtilities" Version="10.0.15" />
   </ItemGroup>
 
   <ItemGroup>
