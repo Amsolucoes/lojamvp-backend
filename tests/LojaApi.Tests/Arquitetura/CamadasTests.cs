@@ -39,6 +39,33 @@ public class CamadasTests
             Assert.Contains(TiposDoModulo(modulo), t => t.IsInterface && t.Name.EndsWith("Repository"));
     }
 
+    private static IEnumerable<(Type Handler, Type Contrato)> Handlers() =>
+        Application.GetTypes()
+            .Where(t => t is { IsClass: true, IsAbstract: false })
+            .SelectMany(t => t.GetInterfaces()
+                .Where(i => i.IsGenericType && (i.GetGenericTypeDefinition() == typeof(ICommandHandler<>) || i.GetGenericTypeDefinition() == typeof(IQueryHandler<>)))
+                .Select(i => (t, i)));
+
+    [Fact]
+    public void Handlers_seguem_a_convencao_de_nome_e_cada_um_cuida_de_um_unico_caso_de_uso()
+    {
+        var problemas = new List<string>();
+        foreach (var grupo in Handlers().GroupBy(h => h.Handler))
+        {
+            var (handler, contrato) = (grupo.Key, grupo.Single().Contrato);   // Single: um handler não implementa dois contratos
+            var comando = contrato.GetGenericTypeDefinition() == typeof(ICommandHandler<>);
+            var mensagem = contrato.GetGenericArguments()[0];
+
+            var sufixo = comando ? "Command" : "Query";
+            if (!mensagem.Name.EndsWith(sufixo)) problemas.Add($"{mensagem.Name} deveria terminar em {sufixo}");
+            if (handler.Name != mensagem.Name + "Handler") problemas.Add($"{handler.Name} deveria se chamar {mensagem.Name}Handler");
+            if (handler.Namespace != mensagem.Namespace) problemas.Add($"{handler.Name} e {mensagem.Name} deveriam estar no mesmo módulo");
+        }
+
+        Assert.True(problemas.Count == 0, string.Join("; ", problemas));
+        Assert.NotEmpty(Handlers());
+    }
+
     [Fact]
     public void Domain_nao_depende_de_banco_nem_das_outras_camadas()
     {

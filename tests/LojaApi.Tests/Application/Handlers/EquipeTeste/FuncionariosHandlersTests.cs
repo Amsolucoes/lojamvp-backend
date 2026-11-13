@@ -4,17 +4,23 @@ using LojaApi.Shared.Application;
 using LojaApi.src.Models.Funcionarios;
 using LojaApi.Tests.Suporte.Falsos;
 
-namespace LojaApi.Tests.Application.Services.EquipeTeste;
+namespace LojaApi.Tests.Application.Handlers.EquipeTeste;
 
-// Service dos funcionários, testado com repositório e Financeiro de mentira (sem banco, sem HTTP).
-public class FuncionariosServiceTests
+// Handlers dos funcionários, testados com repositório e Financeiro de mentira (sem banco, sem HTTP).
+public class FuncionariosHandlersTests
 {
     private static readonly Guid Loja = Guid.NewGuid();
     private static readonly Guid OutraLoja = Guid.NewGuid();
 
     private readonly RepositorioEquipeFalso _repo = new();
     private readonly LancamentoFixoFinanceiroFalso _financeiro = new();
-    private FuncionariosService Servico() => new(_repo, _financeiro);
+
+    private Task<Resultado<object>> CriarFuncionario(Guid? loja, SalvarFuncionarioRequest req) => new CriarFuncionarioCommandHandler(_repo, _financeiro).HandleAsync(new(loja, req));
+    private Task<Resultado<object>> AtualizarFuncionario(Guid? loja, Guid id, SalvarFuncionarioRequest req) => new AtualizarFuncionarioCommandHandler(_repo, _financeiro).HandleAsync(new(loja, id, req));
+    private Task<Resultado<object>> AlternarAtivoFuncionario(Guid? loja, Guid id) => new AlternarAtivoFuncionarioCommandHandler(_repo).HandleAsync(new(loja, id));
+    private Task<Resultado<object>> ExcluirFuncionario(Guid? loja, Guid id) => new ExcluirFuncionarioCommandHandler(_repo).HandleAsync(new(loja, id));
+    private Task<Resultado<object>> DefinirComissaoServico(Guid? loja, Guid id, SalvarComissaoServicoRequest req) => new DefinirComissaoServicoCommandHandler(_repo).HandleAsync(new(loja, id, req));
+    private Task<Resultado<object>> RemoverComissaoServico(Guid? loja, Guid comissaoId) => new RemoverComissaoServicoCommandHandler(_repo).HandleAsync(new(loja, comissaoId));
 
     private Guid ContaDaLoja() { var id = Guid.NewGuid(); _repo.Contas.Add((id, Loja)); return id; }
 
@@ -33,10 +39,10 @@ public class FuncionariosServiceTests
     [Fact]
     public async Task Criar_sem_loja_ou_sem_nome_nao_grava_nada()
     {
-        var semLoja = await Servico().CriarAsync(null, Pedido());
+        var semLoja = await CriarFuncionario(null, Pedido());
         Assert.Equal((TipoResultado.Invalido, "Loja não encontrada."), (semLoja.Tipo, semLoja.Mensagem));
 
-        var semNome = await Servico().CriarAsync(Loja, Pedido("  "));
+        var semNome = await CriarFuncionario(Loja, Pedido("  "));
         Assert.Equal((TipoResultado.Invalido, "Nome é obrigatório."), (semNome.Tipo, semNome.Mensagem));
         Assert.Empty(_repo.Profissionais);
         Assert.Equal(0, _repo.Salvamentos);
@@ -45,8 +51,8 @@ public class FuncionariosServiceTests
     [Fact]
     public async Task Criar_valida_os_valores_da_remuneracao()
     {
-        Assert.Equal("Informe o valor do salário fixo.", (await Servico().CriarAsync(Loja, Pedido(tipo: "salario_fixo"))).Mensagem);
-        Assert.Equal("Informe o valor da diária.", (await Servico().CriarAsync(Loja, Pedido(tipo: "diaria"))).Mensagem);
+        Assert.Equal("Informe o valor do salário fixo.", (await CriarFuncionario(Loja, Pedido(tipo: "salario_fixo"))).Mensagem);
+        Assert.Equal("Informe o valor da diária.", (await CriarFuncionario(Loja, Pedido(tipo: "diaria"))).Mensagem);
         Assert.Empty(_repo.Profissionais);
     }
 
@@ -55,7 +61,7 @@ public class FuncionariosServiceTests
     {
         var conta = ContaDaLoja();
 
-        var r = await Servico().CriarAsync(Loja, Pedido("Anderson", "salario_fixo", 3000, conta));
+        var r = await CriarFuncionario(Loja, Pedido("Anderson", "salario_fixo", 3000, conta));
 
         Assert.True(r.Sucesso);
         var profissional = Assert.Single(_repo.Profissionais);
@@ -73,7 +79,7 @@ public class FuncionariosServiceTests
         var contaAlheia = Guid.NewGuid();
         _repo.Contas.Add((contaAlheia, OutraLoja));
 
-        var r = await Servico().CriarAsync(Loja, Pedido("Fixo", "salario_fixo", 3000, contaAlheia));
+        var r = await CriarFuncionario(Loja, Pedido("Fixo", "salario_fixo", 3000, contaAlheia));
 
         Assert.Equal((TipoResultado.Invalido, "Conta bancária não encontrada."), (r.Tipo, r.Mensagem));
         Assert.Empty(_repo.Profissionais);
@@ -85,7 +91,7 @@ public class FuncionariosServiceTests
     [Fact]
     public async Task Fora_do_salario_fixo_a_conta_nao_e_usada_nem_validada()
     {
-        var r = await Servico().CriarAsync(Loja, Pedido("Comissionada", "comissao", conta: Guid.NewGuid()));
+        var r = await CriarFuncionario(Loja, Pedido("Comissionada", "comissao", conta: Guid.NewGuid()));
 
         Assert.True(r.Sucesso);
         Assert.Empty(_repo.Fixos);
@@ -96,8 +102,8 @@ public class FuncionariosServiceTests
     public async Task Segundo_salario_fixo_reaproveita_a_categoria()
     {
         var conta = ContaDaLoja();
-        await Servico().CriarAsync(Loja, Pedido("Um", "salario_fixo", 1000, conta));
-        await Servico().CriarAsync(Loja, Pedido("Dois", "salario_fixo", 2000, conta, dia: 15));
+        await CriarFuncionario(Loja, Pedido("Um", "salario_fixo", 1000, conta));
+        await CriarFuncionario(Loja, Pedido("Dois", "salario_fixo", 2000, conta, dia: 15));
 
         Assert.Single(_repo.Categorias);
         Assert.Equal([5, 15], _repo.Fixos.Select(f => f.DiaVencimento).ToList());
@@ -110,8 +116,8 @@ public class FuncionariosServiceTests
     {
         var existente = Existente();
 
-        Assert.Equal(TipoResultado.NaoEncontrado, (await Servico().AtualizarAsync(Loja, Guid.NewGuid(), Pedido())).Tipo);
-        Assert.Equal(TipoResultado.NaoEncontrado, (await Servico().AtualizarAsync(OutraLoja, existente.Id, Pedido("Invasor"))).Tipo);
+        Assert.Equal(TipoResultado.NaoEncontrado, (await AtualizarFuncionario(Loja, Guid.NewGuid(), Pedido())).Tipo);
+        Assert.Equal(TipoResultado.NaoEncontrado, (await AtualizarFuncionario(OutraLoja, existente.Id, Pedido("Invasor"))).Tipo);
         Assert.Equal("Joana", existente.Nome);
     }
 
@@ -122,7 +128,7 @@ public class FuncionariosServiceTests
         _repo.Fixos.Add(fixo);
         var profissional = Existente("salario_fixo", fixo.Id);
 
-        var r = await Servico().AtualizarAsync(Loja, profissional.Id, Pedido("Joana", "comissao"));
+        var r = await AtualizarFuncionario(Loja, profissional.Id, Pedido("Joana", "comissao"));
 
         Assert.True(r.Sucesso);
         Assert.False(fixo.Ativa);
@@ -138,7 +144,7 @@ public class FuncionariosServiceTests
         _repo.Fixos.Add(fixo);
         var profissional = Existente("salario_fixo", fixo.Id);
 
-        await Servico().AtualizarAsync(Loja, profissional.Id, Pedido("Joana", "salario_fixo", 3500, conta, dia: 12));
+        await AtualizarFuncionario(Loja, profissional.Id, Pedido("Joana", "salario_fixo", 3500, conta, dia: 12));
 
         Assert.Equal((3500m, 12, conta, true), (fixo.Valor, fixo.DiaVencimento, fixo.ContaBancariaId, fixo.Ativa));
         Assert.Equal([$"limpar:{fixo.Id}", $"gerar:{fixo.Id}"], _financeiro.Chamadas);   // nessa ordem
@@ -150,7 +156,7 @@ public class FuncionariosServiceTests
         var conta = ContaDaLoja();
         var profissional = Existente("comissao");
 
-        await Servico().AtualizarAsync(Loja, profissional.Id, Pedido("Joana", "salario_fixo", 2500, conta, dia: 6));
+        await AtualizarFuncionario(Loja, profissional.Id, Pedido("Joana", "salario_fixo", 2500, conta, dia: 6));
 
         var fixo = Assert.Single(_repo.Fixos);
         Assert.Equal((2500m, 6), (fixo.Valor, fixo.DiaVencimento));
@@ -165,7 +171,7 @@ public class FuncionariosServiceTests
         _repo.Contas.Add((contaAlheia, OutraLoja));
         var profissional = Existente("comissao");
 
-        var r = await Servico().AtualizarAsync(Loja, profissional.Id, Pedido("Novo nome", "salario_fixo", 2000, contaAlheia));
+        var r = await AtualizarFuncionario(Loja, profissional.Id, Pedido("Novo nome", "salario_fixo", 2000, contaAlheia));
 
         Assert.Equal((TipoResultado.Invalido, "Conta bancária não encontrada."), (r.Tipo, r.Mensagem));
         Assert.Equal(("Joana", "comissao"), (profissional.Nome, profissional.TipoRemuneracao));
@@ -181,10 +187,10 @@ public class FuncionariosServiceTests
         _repo.Fixos.Add(fixo);
         var profissional = Existente("salario_fixo", fixo.Id);
 
-        await Servico().AlternarAtivoAsync(Loja, profissional.Id);
+        await AlternarAtivoFuncionario(Loja, profissional.Id);
         Assert.False(profissional.Ativo);
         Assert.False(fixo.Ativa);
-        await Servico().AlternarAtivoAsync(Loja, profissional.Id);
+        await AlternarAtivoFuncionario(Loja, profissional.Id);
         Assert.True(fixo.Ativa);
     }
 
@@ -195,13 +201,13 @@ public class FuncionariosServiceTests
         var livre = Existente();
         _repo.ProfissionaisEmUso.Add(usado.Id);
 
-        Assert.True((await Servico().ExcluirAsync(Loja, usado.Id)).Sucesso);
+        Assert.True((await ExcluirFuncionario(Loja, usado.Id)).Sucesso);
         Assert.False(usado.Ativo);
         Assert.Contains(usado, _repo.Profissionais);
 
-        Assert.True((await Servico().ExcluirAsync(Loja, livre.Id)).Sucesso);
+        Assert.True((await ExcluirFuncionario(Loja, livre.Id)).Sucesso);
         Assert.DoesNotContain(livre, _repo.Profissionais);
-        Assert.Equal(TipoResultado.NaoEncontrado, (await Servico().ExcluirAsync(Loja, livre.Id)).Tipo);
+        Assert.Equal(TipoResultado.NaoEncontrado, (await ExcluirFuncionario(Loja, livre.Id)).Tipo);
     }
 
     // ── Comissão por serviço ─────────────────────────────────────────────────
@@ -215,16 +221,16 @@ public class FuncionariosServiceTests
         _repo.Servicos.Add((servico, Loja));
         _repo.Servicos.Add((servicoAlheio, OutraLoja));
 
-        var alheio = await Servico().DefinirComissaoServicoAsync(Loja, profissional.Id, new(servicoAlheio, 5));
+        var alheio = await DefinirComissaoServico(Loja, profissional.Id, new(servicoAlheio, 5));
         Assert.Equal((TipoResultado.Invalido, "Serviço não encontrado."), (alheio.Tipo, alheio.Mensagem));
 
-        await Servico().DefinirComissaoServicoAsync(Loja, profissional.Id, new(servico, 25));
-        await Servico().DefinirComissaoServicoAsync(Loja, profissional.Id, new(servico, 30));
+        await DefinirComissaoServico(Loja, profissional.Id, new(servico, 25));
+        await DefinirComissaoServico(Loja, profissional.Id, new(servico, 30));
         var linha = Assert.Single(_repo.ComissoesServico);
         Assert.Equal((30m, Loja), (linha.ComissaoPercentual, linha.LojaId));
 
-        Assert.True((await Servico().RemoverComissaoServicoAsync(Loja, linha.Id)).Sucesso);
+        Assert.True((await RemoverComissaoServico(Loja, linha.Id)).Sucesso);
         Assert.Empty(_repo.ComissoesServico);
-        Assert.Equal(TipoResultado.NaoEncontrado, (await Servico().RemoverComissaoServicoAsync(Loja, linha.Id)).Tipo);
+        Assert.Equal(TipoResultado.NaoEncontrado, (await RemoverComissaoServico(Loja, linha.Id)).Tipo);
     }
 }

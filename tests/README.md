@@ -35,6 +35,7 @@ As pastas **espelham os projetos do `src`**, e dentro de cada uma há uma subpas
 tests/LojaApi.Tests/
   Domain/AggregatesModel/<Modulo>Teste/ regras puras e entidades (unitários, rápidos, sem banco)   ex.: Domain/AggregatesModel/AjudaTeste/YoutubeIdTests.cs
   Application/Services/<Modulo>Teste/   SERVICES com repository falso (unitários, sem banco)   ex.: VideosAjudaServiceTests.cs
+  Application/Handlers/<Modulo>Teste/   HANDLERS (Command/Query) com repository falso (unitários, sem banco)   ex.: FuncionariosHandlersTests.cs
   Application/Shared/                   Resultado<T> -> 200/400/404/409/500
   Api/<Modulo>Teste/                    integração pelo HTTP: API de verdade + PostgreSQL   ex.: Api/AjudaTeste/AjudaApiTests.cs
   Arquitetura/                          guardas das camadas
@@ -49,7 +50,7 @@ tests/LojaApi.Tests/
 | Pasta | Tipo | O que prova |
 |---|---|---|
 | `Domain/*Teste` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira, horários livres e conflito da agenda, comissão, regras do plano e da mensalidade, link do YouTube, fiscal, turmas, corretora |
-| `Application/Services/AjudaTeste`, `Application/Services/EquipeTeste` | **Unitários** (repository falso) | As regras dos services sem banco nem HTTP: validações, extrair o id do link, renomear categoria, excluir em uso; na Equipe, salário fixo no Financeiro (porta falsa), fechar/desfazer comissões, conta de outra loja |
+| `Application/Services/AjudaTeste`, `Application/Handlers/EquipeTeste` | **Unitários** (repository falso) | As regras dos services e handlers sem banco nem HTTP: validações, extrair o id do link, renomear categoria, excluir em uso; na Equipe, salário fixo no Financeiro (porta falsa), fechar/desfazer comissões, conta de outra loja |
 | `Application/Shared` | Unitários | `Resultado<T>` → 200/400/404/409/500 |
 | `Arquitetura` | Unitários | Guardas das camadas: service sem `AppDbContext` nos módulos com repository, Domain sem EF/ASP.NET, Application sem a API |
 | `Api/*Teste` | **Integração**, API de verdade + PostgreSQL | Fluxos completos pelo HTTP, com login (JWT), banco real e migrations |
