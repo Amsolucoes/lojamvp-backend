@@ -184,17 +184,17 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 | **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Controllers + testes |
 | **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Controllers` (a migrar) |
 | **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | só `Controllers` |
-| **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
+| **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Controllers` |
-| **Clientes** | Clientes (cadastro de clientes da loja) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
+| **Clientes** | Clientes (cadastro de clientes da loja) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | ✅ Domain/Application/Infrastructure/Controllers + testes |
 | **Equipe** | Funcionarios, Comissoes (o salário fixo entra no Financeiro pela porta `ILancamentoFixoFinanceiro`) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
-| **Corretora** | Corretora (seguradoras, funil, apólices) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
-| **Turmas** | Turmas (matrícula, sessões, remarcação; rotina que gera as sessões) | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
+| **Corretora** | Corretora (seguradoras, funil, apólices) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
+| **Turmas** | Turmas (matrícula, sessões, remarcação; rotina que gera as sessões) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **OrdemServico** | OrdemServico, Patrimonio | só `Controllers` |
 | **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma) | só `Controllers` |
 | **Plataforma** | Admin, Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Pagamentos (assinatura), Push | só `Controllers` |
-| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | ✅ Domain/Application (Command/Handler + repository, módulo piloto)/Infrastructure/Controllers + testes |
+| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 
 ## Próximos passos sugeridos
 
