@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Regras de negócio puras: só depende do .NET (nada de banco, HTTP, e-mail ou serviços externos).
+       O compilador impede que alguém adicione essas dependências aqui sem perceber. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LojaApi.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

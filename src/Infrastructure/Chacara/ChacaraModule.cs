@@ -8,6 +8,11 @@ public static class ChacaraModule
 {
     public static IServiceCollection AddChacaraModule(this IServiceCollection services)
     {
+        // Portas do Application ligadas às implementações reais
+        services.AddScoped<IPagamentoOnlineChacara, PagamentoOnlineChacaraMercadoPago>();
+        services.AddSingleton<IProtetorDeSegredos, ProtetorDeSegredosConfiguracao>();
+        services.AddSingleton<IGeradorContratoChacara, GeradorContratoChacaraQuestPdf>();
+
         services.AddScoped<ReservaChacaraNotificacaoService>();
 
         // Casos de uso (camada de aplicação)

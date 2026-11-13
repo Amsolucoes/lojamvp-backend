@@ -1,14 +1,14 @@
-﻿using LojaApi.Data;
+﻿using Microsoft.Extensions.Logging;
+using LojaApi.Data;
 using LojaApi.Models;
 using LojaApi.src.Models;
 using Microsoft.EntityFrameworkCore;
 using Resend;
 
 using LojaApi.Domain.Chacara;
-using LojaApi.Infrastructure.Chacara;
 namespace LojaApi.Application.Chacara;
 
-public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, ILogger<ReservaChacaraNotificacaoService> logger)
+public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, IGeradorContratoChacara contratos, ILogger<ReservaChacaraNotificacaoService> logger)
 {
     public async Task NotificarConfirmacaoAsync(Reserva reserva)
     {
@@ -23,7 +23,7 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         byte[]? pdfBytes = null;
         try
         {
-            pdfBytes = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
+            pdfBytes = contratos.Gerar(reserva, loja, info, cfg);
         }
         catch (Exception ex)
         {
@@ -403,7 +403,7 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         byte[] pdfBytes;
         try
         {
-            pdfBytes = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
+            pdfBytes = contratos.Gerar(reserva, loja, info, cfg);
         }
         catch (Exception ex)
         {
@@ -467,7 +467,7 @@ public class ReservaChacaraNotificacaoService(AppDbContext db, IResend resend, I
         byte[] pdfBytes;
         try
         {
-            pdfBytes = ContratoChacaraService.GerarContratoPdf(reserva, loja, info, cfg);
+            pdfBytes = contratos.Gerar(reserva, loja, info, cfg);
         }
         catch (Exception ex)
         {

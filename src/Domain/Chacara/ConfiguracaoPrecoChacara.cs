@@ -1,4 +1,3 @@
-using LojaApi.Models;
 
 namespace LojaApi.Domain.Chacara;
 
@@ -19,7 +18,6 @@ public class ConfiguracaoPrecoChacara
     public int ParcelasAteLimite { get; set; } = 2;
     public int ParcelasAcimaLimite { get; set; } = 3;
 
-    public Loja? Loja { get; set; }
 
     // Parcelas e taxa do cartão são configuráveis por chácara
     public int ParcelasMaximas(decimal valor) => valor <= ValorLimiteParcelas ? ParcelasAteLimite : ParcelasAcimaLimite;

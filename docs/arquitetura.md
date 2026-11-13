@@ -6,21 +6,48 @@ os controllers sejam só a "porta de entrada" HTTP.
 
 ## Estrutura
 
-As pastas são **por camada** e, dentro de cada camada, **uma subpasta por módulo de negócio**:
+As pastas são **por camada** e, dentro de cada camada, **uma subpasta por módulo de negócio**. Três camadas são **projetos
+próprios** (cada uma com o seu `.csproj`), então o compilador **impede** dependências no sentido errado:
 
 ```
 src/
-  Controllers/<Modulo>/      <- SÓ controllers (HTTP). Ex.: Controllers/Chacara/ReservaChacaraController.cs
-  Application/<Modulo>/      <- casos de uso (o que o sistema FAZ), um serviço por assunto
-  Domain/<Modulo>/           <- o coração: entidades e regras de negócio (sem banco, sem HTTP)
-  Infrastructure/<Modulo>/   <- detalhes técnicos (PDF, rotinas em segundo plano) e o registro do módulo (<Modulo>Module.cs)
-  Shared/                    <- usado por todos os módulos: Resultado<T>, ILojaAtual, ParaResposta()
-  Data/                      <- AppDbContext e Migrations
-  Services, Models, DTOs     <- ainda compartilhados (código dos módulos ainda não migrados)
+  Domain/            projeto LojaApi.Domain       <- só depende do .NET. Entidades e regras de negócio, por módulo.
+  Data/              projeto LojaApi.Data         <- AppDbContext, Models (entidades) e Migrations. Depende do Domain.
+  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira) + Resultado<T> e ILojaAtual (Shared).
+                                                     Depende do Domain e do Data. Nunca da API.
+  Controllers/<Modulo>/    (projeto da API: LojaApi.csproj, na raiz)  <- SÓ controllers (HTTP)
+  Infrastructure/<Modulo>/ (projeto da API)  <- PDF, rotinas em segundo plano, registro do módulo e os adaptadores das portas
+  Shared/Api/ , Services/ , DTOs/ , Middleware/ , Utils/   (projeto da API; Services/DTOs ainda atendem os módulos não migrados)
+```
+
+Quem depende de quem (seta = "referencia"):
+
+```
+LojaApi (API) ──> Application ──> Data ──> Domain
+      │               │                       ▲
+      └───────────────┴───────────────────────┘      (Domain não referencia ninguém)
 ```
 
 Namespaces seguem as pastas: `LojaApi.Controllers.<Modulo>`, `LojaApi.Application.<Modulo>`, `LojaApi.Domain.<Modulo>`,
-`LojaApi.Infrastructure.<Modulo>`.
+`LojaApi.Infrastructure.<Modulo>`. As entidades antigas continuam em `LojaApi.Models` / `LojaApi.src.Models` (dentro do projeto Data).
+
+### Portas: como o Application fala com o mundo externo sem depender dele
+O Application não pode referenciar a API. O que vem de fora (Mercado Pago, criptografia de segredos, gerador de PDF) entra por
+**interface** definida no Application (`Application/Chacara/Portas.cs`: `IPagamentoOnlineChacara`, `IProtetorDeSegredos`,
+`IGeradorContratoChacara`) e é **implementado na API** (`Infrastructure/Chacara/AdaptadoresChacara.cs`), ligado em `ChacaraModule`.
+Os testes trocam o Mercado Pago por um falso exatamente por esse caminho.
+
+### Migrations (mudou de lugar)
+As migrations moram no projeto **Data**. Comandos do EF Core agora precisam dos dois projetos:
+```powershell
+dotnet ef migrations add NomeDaMigration --project src\Data --startup-project .
+dotnet ef database update --project src\Data --startup-project .
+```
+No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaApi.Data`** e **Projeto de inicialização = `LojaApi`**.
+
+### Ao criar um projeto novo
+Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
+às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
 Hoje só **Chacara** e **Carteira** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
 dentro do controller) e, ao serem migrados, ganham `Application/<Modulo>` e `Domain/<Modulo>`.
@@ -28,15 +55,17 @@ dentro do controller) e, ao serem migrados, ganham `Application/<Modulo>` e `Dom
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
 > estrangeiras depende disso. Por isso o `AppDbContext` fixa, para toda entidade em `LojaApi.Domain.*`, o nome da FK como
 > `f_k_<tabela>_<tabela principal>_<colunas>` (igual ao que já está no banco). Ao criar um módulo novo, confira com
-> `dotnet ef dbcontext script` que o DDL não mudou.
+> `dotnet ef dbcontext script --project src\Data --startup-project .` que o DDL não mudou.
+>
+> As entidades do Domain **não têm propriedade de navegação para `Loja`** (só `LojaId`): o Domain não enxerga o projeto Data.
 
 ## O que vai em cada camada
 
 | Camada | O que tem | Pode depender de | Não pode |
 |---|---|---|---|
 | **Domain** | Entidades com comportamento (`Reserva.Confirmar`, `ConfiguracaoPrecoChacara.ParcelasMaximas`), constantes de status, cálculos puros (`CalculadoraPrecoChacara`), regras da agenda | só do .NET | banco, HTTP, e-mail, qualquer serviço externo |
-| **Application** | Casos de uso: carregam do banco, chamam as regras do Domain, salvam, devolvem `Resultado<T>` | Domain, `AppDbContext`, Infrastructure | `ControllerBase`, `IActionResult`, qualquer coisa de HTTP |
-| **Infrastructure** | Integrações e detalhes técnicos: PDF (QuestPDF), rotinas (`BackgroundService`) | Domain | — |
+| **Application** | Casos de uso: carregam do banco, chamam as regras do Domain, salvam, devolvem `Resultado<T>` | Domain, Data (`AppDbContext`) e as **portas** que ele mesmo define | `ControllerBase`, `IActionResult`, qualquer coisa de HTTP |
+| **Infrastructure** | Integrações e detalhes técnicos: PDF (QuestPDF), rotinas (`BackgroundService`), adaptadores das portas | Domain, Application | — |
 | **Controllers** | Controllers: leem a requisição, descobrem a loja (`ILojaAtual`), chamam **um** caso de uso, devolvem `ParaResposta(this)` | Application | regra de negócio e acesso direto ao banco |
 
 Regra prática: *se você está escrevendo um `if` de negócio dentro de um controller, ele está no lugar errado.*

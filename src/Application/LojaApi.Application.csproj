@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Casos de uso. Depende do Domain e do Data, NUNCA da API: o que vem de fora (Mercado Pago, criptografia, PDF)
+       entra por interface (Chacara/Portas.cs) e é implementado na API. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LojaApi.Application</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Resend" Version="0.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\LojaApi.Domain.csproj" />
+    <ProjectReference Include="..\Data\LojaApi.Data.csproj" />
+  </ItemGroup>
+
+</Project>

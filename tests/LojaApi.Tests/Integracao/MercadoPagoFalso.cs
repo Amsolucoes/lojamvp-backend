@@ -14,7 +14,8 @@ public sealed class MercadoPagoFalso() : MercadoPagoService(new ConfigurationBui
     private readonly ConcurrentDictionary<string, string> _status = new();
 
     public ConcurrentQueue<(decimal Valor, string TokenDaLoja)> PixCriados { get; } = new();
-    public ConcurrentQueue<(decimal Valor, int Parcelas)> CobrancasDeCartao { get; } = new();
+    public ConcurrentQueue<(decimal Valor, int Parcelas, string TokenDaLoja)> CobrancasDeCartao { get; } = new();
+    public ConcurrentQueue<(string PagamentoId, string TokenDaLoja)> StatusConsultados { get; } = new();
 
     public void Aprovar(string mpPaymentId) => _status[mpPaymentId] = "approved";
 
@@ -33,7 +34,7 @@ public sealed class MercadoPagoFalso() : MercadoPagoService(new ConfigurationBui
     public override Task<MpPaymentResult> CriarCartao(decimal valor, string descricao, string cardToken, int parcelas,
         string emailPagador, string cpfPagador, string nomePagador, Guid pagamentoId, string? accessToken = null)
     {
-        CobrancasDeCartao.Enqueue((valor, parcelas));
+        CobrancasDeCartao.Enqueue((valor, parcelas, accessToken ?? ""));
         if (cardToken == "cartao-recusado")
             return Task.FromResult(new MpPaymentResult { Erro = "Cartão recusado pelo banco emissor." });
 
@@ -42,6 +43,9 @@ public sealed class MercadoPagoFalso() : MercadoPagoService(new ConfigurationBui
         return Task.FromResult(new MpPaymentResult { MpPaymentId = id, Status = "approved" });
     }
 
-    public override Task<string?> VerificarStatus(string mpPaymentId, string? accessToken = null) =>
-        Task.FromResult(_status.TryGetValue(mpPaymentId, out var s) ? s : null);
+    public override Task<string?> VerificarStatus(string mpPaymentId, string? accessToken = null)
+    {
+        StatusConsultados.Enqueue((mpPaymentId, accessToken ?? ""));
+        return Task.FromResult(_status.TryGetValue(mpPaymentId, out var s) ? s : null);
+    }
 }

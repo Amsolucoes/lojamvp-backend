@@ -1,6 +1,4 @@
-﻿using System.Text.Json.Serialization;
-using LojaApi.Models;
-
+﻿
 namespace LojaApi.Domain.Chacara;
 
 public class Reserva
@@ -51,11 +49,6 @@ public class Reserva
     public bool AvisoAvaliacaoEnviado { get; set; } // controla o lembrete por e-mail (evita mandar 2x)
     public string? MotivoCancelamento { get; set; } // preenchido quando o próprio cliente cancela
 
-    // Ignorado no JSON: se algum outro código no mesmo request rastrear uma Loja completa
-    // (ex.: reenvio de contrato), o EF religa essa navegação automaticamente e a serialização
-    // entra em ciclo (Loja -> Usuarios -> Loja -> ...). A API nunca precisou desse campo.
-    [JsonIgnore]
-    public Loja? Loja { get; set; }
 
     // ── Comportamento da reserva (regras de negócio) ─────────────────────────────
     // Os métodos abaixo devolvem a mensagem de erro quando a regra não permite a operação, ou null quando deu certo.

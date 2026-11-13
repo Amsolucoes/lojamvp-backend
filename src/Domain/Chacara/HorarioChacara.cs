@@ -1,5 +1,4 @@
 using System.Text.RegularExpressions;
-using LojaApi.Models;
 
 namespace LojaApi.Domain.Chacara;
 
@@ -15,7 +14,6 @@ public class HorarioChacara
     public decimal Ajuste { get; set; } = 0;         // soma ao valor calculado da diária — pode ser negativo (desconto)
     public int Ordem { get; set; }
 
-    public Loja? Loja { get; set; }
 
     // Regra: tipo entrada/saida e hora no formato HH:mm. Devolve a mensagem de erro, ou null se estiver tudo certo.
     public static string? Validar(string tipo, string hora)
