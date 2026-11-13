@@ -33,8 +33,7 @@ As pastas **espelham os projetos do `src`**, e dentro de cada uma há uma subpas
 
 ```
 tests/LojaApi.Tests/
-  Domain/Services/<Modulo>Teste/   regras puras (unitários, rápidos, sem banco)   ex.: Domain/Services/AjudaTeste/YoutubeIdTests.cs
-  Domain/Entities/<Modulo>Teste/           comportamento das entidades (Reserva, configurações da chácara)
+  Domain/AggregatesModel/<Modulo>Teste/ regras puras e entidades (unitários, rápidos, sem banco)   ex.: Domain/AggregatesModel/AjudaTeste/YoutubeIdTests.cs
   Application/Services/<Modulo>Teste/   SERVICES com repository falso (unitários, sem banco)   ex.: VideosAjudaServiceTests.cs
   Application/Shared/                   Resultado<T> -> 200/400/404/409/500
   Api/<Modulo>Teste/                    integração pelo HTTP: API de verdade + PostgreSQL   ex.: Api/AjudaTeste/AjudaApiTests.cs

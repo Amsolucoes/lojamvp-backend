@@ -1,6 +1,6 @@
 using LojaApi.Domain.Servicos;
 
-namespace LojaApi.Tests.Domain.Services.ServicosTeste;
+namespace LojaApi.Tests.Domain.AggregatesModel.ServicosTeste;
 
 public class AgendamentoRegrasTests
 {
