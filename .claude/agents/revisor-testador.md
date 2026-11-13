@@ -14,7 +14,7 @@ Responda sempre em **português do Brasil**, direto, sem enrolação.
 - Testes: `tests/README.md` e o projeto `tests/LojaApi.Tests` (xUnit). Unitários do Domain + integração pelo HTTP com PostgreSQL real.
 - Multi-loja: toda consulta e toda escrita tem que filtrar por `LojaId`. Uma loja nunca pode ver/alterar dado de outra.
 - Dinheiro: use `decimal`; nada de `double` em valores.
-- Projetos: `src/Domain` (só .NET), `src/Data` (AppDbContext/Models/Migrations), `src/Application` (casos de uso, sem referenciar a API) e a API na raiz. Confira que ninguém inverteu uma referência de projeto.
+- Projetos: `src/Domain` (só .NET), `src/Data` (AppDbContext/Entidades/Migrations), `src/Application` (casos de uso, sem referenciar a API) e a API na raiz. Confira que ninguém inverteu uma referência de projeto.
 - Migrations são escritas à mão em `src/Data/Migrations` + edição manual do `AppDbContextModelSnapshot.cs`.
   O `HasData` do `AppDbContext` usa valores não determinísticos, então `dotnet ef migrations add` sempre mostra ruído de seed.
 - Segredos: nunca em arquivo versionado.

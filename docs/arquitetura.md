@@ -12,7 +12,7 @@ próprios** (cada uma com o seu `.csproj`), então o compilador **impede** depen
 ```
 src/
   Domain/            projeto LojaApi.Domain       <- só depende do .NET. Entidades e regras de negócio, por módulo.
-  Data/              projeto LojaApi.Data         <- AppDbContext, Models (entidades) e Migrations. Depende do Domain.
+  Data/              projeto LojaApi.Data         <- AppDbContext, Entidades (tabelas do banco) e Migrations. Depende do Domain.
   Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora)
                                                      + Resultado<T> e ILojaAtual (Shared).
                                                      Depende do Domain e do Data. Nunca da API.
@@ -31,7 +31,7 @@ LojaApi (API) ──> Application ──> Data ──> Domain
 ```
 
 Namespaces seguem as pastas: `LojaApi.Controllers.<Modulo>`, `LojaApi.Application.<Modulo>`, `LojaApi.Domain.<Modulo>`,
-`LojaApi.Infrastructure.<Modulo>`. As entidades antigas continuam em `LojaApi.Models` / `LojaApi.src.Models` (dentro do projeto Data).
+`LojaApi.Infrastructure.<Modulo>`. As entidades antigas ficam na pasta `src/Data/Entidades`, mas o namespace delas continua `LojaApi.Models` / `LojaApi.src.Models` (a pasta foi renomeada, o namespace não).
 
 ### Como a pasta Application é organizada (por tipo, depois por módulo)
 ```
