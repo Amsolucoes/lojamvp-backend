@@ -1,6 +1,6 @@
 using LojaApi.Data;
 using LojaApi.Services;
-using LojaApi.src.Services.Fiscal;
+using LojaApi.Application.Fiscal;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;

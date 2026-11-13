@@ -171,6 +171,45 @@ public class CorretoraApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Motivo_da_perda_so_e_gravado_na_etapa_perdido()
+    {
+        var loja = await NovaAsync();
+        var id = await OportunidadeAsync(loja, await loja.ClienteIdAsync());
+
+        await Mover(loja, id, "contato", motivo: "não deveria gravar");
+
+        Assert.Null((await api.NoBancoAsync(db => db.Oportunidades.AsNoTracking().FirstAsync(o => o.Id == id))).MotivoPerda);
+    }
+
+    [FatoIntegracao]
+    public async Task Atualizar_oportunidade_troca_o_cliente()
+    {
+        var loja = await NovaAsync();
+        var ana = await loja.ClienteIdAsync("Ana", "67911110000");
+        var bia = await loja.ClienteIdAsync("Bia", "67922220000");
+        var id = await OportunidadeAsync(loja, ana);
+
+        (await loja.Painel.Put($"/api/corretora/oportunidades/{id}", new { clienteId = bia, seguradoraId = (Guid?)null, planoDesejado = "x", valorEstimado = 1m, observacao = "o", quantidadeVidas = 1 })).DeveSerSucesso();
+
+        Assert.Equal(bia, (await api.NoBancoAsync(db => db.Oportunidades.AsNoTracking().FirstAsync(o => o.Id == id))).ClienteId);
+    }
+
+    [FatoIntegracao]
+    public async Task Nova_oportunidade_usa_a_maior_ordem_so_da_coluna_de_leads()
+    {
+        var loja = await NovaAsync();
+        var cliente = await loja.ClienteIdAsync();
+        var emContato = await OportunidadeAsync(loja, cliente, null, "A");
+        await Mover(loja, emContato, "contato", ordem: 50);   // ordem alta em OUTRA coluna não conta
+
+        var nova = await OportunidadeAsync(loja, cliente, null, "B");
+
+        Assert.Equal(1, (await api.NoBancoAsync(db => db.Oportunidades.AsNoTracking().FirstAsync(o => o.Id == nova))).Ordem);
+        var segundoLead = await OportunidadeAsync(loja, cliente, null, "C");
+        Assert.Equal(2, (await api.NoBancoAsync(db => db.Oportunidades.AsNoTracking().FirstAsync(o => o.Id == segundoLead))).Ordem);
+    }
+
+    [FatoIntegracao]
     public async Task Ganhar_com_conta_lanca_a_comissao_no_financeiro_uma_unica_vez()
     {
         var loja = await NovaAsync();
@@ -357,6 +396,80 @@ public class CorretoraApiTests(ApiFixture api)
 
         var larga = (await loja.Painel.Get("/api/corretora/dashboard?dias=90")).Json;
         Assert.Equal(3, larga.GetProperty("emAndamento").GetProperty("propostas").GetInt32());   // agora entra a antiga
+    }
+
+    // Correção desta migração: antes, cliente, seguradora, oportunidade e conta bancária de OUTRA loja eram aceitos
+    // (o nome do cliente alheio aparecia na lista, a oportunidade alheia virava "ganho" e o lançamento ia para a conta alheia).
+
+    [FatoIntegracao]
+    public async Task Oportunidade_nao_aceita_cliente_nem_seguradora_de_outra_loja()
+    {
+        var a = await NovaAsync();
+        var b = await NovaAsync();
+        var clienteDeA = await a.ClienteIdAsync("Cliente Secreto da A");
+        var seguradoraDeA = await SeguradoraAsync(a, "Seguradora da A");
+        var clienteB = await b.ClienteIdAsync();
+        var seguradoraB = await SeguradoraAsync(b);
+        object Corpo(Guid cliente, Guid? seguradora) => new { clienteId = cliente, seguradoraId = seguradora, planoDesejado = "x", valorEstimado = 1m, observacao = "o", quantidadeVidas = 1 };
+
+        var clienteAlheio = await b.Painel.Post("/api/corretora/oportunidades", Corpo(clienteDeA, null));
+        Assert.Equal((400, "Cliente não encontrado."), (clienteAlheio.Codigo, clienteAlheio.Erro));
+        var seguradoraAlheia = await b.Painel.Post("/api/corretora/oportunidades", Corpo(clienteB, seguradoraDeA));
+        Assert.Equal((400, "Seguradora não encontrada."), (seguradoraAlheia.Codigo, seguradoraAlheia.Erro));
+        Assert.Equal(0, (await b.Painel.Get("/api/corretora/oportunidades")).Json.GetArrayLength());
+
+        var propria = await OportunidadeAsync(b, clienteB, seguradoraB);
+        Assert.Equal("Cliente não encontrado.", (await b.Painel.Put($"/api/corretora/oportunidades/{propria}", Corpo(clienteDeA, seguradoraB))).Erro);
+        Assert.Equal("Seguradora não encontrada.", (await b.Painel.Put($"/api/corretora/oportunidades/{propria}", Corpo(clienteB, seguradoraDeA))).Erro);
+        var gravada = await api.NoBancoAsync(db => db.Oportunidades.AsNoTracking().FirstAsync(o => o.Id == propria));
+        Assert.Equal((clienteB, seguradoraB), (gravada.ClienteId, gravada.SeguradoraId));
+    }
+
+    [FatoIntegracao]
+    public async Task Ganhar_nao_lanca_comissao_em_conta_bancaria_de_outra_loja()
+    {
+        var a = await NovaAsync();
+        var b = await NovaAsync();
+        var contaDeA = await ContaAsync(a);
+        var id = await OportunidadeAsync(b, await b.ClienteIdAsync());
+
+        var r = await Mover(b, id, "ganho", conta: contaDeA);
+
+        Assert.Equal((400, "Conta bancária não encontrada."), (r.Codigo, r.Erro));
+        Assert.Equal("lead", (await api.NoBancoAsync(db => db.Oportunidades.AsNoTracking().FirstAsync(o => o.Id == id))).Etapa);
+        Assert.Equal(0, await api.NoBancoAsync(db => db.LancamentosFinanceiros.CountAsync(l => l.ContaBancariaId == contaDeA)));
+    }
+
+    [FatoIntegracao]
+    public async Task Apolice_nao_aceita_cliente_seguradora_oportunidade_nem_conta_de_outra_loja()
+    {
+        var a = await NovaAsync();
+        var b = await NovaAsync();
+        var clienteDeA = await a.ClienteIdAsync("Cliente Secreto da A");
+        var seguradoraDeA = await SeguradoraAsync(a);
+        var oportunidadeDeA = await OportunidadeAsync(a, clienteDeA);
+        var contaDeA = await ContaAsync(a);
+        var clienteB = await b.ClienteIdAsync();
+        var seguradoraB = await SeguradoraAsync(b);
+
+        async Task<Resposta> Criar(object corpo) => await b.Painel.Post("/api/corretora/apolices", corpo);
+
+        var r1 = await Criar(Apolice(clienteDeA, seguradoraB));
+        Assert.Equal((400, "Cliente não encontrado."), (r1.Codigo, r1.Erro));
+        var r2 = await Criar(Apolice(clienteB, seguradoraDeA));
+        Assert.Equal((400, "Seguradora não encontrada."), (r2.Codigo, r2.Erro));
+        var r3 = await Criar(Apolice(clienteB, seguradoraB, oportunidade: oportunidadeDeA));
+        Assert.Equal((400, "Oportunidade não encontrada."), (r3.Codigo, r3.Erro));
+        var r4 = await Criar(Apolice(clienteB, seguradoraB, conta: contaDeA, gerar: true));
+        Assert.Equal((400, "Conta bancária não encontrada."), (r4.Codigo, r4.Erro));
+
+        Assert.Equal(0, (await b.Painel.Get("/api/corretora/apolices")).Json.GetArrayLength());
+        Assert.Equal("lead", (await api.NoBancoAsync(db => db.Oportunidades.AsNoTracking().FirstAsync(o => o.Id == oportunidadeDeA))).Etapa);   // a oportunidade alheia não virou "ganho"
+        Assert.Equal(0, await api.NoBancoAsync(db => db.LancamentosFinanceiros.CountAsync(l => l.ContaBancariaId == contaDeA)));
+
+        var propria = await ApoliceAsync(b, Apolice(clienteB, seguradoraB));
+        Assert.Equal("Seguradora não encontrada.", (await b.Painel.Put($"/api/corretora/apolices/{propria}", Apolice(clienteB, seguradoraDeA))).Erro);
+        Assert.Equal(seguradoraB, (await api.NoBancoAsync(db => db.Apolices.AsNoTracking().FirstAsync(x => x.Id == propria))).SeguradoraId);
     }
 
     [FatoIntegracao]

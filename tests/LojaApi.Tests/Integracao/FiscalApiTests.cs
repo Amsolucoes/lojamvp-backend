@@ -1,7 +1,7 @@
 using System.Text.Json;
 using LojaApi.Models;
 using LojaApi.src.Models.Fiscal;
-using LojaApi.src.Services.Fiscal;
+using LojaApi.Application.Fiscal;
 using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Tests.Integracao;

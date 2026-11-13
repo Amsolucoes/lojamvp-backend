@@ -187,6 +187,58 @@ public class TurmasApiTests(ApiFixture api)
         Assert.Equal(404, (await loja.Painel.Delete($"/api/turmas/matricula/{Guid.NewGuid()}")).Codigo);
     }
 
+    [FatoIntegracao]
+    public async Task Turma_inativa_nao_gera_sessoes()
+    {
+        var loja = await NovaAsync();
+        var inativa = await NovaTurmaAsync(loja, "Inativa");
+        await loja.Painel.Patch($"/api/turmas/{inativa}/ativo");                                        // desativa
+        await api.NoBancoAsync(db => db.SessoesTurma.Where(s => s.TurmaId == inativa).ExecuteDeleteAsync());
+
+        var ativa = await NovaTurmaAsync(loja, "Ativa");                                                // dispara a geração de todas as turmas
+
+        Assert.Equal(6, await api.NoBancoAsync(db => db.SessoesTurma.CountAsync(s => s.TurmaId == ativa)));
+        Assert.Equal(0, await api.NoBancoAsync(db => db.SessoesTurma.CountAsync(s => s.TurmaId == inativa)));
+    }
+
+    [FatoIntegracao]
+    public async Task Desmatricular_preserva_o_historico_e_as_remarcacoes()
+    {
+        var loja = await NovaAsync();
+        var turma = await NovaTurmaAsync(loja);
+        var cliente = await loja.ClienteIdAsync();
+        await Matricular(loja, turma, cliente);
+        var passada = new SessaoTurma { LojaId = loja.Id, TurmaId = turma, DataHora = DateTime.UtcNow.AddDays(-7), Status = "realizada" };
+        var futura = await api.NoBancoAsync(db => db.SessoesTurma.AsNoTracking().Where(s => s.TurmaId == turma).OrderBy(s => s.DataHora).FirstAsync());
+        await api.NoBancoAsync(async db =>
+        {
+            db.SessoesTurma.Add(passada);
+            await db.SaveChangesAsync();
+            db.InscricoesSessao.Add(new InscricaoSessao { LojaId = loja.Id, SessaoTurmaId = passada.Id, ClienteId = cliente, Tipo = "fixo", Status = "compareceu" });       // aula que já aconteceu
+            db.InscricoesSessao.Add(new InscricaoSessao { LojaId = loja.Id, SessaoTurmaId = futura.Id, ClienteId = cliente, Tipo = "remarcacao", Status = "confirmado" });  // vaga de reposição
+            await db.SaveChangesAsync();
+        });
+        var matricula = await api.NoBancoAsync(db => db.MatriculasTurma.AsNoTracking().FirstAsync(m => m.TurmaId == turma));
+
+        (await loja.Painel.Delete($"/api/turmas/matricula/{matricula.Id}")).DeveSerSucesso();
+
+        var restantes = await api.NoBancoAsync(db => db.InscricoesSessao.AsNoTracking().Where(i => i.ClienteId == cliente).ToListAsync());
+        Assert.Equal(2, restantes.Count);
+        Assert.Contains(restantes, i => i.SessaoTurmaId == passada.Id && i.Tipo == "fixo");
+        Assert.Contains(restantes, i => i.SessaoTurmaId == futura.Id && i.Tipo == "remarcacao");
+    }
+
+    [FatoIntegracao]
+    public async Task Sessoes_incluem_o_ultimo_dia_da_janela()
+    {
+        var loja = await NovaAsync();
+        await NovaTurmaAsync(loja, "Noturna", horario: "23:59");
+
+        var r = (await loja.Painel.Get($"/api/turmas/sessoes?de={Hoje()}&ate={Hoje()}")).Json;
+
+        Assert.Equal(1, r.GetArrayLength());   // a sessão de hoje às 23:59
+    }
+
     // ── Sessões ──────────────────────────────────────────────────────────────
 
     [FatoIntegracao]
@@ -342,6 +394,42 @@ public class TurmasApiTests(ApiFixture api)
         var limpou = await loja.Painel.Patch($"/api/turmas/inscricoes/{inscricao}/profissional", new { profissionalId = (Guid?)null });
         Assert.Equal(JsonValueKind.Null, limpou.Json.GetProperty("profissionalId").ValueKind);
         Assert.Equal(404, (await loja.Painel.Patch($"/api/turmas/inscricoes/{Guid.NewGuid()}/profissional", new { profissionalId = prof })).Codigo);
+    }
+
+    // Correção desta migração: antes, aluno (cliente) e profissional de OUTRA loja eram aceitos na matrícula / na inscrição.
+
+    [FatoIntegracao]
+    public async Task Nao_matricula_cliente_de_outra_loja()
+    {
+        var a = await NovaAsync();
+        var b = await NovaAsync();
+        var turmaB = await NovaTurmaAsync(b);
+        var clienteDeA = await a.ClienteIdAsync("Cliente da A");
+
+        var r = await Matricular(b, turmaB, clienteDeA);
+
+        Assert.Equal((400, "Cliente não encontrado."), (r.Codigo, r.Erro));
+        Assert.Equal(0, await api.NoBancoAsync(db => db.MatriculasTurma.CountAsync(m => m.ClienteId == clienteDeA)));
+        Assert.Equal(0, await api.NoBancoAsync(db => db.InscricoesSessao.CountAsync(i => i.ClienteId == clienteDeA)));
+        Assert.Equal(400, (await Matricular(b, turmaB, Guid.NewGuid())).Codigo);   // inexistente também
+    }
+
+    [FatoIntegracao]
+    public async Task Nao_define_profissional_de_outra_loja_na_inscricao()
+    {
+        var a = await NovaAsync();
+        var b = await NovaAsync();
+        var turma = await NovaTurmaAsync(b);
+        var cliente = await b.ClienteIdAsync();
+        await Matricular(b, turma, cliente);
+        var inscricao = await InscricaoAsync(b, cliente);
+        var profissionalDeA = (await a.Painel.Post("/api/turmas/profissionais", new { nome = "Da A" })).Json.GetProperty("id").GetGuid();
+
+        var r = await b.Painel.Patch($"/api/turmas/inscricoes/{inscricao}/profissional", new { profissionalId = profissionalDeA });
+
+        Assert.Equal((400, "Profissional não encontrado."), (r.Codigo, r.Erro));
+        Assert.Null((await api.NoBancoAsync(db => db.InscricoesSessao.AsNoTracking().FirstAsync(i => i.Id == inscricao))).ProfissionalId);
+        Assert.Equal(400, (await b.Painel.Patch($"/api/turmas/inscricoes/{inscricao}/profissional", new { profissionalId = Guid.NewGuid() })).Codigo);
     }
 
     // ── Isolamento entre lojas ───────────────────────────────────────────────

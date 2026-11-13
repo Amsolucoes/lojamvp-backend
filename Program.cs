@@ -1,12 +1,16 @@
 ﻿using LojaApi.Data;
 using LojaApi.Infrastructure.Carteira;
+using LojaApi.Infrastructure.Ajuda;
 using LojaApi.Infrastructure.Chacara;
+using LojaApi.Infrastructure.Clientes;
+using LojaApi.Infrastructure.Corretora;
+using LojaApi.Infrastructure.Fiscal;
+using LojaApi.Infrastructure.Turmas;
 using LojaApi.Infrastructure.Servicos;
 using LojaApi.Shared;
 using LojaApi.Services;
 using LojaApi.src.Middleware;
 using LojaApi.src.Services;
-using LojaApi.src.Services.Fiscal;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -49,7 +53,6 @@ internal class Program
         builder.Services.AddScoped<MercadoPagoService>();
         builder.Services.AddScoped<PlanosService>();
         builder.Services.AddScoped<FinanceiroService>();
-        builder.Services.AddScoped<TurmasService>();
         builder.Services.AddScoped<AlertaEmailService>();
         builder.Services.AddScoped<ComunicadoEmailService>();
         // Cobrança automática por e-mail (Pix) das mensalidades vencidas — 09:00 de Brasília
@@ -61,12 +64,15 @@ internal class Program
         builder.Services.AddChacaraModule();
         builder.Services.AddCarteiraModule();
         builder.Services.AddServicosModule();
+        builder.Services.AddAjudaModule();
+        builder.Services.AddClientesModule();
+        builder.Services.AddFiscalModule();
+        builder.Services.AddTurmasModule();
+        builder.Services.AddCorretoraModule();
         // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
         builder.Services.AddSingleton<PushService>();
         builder.Services.AddHostedService<AvisosVencimentoService>();
         builder.Services.AddScoped<OrdemServicoNotificacaoService>();
-        // Sem provedor terceirizado contratado ainda — troca fácil quando um for integrado.
-        builder.Services.AddScoped<IProvedorFiscal, ProvedorFiscalNaoConfigurado>();
         builder.Services.AddHttpClient();
 
         // ── Controllers + Swagger ─────────────────────────────────────────

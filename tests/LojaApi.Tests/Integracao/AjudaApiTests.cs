@@ -72,6 +72,18 @@ public class AjudaApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Nome_de_categoria_repetido_e_recusado_mesmo_com_espacos_nas_pontas()
+    {
+        var (_, super) = await SuperAsync();
+        var p = Prefixo();
+        (await super.Post("/api/categorias-video-ajuda", Categoria(p + "Vendas"))).DeveSerSucesso();
+
+        var r = await super.Post("/api/categorias-video-ajuda", Categoria("   " + p + "Vendas  "));
+
+        Assert.Equal((400, "Já existe uma categoria com esse nome."), (r.Codigo, r.Erro));
+    }
+
+    [FatoIntegracao]
     public async Task Listagem_publica_so_tem_as_ativas_em_ordem_e_a_de_gestao_tem_todas()
     {
         var (loja, super) = await SuperAsync();

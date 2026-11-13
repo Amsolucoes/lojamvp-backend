@@ -1,6 +1,6 @@
 using LojaApi.Models;
 using LojaApi.src.Models.Fiscal;
-using LojaApi.src.Services.Fiscal;
+using LojaApi.Application.Fiscal;
 
 namespace LojaApi.Tests.Integracao;
 
