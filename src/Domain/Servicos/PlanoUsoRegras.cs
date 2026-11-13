@@ -1,4 +1,4 @@
-namespace LojaApi.Services;
+namespace LojaApi.Domain.Servicos;
 
 // Regras de uso de um plano de assinatura: limite de usos por mês e dias da semana permitidos.
 // Dias da semana seguem o padrão do .NET: 0 = domingo ... 6 = sábado, guardados como "1,2,3,4,5".
@@ -65,4 +65,32 @@ public static class PlanoUsoRegras
         var nomes = new[] { "domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado" };
         return string.Join(", ", LerDias(dias).Select(d => nomes[d]));
     }
+
+    // ── Regras que a Agenda e o Caixa aplicam em cima do plano ───────────────
+
+    // Primeiro dia do mês (UTC) da data: mês de referência das mensalidades
+    public static DateTime PrimeiroDiaDoMesUtc(DateTime agora)
+        => new(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    // Os serviços do plano ficam guardados como "id1,id2,id3"
+    public static string[] ServicosIncluidos(string? servicosIds)
+        => (servicosIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+    public static bool Inclui(string? servicosIds, Guid servicoId)
+        => ServicosIncluidos(servicosIds).Contains(servicoId.ToString(), StringComparer.OrdinalIgnoreCase);
+
+    public static List<Guid> IdsDosServicos(string? servicosIds)
+        => ServicosIncluidos(servicosIds).Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+
+    // Mensagem de erro quando o dia do agendamento (horário local) não é um dos permitidos pelo plano
+    public static string? ValidarDia(string nomePlano, string? dias, DateTime dataHoraLocal)
+        => DiaPermitidoLocal(dias, dataHoraLocal)
+            ? null
+            : $"O plano '{nomePlano}' só pode ser usado em: {DescreverDias(dias)}. Escolha outro dia.";
+
+    // Mensagem de erro quando mais um uso estouraria o limite do mês (usados = consumos já feitos; agendados = ainda não pagos)
+    public static string? ValidarLimite(string nomePlano, int limiteUsosMes, int usados, int agendados)
+        => usados + agendados + 1 > limiteUsosMes
+            ? $"O plano '{nomePlano}' permite {limiteUsosMes} uso(s) por mês e já há {usados + agendados} usado(s) ou agendado(s) neste mês."
+            : null;
 }

@@ -7,7 +7,7 @@ using LojaApi.DTOs;
 using LojaApi.Models;
 using LojaApi.Application.Carteira;
 using LojaApi.Domain.Carteira;
-using LojaApi.Services;
+using LojaApi.Domain.Servicos;
 using LojaApi.src.Models.Funcionarios;
 
 namespace LojaApi.Controllers.Vendas;

@@ -1,6 +1,6 @@
 # Testes do backend
 
-Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara** e **Carteira**; os próximos módulos migrados ganham a
+Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara**, **Carteira** e **Serviços/Agenda**; os próximos módulos migrados ganham a
 sua pasta ao lado (`tests/LojaApi.Tests/<Modulo>/...` e `Integracao/`).
 
 ## No Visual Studio
@@ -30,7 +30,7 @@ dotnet test tests/LojaApi.Tests
 
 | Pasta | Tipo | O que prova |
 |---|---|---|
-| `Chacara/Dominio`, `Carteira/Dominio` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira |
+| `Chacara/Dominio`, `Carteira/Dominio`, `Servicos/Dominio` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira, horários livres e conflito da agenda, comissão, regras do plano de assinatura e da mensalidade |
 | `Compartilhado` | Unitários | `Resultado<T>` → 200/400/404/409/500 |
 | `Integracao` | **Integração**, API de verdade + PostgreSQL | Fluxos completos pelo HTTP, com login (JWT), banco real e migrations |
 
@@ -42,6 +42,10 @@ Integração (`Integracao/`):
 - `PagamentoChacaraApiTests` – Pix, cartão e combinado até a confirmação da reserva
 - `IsolamentoEntreLojasApiTests` – uma loja nunca vê nem altera dados de outra (multi-loja)
 - `RotinasChacaraApiTests` – expiração automática e aviso de 24h
+- `ServicosCatalogoApiTests` – cadastro de serviços (padrões, ordem, excluir com agendamentos, isolamento)
+- `AgendamentosApiTests` – agenda do painel: criar/editar/listar, status, comissão do profissional, regras do plano ao agendar, isolamento (cliente/profissional de outra loja)
+- `PlanosApiTests` – planos, assinantes, mensalidade (marcar, pagar com juros, quitar atraso), histórico, consumos e plano do cliente
+- `AgendamentoOnlinePublicoApiTests` – página pública: dados da loja, horários livres, agendar (aprovação/automático), reconhecer cliente pelo telefone
 - `CarteiraApiTests` – carteira do cliente (fiado): venda no caixa (inteira ou dividida), limite, recebimento (entra no caixa), extrato, excluir venda/cliente, isolamento entre lojas
 
 ## Como os testes funcionam por dentro

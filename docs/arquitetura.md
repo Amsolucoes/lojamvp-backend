@@ -13,7 +13,7 @@ próprios** (cada uma com o seu `.csproj`), então o compilador **impede** depen
 src/
   Domain/            projeto LojaApi.Domain       <- só depende do .NET. Entidades e regras de negócio, por módulo.
   Data/              projeto LojaApi.Data         <- AppDbContext, Models (entidades) e Migrations. Depende do Domain.
-  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira) + Resultado<T> e ILojaAtual (Shared).
+  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos) + Resultado<T> e ILojaAtual (Shared).
                                                      Depende do Domain e do Data. Nunca da API.
   Controllers/<Modulo>/    (projeto da API: LojaApi.csproj, na raiz)  <- SÓ controllers (HTTP)
   Infrastructure/<Modulo>/ (projeto da API)  <- PDF, rotinas em segundo plano, registro do módulo e os adaptadores das portas
@@ -49,7 +49,7 @@ No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaA
 Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
-Hoje só **Chacara** e **Carteira** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
+Hoje só **Chacara**, **Carteira** e **Servicos** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
 dentro do controller) e, ao serem migrados, ganham `Application/<Modulo>` e `Domain/<Modulo>`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
@@ -135,7 +135,7 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 | **Fiscal** | EmissaoFiscal | só `Controllers` |
 | **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Controllers` |
 | **Clientes** | Clientes (cadastro de clientes da loja) | só `Controllers` |
-| **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | só `Controllers` |
+| **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | ✅ Domain/Application/Infrastructure/Controllers + testes |
 | **Equipe** | Funcionarios, Comissoes | só `Controllers` |
 | **Corretora** | Corretora | só `Controllers` |
 | **Turmas** | Turmas | só `Controllers` |
