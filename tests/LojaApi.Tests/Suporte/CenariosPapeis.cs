@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
 
 namespace LojaApi.Tests.Suporte;
@@ -9,8 +10,7 @@ public static class CenariosPapeis
     public static async Task<ClienteApi> ComPapelAsync(this ApiFixture api, LojaTeste loja, string papel)
     {
         var email = $"dono-{loja.Slug[2..]}@teste.com";
-        await api.NoBancoAsync(db => Microsoft.EntityFrameworkCore.RelationalQueryableExtensions.ExecuteUpdateAsync(
-            db.Usuarios.Where(u => u.Email == email), s => s.SetProperty(u => u.Role, papel)));
+        await api.NoBancoAsync(db => db.Usuarios.Where(u => u.Email == email).ExecuteUpdateAsync(s => s.SetProperty(u => u.Role, papel)));
 
         var http = api.Fabrica.CreateClient();
         var login = await http.PostAsJsonAsync("/api/auth/login", new { email, senha = "123456" });

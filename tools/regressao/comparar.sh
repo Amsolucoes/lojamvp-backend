@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sobe a API num banco novo, roda o cenário (cenario.py) e grava resultado-<rotulo>.json.
 # uso: tools/regressao/comparar.sh <pasta do build> <rotulo> [grupos]
-#   ex: tools/regressao/comparar.sh bin/Release/net8.0 novo
+#   ex: tools/regressao/comparar.sh bin/Release/net10.0 novo
 # Precisa de um PostgreSQL local (usuário postgres) e do comando "psql".
 # Informe a senha do postgres em LOJA_PG_SENHA (ex.: export LOJA_PG_SENHA=...).
 # Para comparar uma refatoração: rode com o build ANTES (rotulo "base") e DEPOIS (rotulo "novo"),

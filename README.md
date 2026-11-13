@@ -4,7 +4,7 @@ API REST para o sistema de gestão de loja. PostgreSQL + JWT + Entity Framework 
 
 ## Stack
 
-- **Runtime**: .NET 8
+- **Runtime**: .NET 10
 - **Framework**: ASP.NET Core Web API
 - **ORM**: Entity Framework Core 8
 - **Banco**: PostgreSQL (Npgsql)
@@ -14,7 +14,7 @@ API REST para o sistema de gestão de loja. PostgreSQL + JWT + Entity Framework 
 ## Rodar localmente
 
 ### Pré-requisitos
-- .NET 8 SDK → https://dotnet.microsoft.com/download
+- .NET 10 SDK → https://dotnet.microsoft.com/download
 - PostgreSQL rodando na porta 5432
 
 ### Passos

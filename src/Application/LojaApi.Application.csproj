@@ -3,7 +3,7 @@
   <!-- Casos de uso. Depende do Domain e do Data, NUNCA da API: o que vem de fora (Mercado Pago, criptografia, PDF)
        entra por interface (Application/Interfaces/Chacara) e é implementado na API. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>LojaApi.Application</RootNamespace>

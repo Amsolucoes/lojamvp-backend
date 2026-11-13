@@ -1,4 +1,5 @@
 ﻿using LojaApi.Data;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using LojaApi.Infrastructure.Carteira;
 using LojaApi.Infrastructure.Ajuda;
 using LojaApi.Infrastructure.Chacara;
@@ -26,8 +27,11 @@ internal class Program
         var builder = WebApplication.CreateBuilder(args);
 
         // ── Banco de dados ────────────────────────────────────────────────
-        builder.Services.AddDbContext<AppDbContext>(opt =>
-            opt.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+        builder.Services.AddDbContext<AppDbContext>(opt => opt
+            .UseNpgsql(builder.Configuration.GetConnectionString("Default"))
+            // O EF Core 9+ recusa Migrate() quando o modelo difere do snapshot. Aqui o seed (HasData) usa DateTime.UtcNow e
+            // BCrypt (valores novos a cada execução), então o modelo "muda" sempre. Ignorar mantém o comportamento do EF 8.
+            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
         // ── JWT ───────────────────────────────────────────────────────────
         var jwtSecret = builder.Configuration["Jwt:Secret"]
