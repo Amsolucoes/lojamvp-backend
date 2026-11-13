@@ -1,6 +1,6 @@
 # Testes do backend
 
-Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara**, **Carteira**, **Serviços/Agenda**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas** e **Corretora**; os próximos módulos migrados ganham a
+Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara**, **Carteira**, **Serviços/Agenda**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora** e **Equipe**; os próximos módulos migrados ganham a
 sua pasta `<Modulo>Teste` em cada camada (veja "Como as pastas são organizadas").
 
 ## No Visual Studio
@@ -39,7 +39,7 @@ tests/LojaApi.Tests/
   Api/<Modulo>Teste/                    integração pelo HTTP: API de verdade + PostgreSQL   ex.: Api/AjudaTeste/AjudaApiTests.cs
   Arquitetura/                          guardas das camadas
   Suporte/                              ApiFixture, ClienteApi, Cenarios*, Datas, FatoIntegracao e falsos (MercadoPagoFalso, ProvedorFiscalFalso)
-  Suporte/Falsos/                       repositórios em memória (ex.: RepositorioAjudaFalso)
+  Suporte/Falsos/                       repositórios e portas em memória (RepositorioAjudaFalso, RepositorioEquipeFalso, LancamentoFixoFinanceiroFalso)
 ```
 `Suporte` é um `using` global do projeto de testes. Ao testar um módulo novo, crie a pasta `<Modulo>Teste` em cada camada que ele precisar
 (só as que tiver teste; não precisa criar pasta vazia).
@@ -49,7 +49,7 @@ tests/LojaApi.Tests/
 | Pasta | Tipo | O que prova |
 |---|---|---|
 | `Domain/*Teste` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira, horários livres e conflito da agenda, comissão, regras do plano e da mensalidade, link do YouTube, fiscal, turmas, corretora |
-| `Application/Services/AjudaTeste` | **Unitários** (repository falso) | As regras dos services da Ajuda sem banco nem HTTP: validações, extrair o id do link, renomear categoria, excluir em uso |
+| `Application/Services/AjudaTeste`, `Application/Services/EquipeTeste` | **Unitários** (repository falso) | As regras dos services sem banco nem HTTP: validações, extrair o id do link, renomear categoria, excluir em uso; na Equipe, salário fixo no Financeiro (porta falsa), fechar/desfazer comissões, conta de outra loja |
 | `Application/Shared` | Unitários | `Resultado<T>` → 200/400/404/409/500 |
 | `Arquitetura` | Unitários | Guardas das camadas: service sem `AppDbContext` nos módulos com repository, Domain sem EF/ASP.NET, Application sem a API |
 | `Api/*Teste` | **Integração**, API de verdade + PostgreSQL | Fluxos completos pelo HTTP, com login (JWT), banco real e migrations |
@@ -64,6 +64,7 @@ Integração (`Api/`):
 - `AjudaTeste/` – `AjudaApiTests`: leitura pública, gestão só do superadmin, link do YouTube, renomear/excluir categoria
 - `TurmasTeste/` – `TurmasApiTests`: turmas, matrícula, sessões geradas, falta/remarcação, presença, profissionais
 - `CorretoraTeste/` – `CorretoraApiTests`: seguradoras, funil, comissão no financeiro, apólices, resumo e dashboard
+- `EquipeTeste/` – `FuncionariosApiTests` (cadastro, remuneração, salário fixo → lançamento fixo no Financeiro, endereço, comissão por serviço) e `ComissoesApiTests` (resumo, detalhe por origem, fechar/pagar, histórico, desfazer)
 - `CarteiraTeste/` – `CarteiraApiTests`: fiado — venda no caixa (inteira ou dividida), limite, recebimento, extrato, excluir venda/cliente
 
 ## Como os testes funcionam por dentro

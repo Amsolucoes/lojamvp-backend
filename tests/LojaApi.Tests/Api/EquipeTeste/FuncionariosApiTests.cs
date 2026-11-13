@@ -201,6 +201,54 @@ public class FuncionariosApiTests(ApiFixture api)
         Assert.Equal(fixo.Id, (await NoBanco(id)).LancamentoFixoId);   // continua o mesmo lançamento fixo
     }
 
+    [FatoIntegracao]
+    public async Task Editar_o_salario_fixo_sem_informar_o_dia_mantem_o_dia_do_lancamento_fixo()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaBancariaIdAsync();
+        var id = await loja.FuncionarioIdAsync("Fixo", null, "salario_fixo", salario: 3000, conta: conta, dia: 10);
+
+        (await loja.Painel.Put($"/api/funcionarios/{id}", CenariosEquipe.Corpo("Fixo", null, "salario_fixo", salario: 3200, conta: conta, dia: null))).DeveSerSucesso();
+
+        var fixo = Assert.Single(await FixosDa(loja));
+        Assert.Equal((3200m, 10), (fixo.Valor, fixo.DiaVencimento));
+    }
+
+    [FatoIntegracao]
+    public async Task Salario_fixo_vai_para_a_categoria_Salarios_de_Funcionarios_com_o_nome_sem_espacos()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaBancariaIdAsync();
+
+        (await loja.NovoFuncionarioAsync("  Fulano  ", null, "salario_fixo", salario: 2800, conta: conta, dia: 5)).DeveSerSucesso();
+
+        var fixo = Assert.Single(await FixosDa(loja));
+        Assert.Equal(("Salário — Fulano", "pagar"), (fixo.Descricao, fixo.Tipo));
+        var categoria = await api.NoBancoAsync(db => db.CategoriasFinanceiras.AsNoTracking().SingleAsync(c => c.Id == fixo.CategoriaId));
+        Assert.Equal(("Salários de Funcionários", "pagar", "💰", loja.Id), (categoria.Nome, categoria.Tipo, categoria.Icone, categoria.LojaId));
+    }
+
+    // Correção desta migração: antes, a conta bancária de OUTRA loja era aceita e o lançamento fixo do salário ia para ela.
+    [FatoIntegracao]
+    public async Task Salario_fixo_nao_aceita_conta_bancaria_de_outra_loja()
+    {
+        var a = await NovaAsync();
+        var b = await NovaAsync();
+        var contaDeA = await a.ContaBancariaIdAsync();
+
+        var criar = await b.NovoFuncionarioAsync("Fixo", null, "salario_fixo", salario: 3000, conta: contaDeA);
+        Assert.Equal((400, "Conta bancária não encontrada."), (criar.Codigo, criar.Erro));
+        Assert.Equal(0, (await b.Painel.Get("/api/funcionarios")).Json.GetArrayLength());
+        Assert.Empty(await FixosDa(b));
+
+        var comissionado = await b.FuncionarioIdAsync("Comissionado");
+        var editar = await b.Painel.Put($"/api/funcionarios/{comissionado}", CenariosEquipe.Corpo("Comissionado", 10m, "salario_fixo", salario: 2000, conta: contaDeA));
+        Assert.Equal((400, "Conta bancária não encontrada."), (editar.Codigo, editar.Erro));
+        Assert.Empty(await FixosDa(b));
+        Assert.Equal("comissao", (await NoBanco(comissionado)).TipoRemuneracao);   // nada foi alterado
+        Assert.Equal(0, await api.NoBancoAsync(db => db.LancamentosFinanceiros.CountAsync(l => l.ContaBancariaId == contaDeA)));
+    }
+
     // ── Ativar/desativar e excluir ───────────────────────────────────────────
 
     [FatoIntegracao]
@@ -270,6 +318,25 @@ public class FuncionariosApiTests(ApiFixture api)
         Assert.Equal("Exceção removida — volta a usar a comissão padrão do profissional.", removida.Json.GetProperty("mensagem").GetString());
         Assert.Equal(0, (await loja.Painel.Get("/api/funcionarios")).Json[0].GetProperty("comissoesPorServico").GetArrayLength());
         Assert.Equal(404, (await loja.Painel.Delete($"/api/funcionarios/comissoes-servico/{linha.Id}")).Codigo);
+    }
+
+    // Cobre o filtro por profissional: a exceção do mesmo serviço para dois profissionais não pode se misturar
+    [FatoIntegracao]
+    public async Task Comissao_por_servico_do_mesmo_servico_em_dois_profissionais_nao_se_mistura()
+    {
+        var loja = await NovaAsync();
+        var ana = await loja.FuncionarioIdAsync("Ana");
+        var bia = await loja.FuncionarioIdAsync("Bia");
+        var servico = await loja.ServicoIdAsync("Banho", 80, 60);
+
+        (await loja.Painel.Post($"/api/funcionarios/{ana}/comissoes-servico", new { servicoId = servico, comissaoPercentual = 20 })).DeveSerSucesso();
+        (await loja.Painel.Post($"/api/funcionarios/{bia}/comissoes-servico", new { servicoId = servico, comissaoPercentual = 35 })).DeveSerSucesso();
+        (await loja.Painel.Post($"/api/funcionarios/{ana}/comissoes-servico", new { servicoId = servico, comissaoPercentual = 22 })).DeveSerSucesso();   // atualiza só a da Ana
+
+        var linhas = await api.NoBancoAsync(db => db.ComissoesServicoProfissional.AsNoTracking().Where(c => c.LojaId == loja.Id).ToListAsync());
+        Assert.Equal(2, linhas.Count);
+        Assert.Equal(22m, linhas.Single(c => c.ProfissionalId == ana).ComissaoPercentual);
+        Assert.Equal(35m, linhas.Single(c => c.ProfissionalId == bia).ComissaoPercentual);
     }
 
     [FatoIntegracao]

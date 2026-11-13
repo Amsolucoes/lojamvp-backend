@@ -81,6 +81,34 @@ public class ComissoesApiTests(ApiFixture api)
         Assert.Equal(0, await Qtd($"?ate={Utc(-3)}"));    // terminou há 3 dias
     }
 
+    // Limites do resumo: o `de` vale desde 00:00 do dia e o `ate` cobre o dia inteiro (até 00:00 do dia seguinte, inclusive)
+    [FatoIntegracao]
+    public async Task Resumo_com_de_e_ate_no_mesmo_dia_inclui_as_comissoes_daquele_dia_inteiro()
+    {
+        var (loja, servico, profissional) = await CenarioAsync();
+        var dia = DateTime.UtcNow.Date.AddDays(-20);
+        var momentos = new Dictionary<decimal, DateTime>
+        {
+            [101] = dia.AddMinutes(-1),      // dia anterior: fora
+            [102] = dia,                     // 00:00 exato: dentro (de é inclusivo)
+            [103] = dia.AddHours(23).AddMinutes(59),   // fim do dia: dentro
+            [104] = dia.AddDays(1),          // 00:00 do dia seguinte: dentro (ate é inclusivo, como era)
+            [105] = dia.AddDays(1).AddMinutes(1),      // depois disso: fora
+        };
+        foreach (var (valor, quando) in momentos)
+        {
+            await loja.ComissaoDeAgendamentoAsync(servico, profissional, valor, hora: 9 + (int)(valor - 101));
+            await api.NoBancoAsync(db => db.ComissoesFuncionario.Where(c => c.ValorServico == valor && c.LojaId == loja.Id).ExecuteUpdateAsync(s => s.SetProperty(c => c.CriadoEm, quando)));
+        }
+        // hora do meio do dia nos dois filtros: o de e o ate são truncados para o dia
+        var meioDia = Uri.EscapeDataString($"{dia:yyyy-MM-dd}T12:00:00Z");
+
+        var r = (await loja.Painel.Get($"/api/comissoes/resumo?de={meioDia}&ate={meioDia}")).Json.EnumerateArray().Single();
+
+        Assert.Equal(3, r.GetProperty("qtdAtendimentos").GetInt32());   // 102, 103 e 104
+        Assert.Equal(Math.Round((102m + 103m + 104m) * 0.10m, 2), r.GetProperty("valorTotal").GetDecimal());
+    }
+
     // ── Detalhe por origem ───────────────────────────────────────────────────
 
     [FatoIntegracao]
@@ -241,6 +269,68 @@ public class ComissoesApiTests(ApiFixture api)
         await loja.ComissaoDeAgendamentoAsync(servico, profissional, 100, hora: 13);
         (await loja.Painel.Post("/api/comissoes/fechar", Fechar(profissional, conta: conta))).DeveSerSucesso();
         Assert.Equal(1, await api.NoBancoAsync(db => db.CategoriasFinanceiras.CountAsync(c => c.LojaId == loja.Id && c.Nome == "Comissões de Funcionários")));
+    }
+
+    [FatoIntegracao]
+    public async Task Fechar_inclui_o_primeiro_instante_do_periodo_e_exclui_o_instante_depois_do_fim()
+    {
+        var (loja, servico, profissional) = await CenarioAsync();
+        var inicio = DateTime.UtcNow.Date.AddDays(-1);        // Fechar(): de ontem...
+        var fimExclusivo = DateTime.UtcNow.Date.AddDays(2);   // ...até hoje+1, valendo o dia inteiro
+        var momentos = new Dictionary<decimal, DateTime>
+        {
+            [101] = inicio.AddMinutes(-1),           // antes do período: fica pendente
+            [102] = inicio,                          // 00:00 do primeiro dia: entra
+            [103] = fimExclusivo.AddMinutes(-1),     // 23:59 do último dia: entra
+            [104] = fimExclusivo,                    // 00:00 do dia seguinte: fica pendente
+        };
+        foreach (var (valor, quando) in momentos)
+        {
+            await loja.ComissaoDeAgendamentoAsync(servico, profissional, valor, hora: 9 + (int)(valor - 101));
+            await api.NoBancoAsync(db => db.ComissoesFuncionario.Where(c => c.ValorServico == valor && c.LojaId == loja.Id).ExecuteUpdateAsync(s => s.SetProperty(c => c.CriadoEm, quando)));
+        }
+
+        var r = await loja.Painel.Post("/api/comissoes/fechar", Fechar(profissional));
+
+        Assert.Equal(2, r.Json.GetProperty("qtdAtendimentos").GetInt32());
+        var porValor = (await api.ComissoesDoProfissionalAsync(profissional)).ToDictionary(c => c.ValorServico, c => c.Status);
+        Assert.Equal(("pendente", "pago", "pago", "pendente"), (porValor[101], porValor[102], porValor[103], porValor[104]));
+    }
+
+    [FatoIntegracao]
+    public async Task Fechar_nao_leva_comissao_de_outra_loja_mesmo_com_o_mesmo_profissional_no_registro()
+    {
+        var (loja, servico, profissional) = await CenarioAsync();
+        var outra = await NovaAsync();
+        await loja.ComissaoDeAgendamentoAsync(servico, profissional, 100);
+        await api.NoBancoAsync(async db =>
+        {
+            db.ComissoesFuncionario.Add(new ComissaoFuncionario { LojaId = outra.Id, ProfissionalId = profissional, OrigemId = Guid.NewGuid(), ValorServico = 900, ComissaoPercentual = 10, ValorComissao = 90 });
+            await db.SaveChangesAsync();
+        });
+
+        var r = await loja.Painel.Post("/api/comissoes/fechar", Fechar(profissional));
+
+        Assert.Equal((10m, 1), (r.Json.GetProperty("valorTotal").GetDecimal(), r.Json.GetProperty("qtdAtendimentos").GetInt32()));
+        var daOutra = await api.NoBancoAsync(db => db.ComissoesFuncionario.AsNoTracking().SingleAsync(c => c.LojaId == outra.Id));
+        Assert.Equal(("pendente", null), (daOutra.Status, daOutra.FechamentoId?.ToString()));
+    }
+
+    // Correção desta migração: antes, a conta bancária de OUTRA loja era aceita e a conta a pagar ia para ela.
+    [FatoIntegracao]
+    public async Task Fechar_nao_aceita_conta_bancaria_de_outra_loja()
+    {
+        var (a, _, _) = await CenarioAsync();
+        var (b, servico, profissionalB) = await CenarioAsync();
+        var contaDeA = await a.ContaBancariaIdAsync();
+        await b.ComissaoDeAgendamentoAsync(servico, profissionalB, 100);
+
+        var r = await b.Painel.Post("/api/comissoes/fechar", Fechar(profissionalB, conta: contaDeA));
+
+        Assert.Equal((400, "Conta bancária não encontrada."), (r.Codigo, r.Erro));
+        Assert.Equal(0, await api.NoBancoAsync(db => db.FechamentosComissao.CountAsync(f => f.LojaId == b.Id)));
+        Assert.Equal("pendente", (await api.ComissoesDoProfissionalAsync(profissionalB)).Single().Status);
+        Assert.Equal(0, await api.NoBancoAsync(db => db.LancamentosFinanceiros.CountAsync(l => l.ContaBancariaId == contaDeA)));
     }
 
     // ── Histórico e desfazer ─────────────────────────────────────────────────
