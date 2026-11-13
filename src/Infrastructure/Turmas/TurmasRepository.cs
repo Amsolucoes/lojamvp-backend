@@ -12,12 +12,12 @@ public class TurmasRepository(AppDbContext db) : ITurmasRepository
 {
     // ── Turmas ──
 
-    public async Task<List<TurmaComAlunos>> ListarTurmasDaLojaAsync(Guid lojaId)
+    public async Task<List<TurmaComAlunosDto>> ListarTurmasDaLojaAsync(Guid lojaId)
     {
         var turmas = await db.Turmas.Where(t => t.LojaId == lojaId).ToListAsync();
-        var resultado = new List<TurmaComAlunos>();
+        var resultado = new List<TurmaComAlunosDto>();
         foreach (var t in turmas)
-            resultado.Add(new TurmaComAlunos(t, await ContarMatriculasAtivasAsync(t.Id)));
+            resultado.Add(new TurmaComAlunosDto(t, await ContarMatriculasAtivasAsync(t.Id)));
         return resultado;
     }
 

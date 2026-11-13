@@ -8,16 +8,16 @@ namespace LojaApi.Tests.Integracao;
 // o teste troca o que ele responde com Responder(...) e chama Restaurar() no fim.
 public sealed class ProvedorFiscalFalso : IProvedorFiscal
 {
-    private static readonly ResultadoEmissaoFiscal Recusa = new(false, "erro", MotivoErro: "Nenhum provedor de emissão fiscal está configurado para esta loja.");
+    private static readonly ResultadoEmissaoFiscalDto Recusa = new(false, "erro", MotivoErro: "Nenhum provedor de emissão fiscal está configurado para esta loja.");
 
-    private ResultadoEmissaoFiscal _emitir = Recusa;
-    private ResultadoEmissaoFiscal _cancelar = Recusa;
+    private ResultadoEmissaoFiscalDto _emitir = Recusa;
+    private ResultadoEmissaoFiscalDto _cancelar = Recusa;
 
     public string Chave => "falso";
 
-    public void Responder(ResultadoEmissaoFiscal emitir, ResultadoEmissaoFiscal cancelar) { _emitir = emitir; _cancelar = cancelar; }
+    public void Responder(ResultadoEmissaoFiscalDto emitir, ResultadoEmissaoFiscalDto cancelar) { _emitir = emitir; _cancelar = cancelar; }
     public void Restaurar() { _emitir = Recusa; _cancelar = Recusa; }
 
-    public Task<ResultadoEmissaoFiscal> EmitirNfceAsync(Venda venda, ConfiguracaoFiscal configuracao, CancellationToken ct = default) => Task.FromResult(_emitir);
-    public Task<ResultadoEmissaoFiscal> CancelarNfceAsync(EmissaoFiscal emissao, string justificativa, ConfiguracaoFiscal configuracao, CancellationToken ct = default) => Task.FromResult(_cancelar);
+    public Task<ResultadoEmissaoFiscalDto> EmitirNfceAsync(Venda venda, ConfiguracaoFiscal configuracao, CancellationToken ct = default) => Task.FromResult(_emitir);
+    public Task<ResultadoEmissaoFiscalDto> CancelarNfceAsync(EmissaoFiscal emissao, string justificativa, ConfiguracaoFiscal configuracao, CancellationToken ct = default) => Task.FromResult(_cancelar);
 }
