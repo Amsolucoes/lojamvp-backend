@@ -12,8 +12,8 @@ próprios** (cada uma com o seu `.csproj`), então o compilador **impede** depen
 ```
 src/
   Domain/            projeto LojaApi.Domain       <- só depende do .NET. Entidades e regras de negócio, por módulo.
-  Data/              projeto LojaApi.Data         <- AppDbContext, Models (entidades) e Migrations. Depende do Domain.
-  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora)
+  Data/              projeto LojaApi.Data         <- AppDbContext, Entidades (tabelas do banco) e Migrations. Depende do Domain.
+  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora, Equipe)
                                                      + Resultado<T> e ILojaAtual (Shared).
                                                      Depende do Domain e do Data. Nunca da API.
                                                      Organizada por TIPO e, dentro dele, por módulo (veja abaixo).
@@ -31,7 +31,7 @@ LojaApi (API) ──> Application ──> Data ──> Domain
 ```
 
 Namespaces seguem as pastas: `LojaApi.Controllers.<Modulo>`, `LojaApi.Application.<Modulo>`, `LojaApi.Domain.<Modulo>`,
-`LojaApi.Infrastructure.<Modulo>`. As entidades antigas continuam em `LojaApi.Models` / `LojaApi.src.Models` (dentro do projeto Data).
+`LojaApi.Infrastructure.<Modulo>`. As entidades antigas ficam na pasta `src/Data/Entidades`, mas o namespace delas continua `LojaApi.Models` / `LojaApi.src.Models` (a pasta foi renomeada, o namespace não).
 
 ### Como a pasta Application é organizada (por tipo, depois por módulo)
 ```
@@ -55,7 +55,7 @@ O Application não pode referenciar a API. O que vem de fora (Mercado Pago, crip
 Os testes trocam o Mercado Pago por um falso exatamente por esse caminho.
 
 ### Service x Repository (módulos novos)
-Nos módulos migrados a partir de **Ajuda, Clientes, Fiscal, Turmas e Corretora** a camada Application separa as duas coisas:
+Nos módulos migrados a partir de **Ajuda, Clientes, Fiscal, Turmas, Corretora e Equipe** a camada Application separa as duas coisas:
 
 - **Service** (`Application/Services/<Modulo>/<X>Service.cs`): as regras de negócio e a orquestração. Devolve `Resultado<T>`. **Não usa o `AppDbContext`.**
 - **Repository** (interface `I<Modulo>Repository` em `Application/Interfaces/<Modulo>`, implementação EF Core em `Infrastructure/<Modulo>`): só lê e grava,
@@ -82,7 +82,7 @@ No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaA
 Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
-Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas** e **Corretora** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
+Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora** e **Equipe** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
 dentro do controller) e, ao serem migrados, ganham `Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `Domain/<Modulo>`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
@@ -140,8 +140,9 @@ if (erro != null) return Resultado.Invalido(erro);
 
 ## Testes
 
-`tests/LojaApi.Tests` tem testes **unitários** (regras do Domain, sem banco) e de **integração** (API de verdade +
-PostgreSQL, serviços externos trocados por dublês). Como rodar e como escrever: `tests/README.md`.
+`tests/LojaApi.Tests` tem testes **unitários** (regras do Domain e services com repository falso, sem banco) e de **integração**
+(API de verdade + PostgreSQL, serviços externos trocados por dublês). As pastas espelham os projetos do `src`
+(`Domain/<Modulo>Teste`, `Application/Services/<Modulo>Teste`, `Api/<Modulo>Teste`). Como rodar e como escrever: `tests/README.md`.
 Cada módulo migrado deve vir com os seus testes.
 
 ## Como uma mudança chega ao ar
@@ -169,7 +170,7 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 | **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Controllers` |
 | **Clientes** | Clientes (cadastro de clientes da loja) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | ✅ Domain/Application/Infrastructure/Controllers + testes |
-| **Equipe** | Funcionarios, Comissoes | só `Controllers` |
+| **Equipe** | Funcionarios, Comissoes (o salário fixo entra no Financeiro pela porta `ILancamentoFixoFinanceiro`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Corretora** | Corretora (seguradoras, funil, apólices) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Turmas** | Turmas (matrícula, sessões, remarcação; rotina que gera as sessões) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **OrdemServico** | OrdemServico, Patrimonio | só `Controllers` |

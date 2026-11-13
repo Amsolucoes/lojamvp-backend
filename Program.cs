@@ -4,6 +4,7 @@ using LojaApi.Infrastructure.Ajuda;
 using LojaApi.Infrastructure.Chacara;
 using LojaApi.Infrastructure.Clientes;
 using LojaApi.Infrastructure.Corretora;
+using LojaApi.Infrastructure.Equipe;
 using LojaApi.Infrastructure.Fiscal;
 using LojaApi.Infrastructure.Turmas;
 using LojaApi.Infrastructure.Servicos;
@@ -69,6 +70,7 @@ internal class Program
         builder.Services.AddFiscalModule();
         builder.Services.AddTurmasModule();
         builder.Services.AddCorretoraModule();
+        builder.Services.AddEquipeModule();
         // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
         builder.Services.AddSingleton<PushService>();
         builder.Services.AddHostedService<AvisosVencimentoService>();
