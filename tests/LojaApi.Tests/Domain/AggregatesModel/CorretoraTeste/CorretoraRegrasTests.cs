@@ -1,6 +1,6 @@
 using LojaApi.Domain.Corretora;
 
-namespace LojaApi.Tests.Domain.Services.CorretoraTeste;
+namespace LojaApi.Tests.Domain.AggregatesModel.CorretoraTeste;
 
 public class CorretoraRegrasTests
 {

@@ -1,6 +1,6 @@
 using LojaApi.Domain.Ajuda;
 
-namespace LojaApi.Tests.Domain.Services.AjudaTeste;
+namespace LojaApi.Tests.Domain.AggregatesModel.AjudaTeste;
 
 public class YoutubeIdTests
 {

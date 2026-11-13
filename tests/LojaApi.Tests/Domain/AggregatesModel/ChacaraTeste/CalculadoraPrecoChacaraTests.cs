@@ -1,6 +1,6 @@
 using LojaApi.Domain.Chacara;
 
-namespace LojaApi.Tests.Domain.Services.ChacaraTeste;
+namespace LojaApi.Tests.Domain.AggregatesModel.ChacaraTeste;
 
 public class CalculadoraPrecoChacaraTests
 {

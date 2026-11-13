@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Banco de dados: AppDbContext, entidades (pasta Entidades) e Migrations. Depende do Domain, nunca da API. -->
+  <!-- Banco de dados: AppDbContext, entidades (pasta Entities) e Migrations. Depende do Domain, nunca da API. -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
