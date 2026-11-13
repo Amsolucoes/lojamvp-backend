@@ -16,6 +16,7 @@ src/
   Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora)
                                                      + Resultado<T> e ILojaAtual (Shared).
                                                      Depende do Domain e do Data. Nunca da API.
+                                                     Organizada por TIPO e, dentro dele, por módulo (veja abaixo).
   Controllers/<Modulo>/    (projeto da API: LojaApi.csproj, na raiz)  <- SÓ controllers (HTTP)
   Infrastructure/<Modulo>/ (projeto da API)  <- PDF, rotinas em segundo plano, registro do módulo e os adaptadores das portas
   Shared/Api/ , Services/ , DTOs/ , Middleware/ , Utils/   (projeto da API; Services/DTOs ainda atendem os módulos não migrados)
@@ -32,17 +33,32 @@ LojaApi (API) ──> Application ──> Data ──> Domain
 Namespaces seguem as pastas: `LojaApi.Controllers.<Modulo>`, `LojaApi.Application.<Modulo>`, `LojaApi.Domain.<Modulo>`,
 `LojaApi.Infrastructure.<Modulo>`. As entidades antigas continuam em `LojaApi.Models` / `LojaApi.src.Models` (dentro do projeto Data).
 
+### Como a pasta Application é organizada (por tipo, depois por módulo)
+```
+Application/
+  Dtos/<Modulo>/<Modulo>Dtos.cs            <- o que a API DEVOLVE (records "…Dto"); um arquivo por módulo
+  Requests/<Modulo>/<Modulo>Requests.cs    <- o que a API RECEBE no corpo (records "…Request"); um arquivo por módulo
+  Interfaces/<Modulo>/I<Nome>.cs           <- repositórios (I<Modulo>Repository) e portas (IProvedorFiscal...); um arquivo por interface
+  Services/<Modulo>/<Nome>Service.cs       <- casos de uso (regras de negócio); um arquivo por service
+  Shared/Resultado.cs                      <- Resultado<T> (+ Interfaces/Shared/ILojaAtual.cs e Services/Shared/LojaAtualService.cs)
+```
+- **O nome do tipo termina com o que ele é**: `ClienteDto`, `SalvarClienteRequest`, `ClientesService`, e as interfaces começam com `I`
+  (`IClientesRepository`, `IPagamentoOnlineChacara`). Um resultado que uma porta devolve também é DTO (`ResultadoEmissaoFiscalDto`).
+- **Namespace por módulo, não por pasta**: tudo de um módulo é `LojaApi.Application.<Modulo>`, em qualquer pasta de tipo
+  (quem usa um módulo importa um namespace só). A pasta só organiza os arquivos.
+- Ao criar um módulo novo, crie o arquivo dele em cada pasta de tipo (só as que ele precisar).
+
 ### Portas: como o Application fala com o mundo externo sem depender dele
 O Application não pode referenciar a API. O que vem de fora (Mercado Pago, criptografia de segredos, gerador de PDF) entra por
-**interface** definida no Application (`Application/Chacara/Portas.cs`: `IPagamentoOnlineChacara`, `IProtetorDeSegredos`,
+**interface** definida no Application (`Application/Interfaces/Chacara`: `IPagamentoOnlineChacara`, `IProtetorDeSegredos`,
 `IGeradorContratoChacara`) e é **implementado na API** (`Infrastructure/Chacara/AdaptadoresChacara.cs`), ligado em `ChacaraModule`.
 Os testes trocam o Mercado Pago por um falso exatamente por esse caminho.
 
 ### Service x Repository (módulos novos)
 Nos módulos migrados a partir de **Ajuda, Clientes, Fiscal, Turmas e Corretora** a camada Application separa as duas coisas:
 
-- **Service** (`Application/<Modulo>/<X>Service.cs`): as regras de negócio e a orquestração. Devolve `Resultado<T>`. **Não usa o `AppDbContext`.**
-- **Repository** (interface `I<Modulo>Repository` em `Application/<Modulo>`, implementação EF Core em `Infrastructure/<Modulo>`): só lê e grava,
+- **Service** (`Application/Services/<Modulo>/<X>Service.cs`): as regras de negócio e a orquestração. Devolve `Resultado<T>`. **Não usa o `AppDbContext`.**
+- **Repository** (interface `I<Modulo>Repository` em `Application/Interfaces/<Modulo>`, implementação EF Core em `Infrastructure/<Modulo>`): só lê e grava,
   com métodos nomeados pelo que fazem (`ObterTurmaAsync`, `CpfJaCadastradoAsync`, `ListarApolicesAsync`...). Sem repository genérico (o EF já é
   um). Expõe `SalvarAsync()` para gravar o que o service alterou. A implementação mora na API (e não no `Data`) porque o Application já
   depende do Data: assim não há referência circular, e é o mesmo caminho das portas acima.
@@ -67,7 +83,7 @@ Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas prec
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
 Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas** e **Corretora** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
-dentro do controller) e, ao serem migrados, ganham `Application/<Modulo>` e `Domain/<Modulo>`.
+dentro do controller) e, ao serem migrados, ganham `Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `Domain/<Modulo>`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
 > estrangeiras depende disso. Por isso o `AppDbContext` fixa, para toda entidade em `LojaApi.Domain.*`, o nome da FK como
@@ -102,7 +118,7 @@ public string? Confirmar(decimal? valorPago, DateTime agora)
     return null;
 }
 
-// Application/ReservasChacaraService.cs
+// Application/Services/Chacara/ReservasChacaraService.cs
 var erro = reserva.Confirmar(req?.ValorPago, DateTime.UtcNow);
 if (erro != null) return Resultado.Invalido(erro);
 ```
@@ -114,7 +130,7 @@ if (erro != null) return Resultado.Invalido(erro);
 
 ## Como criar um novo módulo
 
-1. Crie `src/Domain/<Modulo>`, `src/Application/<Modulo>` e `src/Infrastructure/<Modulo>` (os controllers já estão em `src/Controllers/<Modulo>`).
+1. Crie `src/Domain/<Modulo>`, `src/Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `src/Infrastructure/<Modulo>` (os controllers já estão em `src/Controllers/<Modulo>`).
 2. Mova as entidades para `src/Domain/<Modulo>` (namespace `LojaApi.Domain.<Modulo>`) e atualize os nomes no
    `AppDbContextModelSnapshot.cs`. **Não** altere tabelas/colunas.
 3. Para cada controller: crie o serviço de aplicação com a lógica (copie, não reescreva) e deixe o controller fino.

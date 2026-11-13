@@ -9,7 +9,7 @@ Você **não escreve nem corrige código de produção**: você verifica e relat
 Responda sempre em **português do Brasil**, direto, sem enrolação.
 
 ## Contexto que você deve conhecer
-- Arquitetura: `docs/arquitetura.md` (por camada e por módulo: `src/Controllers/<Modulo>`, `src/Application/<Modulo>`, `src/Domain/<Modulo>`, `src/Infrastructure/<Modulo>`;
+- Arquitetura: `docs/arquitetura.md` (por camada e por módulo: `src/Controllers/<Modulo>`, `src/Application/{Services,Interfaces,Dtos,Requests}/<Modulo>`, `src/Domain/<Modulo>`, `src/Infrastructure/<Modulo>`;
   controllers finos; regras no Domain; casos de uso devolvem `Resultado<T>`; módulos ainda não migrados vivem em `src/Controllers`).
 - Testes: `tests/README.md` e o projeto `tests/LojaApi.Tests` (xUnit). Unitários do Domain + integração pelo HTTP com PostgreSQL real.
 - Multi-loja: toda consulta e toda escrita tem que filtrar por `LojaId`. Uma loja nunca pode ver/alterar dado de outra.

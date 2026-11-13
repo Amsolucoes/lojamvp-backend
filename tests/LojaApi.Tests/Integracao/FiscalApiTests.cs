@@ -162,8 +162,8 @@ public class FiscalApiTests(ApiFixture api)
         await ConfigurarAsync(loja);
         var venda = await VendaAsync(loja);
         api.ProvedorFiscal.Responder(
-            new ResultadoEmissaoFiscal(true, "autorizada", "CHAVE44", "123", "1", "PROT1", "http://danfe", "http://xml"),
-            new ResultadoEmissaoFiscal(true, "cancelada"));
+            new ResultadoEmissaoFiscalDto(true, "autorizada", "CHAVE44", "123", "1", "PROT1", "http://danfe", "http://xml"),
+            new ResultadoEmissaoFiscalDto(true, "cancelada"));
         try
         {
             var r = await loja.Painel.Post($"/api/fiscal/vendas/{venda}/emitir");
@@ -229,7 +229,7 @@ public class FiscalApiTests(ApiFixture api)
     public async Task Cancelar_nota_autorizada_marca_como_cancelada()
     {
         var (loja, id) = await EmissaoAutorizadaAsync();
-        api.ProvedorFiscal.Responder(new ResultadoEmissaoFiscal(true, "autorizada"), new ResultadoEmissaoFiscal(true, "cancelada"));
+        api.ProvedorFiscal.Responder(new ResultadoEmissaoFiscalDto(true, "autorizada"), new ResultadoEmissaoFiscalDto(true, "cancelada"));
         try
         {
             var r = await loja.Painel.Post($"/api/fiscal/emissoes/{id}/cancelar", new { justificativa = "  Cliente desistiu da compra  " });
@@ -249,7 +249,7 @@ public class FiscalApiTests(ApiFixture api)
     {
         var (_, id) = await EmissaoAutorizadaAsync();
         var invasora = await NovaAsync();
-        api.ProvedorFiscal.Responder(new ResultadoEmissaoFiscal(true, "autorizada"), new ResultadoEmissaoFiscal(true, "cancelada"));
+        api.ProvedorFiscal.Responder(new ResultadoEmissaoFiscalDto(true, "autorizada"), new ResultadoEmissaoFiscalDto(true, "cancelada"));
         try
         {
             Assert.Equal(404, (await invasora.Painel.Post($"/api/fiscal/emissoes/{id}/cancelar", new { justificativa = "Tentativa de cancelar nota alheia" })).Codigo);

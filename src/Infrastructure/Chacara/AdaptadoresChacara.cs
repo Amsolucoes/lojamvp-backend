@@ -5,18 +5,18 @@ using LojaApi.Services;
 
 namespace LojaApi.Infrastructure.Chacara;
 
-// Implementações das portas do Application (ver Application/Chacara/Portas.cs).
+// Implementações das portas do Application (ver Application/Interfaces/Chacara).
 
 public class PagamentoOnlineChacaraMercadoPago(MercadoPagoService mp) : IPagamentoOnlineChacara
 {
-    private static ResultadoPagamentoOnline Converter(MpPaymentResult r) =>
+    private static ResultadoPagamentoOnlineDto Converter(MpPaymentResult r) =>
         new(r.MpPaymentId, r.Status, r.QrCode, r.QrCodeBase64, r.Erro);
 
-    public async Task<ResultadoPagamentoOnline> CriarPix(decimal valor, string descricao, string emailPagador, string cpfPagador,
+    public async Task<ResultadoPagamentoOnlineDto> CriarPix(decimal valor, string descricao, string emailPagador, string cpfPagador,
         string nomePagador, Guid pagamentoId, DateTime? expiraEm, string? accessToken) =>
         Converter(await mp.CriarPix(valor, descricao, emailPagador, cpfPagador, nomePagador, pagamentoId, expiraEm, accessToken));
 
-    public async Task<ResultadoPagamentoOnline> CriarCartao(decimal valor, string descricao, string cardToken, int parcelas,
+    public async Task<ResultadoPagamentoOnlineDto> CriarCartao(decimal valor, string descricao, string cardToken, int parcelas,
         string emailPagador, string cpfPagador, string nomePagador, Guid pagamentoId, string? accessToken) =>
         Converter(await mp.CriarCartao(valor, descricao, cardToken, parcelas, emailPagador, cpfPagador, nomePagador, pagamentoId, accessToken));
 

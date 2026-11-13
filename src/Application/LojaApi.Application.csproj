@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- Casos de uso. Depende do Domain e do Data, NUNCA da API: o que vem de fora (Mercado Pago, criptografia, PDF)
-       entra por interface (Chacara/Portas.cs) e é implementado na API. -->
+       entra por interface (Application/Interfaces/Chacara) e é implementado na API. -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>

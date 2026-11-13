@@ -11,14 +11,14 @@ public class ProvedorFiscalNaoConfigurado : IProvedorFiscal
 {
     public string Chave => "nao_configurado";
 
-    private static readonly ResultadoEmissaoFiscal NaoConfigurado = new(
+    private static readonly ResultadoEmissaoFiscalDto NaoConfigurado = new(
         Sucesso: false,
         Status: "erro",
         MotivoErro: "Nenhum provedor de emissão fiscal está configurado para esta loja.");
 
-    public Task<ResultadoEmissaoFiscal> EmitirNfceAsync(Venda venda, ConfiguracaoFiscal configuracao, CancellationToken ct = default)
+    public Task<ResultadoEmissaoFiscalDto> EmitirNfceAsync(Venda venda, ConfiguracaoFiscal configuracao, CancellationToken ct = default)
         => Task.FromResult(NaoConfigurado);
 
-    public Task<ResultadoEmissaoFiscal> CancelarNfceAsync(EmissaoFiscal emissao, string justificativa, ConfiguracaoFiscal configuracao, CancellationToken ct = default)
+    public Task<ResultadoEmissaoFiscalDto> CancelarNfceAsync(EmissaoFiscal emissao, string justificativa, ConfiguracaoFiscal configuracao, CancellationToken ct = default)
         => Task.FromResult(NaoConfigurado);
 }
