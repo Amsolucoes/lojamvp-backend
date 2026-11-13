@@ -1,390 +1,91 @@
-﻿using LojaApi.Data;
-using LojaApi.src.Models;
-using LojaApi.src.Models.Funcionarios;
-using LojaApi.src.Services;
+using LojaApi.Application.Turmas;
+using LojaApi.Shared.Api;
+using LojaApi.Shared.Application;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
 
 namespace LojaApi.Controllers.Turmas;
 
 [ApiController]
 [Route("api/turmas")]
 [Authorize]
-public class TurmasController(AppDbContext db, TurmasService turmasService) : ControllerBase
+public class TurmasController(TurmasService servico, ILojaAtual lojaAtual) : ControllerBase
 {
-    private Guid UsuarioId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-
-    private async Task<Guid?> GetLojaId()
-    {
-        var vinculo = await db.UsuariosLoja.FirstOrDefaultAsync(ul => ul.UsuarioId == UsuarioId && ul.Ativo);
-        return vinculo?.LojaId;
-    }
-
     // ══════════════════ TURMAS (CRUD) ══════════════════
 
     [HttpGet]
-    public async Task<IActionResult> Listar()
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return Ok(Array.Empty<object>());
-
-        var turmas = await db.Turmas.Where(t => t.LojaId == lojaId).ToListAsync();
-        var resultado = new List<object>();
-
-        foreach (var t in turmas)
-        {
-            var qtdAlunos = await db.MatriculasTurma.CountAsync(m => m.TurmaId == t.Id && m.Ativa);
-            resultado.Add(new
-            {
-                t.Id,
-                t.Nome,
-                t.DiaSemana,
-                horario = t.Horario.ToString(@"hh\:mm"),
-                t.DuracaoMin,
-                t.Capacidade,
-                t.Ativa,
-                qtdAlunos,
-            });
-        }
-        return Ok(resultado);
-    }
-
-    public record SalvarTurmaRequest(string Nome, int DiaSemana, string Horario, int DuracaoMin, int Capacidade);
+    public async Task<IActionResult> Listar() =>
+        (await servico.ListarAsync(await lojaAtual.ObterIdAsync(User))).ParaResposta(this);
 
     [HttpPost]
-    public async Task<IActionResult> Criar([FromBody] SalvarTurmaRequest req)
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
-
-        var turma = new Turma
-        {
-            LojaId = lojaId.Value,
-            Nome = req.Nome.Trim(),
-            DiaSemana = req.DiaSemana,
-            Horario = TimeSpan.Parse(req.Horario),
-            DuracaoMin = req.DuracaoMin,
-            Capacidade = req.Capacidade,
-        };
-        db.Turmas.Add(turma);
-        await db.SaveChangesAsync();
-
-        await turmasService.GerarSessoesFuturasAsync();
-
-        return Ok(new { turma.Id });
-    }
+    public async Task<IActionResult> Criar([FromBody] SalvarTurmaRequest req) =>
+        (await servico.CriarAsync(await lojaAtual.ObterIdAsync(User), req)).ParaResposta(this);
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Atualizar(Guid id, [FromBody] SalvarTurmaRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var turma = await db.Turmas.FirstOrDefaultAsync(t => t.Id == id && t.LojaId == lojaId);
-        if (turma is null) return NotFound();
-
-        turma.Nome = req.Nome.Trim();
-        turma.DiaSemana = req.DiaSemana;
-        turma.Horario = TimeSpan.Parse(req.Horario);
-        turma.DuracaoMin = req.DuracaoMin;
-        turma.Capacidade = req.Capacidade;
-        await db.SaveChangesAsync();
-
-        return Ok(new { turma.Id });
-    }
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] SalvarTurmaRequest req) =>
+        (await servico.AtualizarAsync(await lojaAtual.ObterIdAsync(User), id, req)).ParaResposta(this);
 
     [HttpPatch("{id:guid}/ativo")]
-    public async Task<IActionResult> AlternarAtiva(Guid id)
-    {
-        var lojaId = await GetLojaId();
-        var turma = await db.Turmas.FirstOrDefaultAsync(t => t.Id == id && t.LojaId == lojaId);
-        if (turma is null) return NotFound();
-
-        turma.Ativa = !turma.Ativa;
-        await db.SaveChangesAsync();
-        return Ok(new { turma.Id, turma.Ativa });
-    }
+    public async Task<IActionResult> AlternarAtiva(Guid id) =>
+        (await servico.AlternarAtivaAsync(await lojaAtual.ObterIdAsync(User), id)).ParaResposta(this);
 
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Excluir(Guid id)
-    {
-        var lojaId = await GetLojaId();
-        var turma = await db.Turmas.FirstOrDefaultAsync(t => t.Id == id && t.LojaId == lojaId);
-        if (turma is null) return NotFound();
-
-        var temMatricula = await db.MatriculasTurma.AnyAsync(m => m.TurmaId == id && m.Ativa);
-        if (temMatricula)
-            return BadRequest(new { erro = "Não é possível excluir: esta turma tem alunos matriculados. Desative em vez de excluir." });
-
-        db.Turmas.Remove(turma);
-        await db.SaveChangesAsync();
-        return Ok(new { mensagem = "Turma excluída." });
-    }
+    public async Task<IActionResult> Excluir(Guid id) =>
+        (await servico.ExcluirAsync(await lojaAtual.ObterIdAsync(User), id)).ParaResposta(this);
 
     // ══════════════════ MATRÍCULA ══════════════════
 
     [HttpGet("{id:guid}/alunos")]
-    public async Task<IActionResult> ListarAlunos(Guid id)
-    {
-        var lojaId = await GetLojaId();
-        var turma = await db.Turmas.FirstOrDefaultAsync(t => t.Id == id && t.LojaId == lojaId);
-        if (turma is null) return NotFound();
-
-        var alunos = await db.MatriculasTurma
-            .Where(m => m.TurmaId == id && m.Ativa)
-            .Join(db.Clientes, m => m.ClienteId, c => c.Id, (m, c) => new { m.Id, m.ClienteId, nome = c.Nome, telefone = c.Telefone })
-            .ToListAsync();
-
-        return Ok(alunos);
-    }
-
-    public record MatricularRequest(Guid ClienteId);
+    public async Task<IActionResult> ListarAlunos(Guid id) =>
+        (await servico.ListarAlunosAsync(await lojaAtual.ObterIdAsync(User), id)).ParaResposta(this);
 
     [HttpPost("{id:guid}/matricular")]
-    public async Task<IActionResult> Matricular(Guid id, [FromBody] MatricularRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var turma = await db.Turmas.FirstOrDefaultAsync(t => t.Id == id && t.LojaId == lojaId);
-        if (turma is null) return NotFound();
-
-        var jaMatriculado = await db.MatriculasTurma.AnyAsync(m => m.TurmaId == id && m.ClienteId == req.ClienteId && m.Ativa);
-        if (jaMatriculado) return BadRequest(new { erro = "Aluno já matriculado nesta turma." });
-
-        var qtdAtual = await db.MatriculasTurma.CountAsync(m => m.TurmaId == id && m.Ativa);
-        if (qtdAtual >= turma.Capacidade)
-            return BadRequest(new { erro = $"Turma cheia ({turma.Capacidade} vaga(s))." });
-
-        db.MatriculasTurma.Add(new MatriculaTurma
-        {
-            LojaId = lojaId!.Value,
-            TurmaId = id,
-            ClienteId = req.ClienteId,
-        });
-        await db.SaveChangesAsync();
-
-        await turmasService.GerarSessoesFuturasAsync();
-
-        return Ok(new { mensagem = "Aluno matriculado." });
-    }
+    public async Task<IActionResult> Matricular(Guid id, [FromBody] MatricularRequest req) =>
+        (await servico.MatricularAsync(await lojaAtual.ObterIdAsync(User), id, req)).ParaResposta(this);
 
     [HttpDelete("matricula/{matriculaId:guid}")]
-    public async Task<IActionResult> Desmatricular(Guid matriculaId)
-    {
-        var lojaId = await GetLojaId();
-        var matricula = await db.MatriculasTurma.FirstOrDefaultAsync(m => m.Id == matriculaId && m.LojaId == lojaId);
-        if (matricula is null) return NotFound();
-
-        matricula.Ativa = false;
-        await db.SaveChangesAsync();
-
-        // Remove inscrições futuras (aulas que ainda não aconteceram) desse aluno nessa turma
-        var hoje = DateTime.UtcNow;
-        var futuras = await db.InscricoesSessao
-            .Where(i => i.ClienteId == matricula.ClienteId && i.Tipo == "fixo")
-            .Join(db.SessoesTurma.Where(s => s.TurmaId == matricula.TurmaId && s.DataHora >= hoje),
-                  i => i.SessaoTurmaId, s => s.Id, (i, s) => i)
-            .ToListAsync();
-        db.InscricoesSessao.RemoveRange(futuras);
-        await db.SaveChangesAsync();
-
-        return Ok(new { mensagem = "Aluno desmatriculado." });
-    }
+    public async Task<IActionResult> Desmatricular(Guid matriculaId) =>
+        (await servico.DesmatricularAsync(await lojaAtual.ObterIdAsync(User), matriculaId)).ParaResposta(this);
 
     // ══════════════════ SESSÕES (agenda semanal) ══════════════════
 
     [HttpGet("sessoes")]
-    public async Task<IActionResult> ListarSessoes([FromQuery] DateTime de, [FromQuery] DateTime ate)
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return Ok(Array.Empty<object>());
+    public async Task<IActionResult> ListarSessoes([FromQuery] DateTime de, [FromQuery] DateTime ate) =>
+        (await servico.ListarSessoesAsync(await lojaAtual.ObterIdAsync(User), de, ate)).ParaResposta(this);
 
-        var deUtc = DateTime.SpecifyKind(de.Date, DateTimeKind.Utc);
-        var ateUtc = DateTime.SpecifyKind(ate.Date, DateTimeKind.Utc).AddDays(1);
-
-        var sessoes = await db.SessoesTurma
-            .Include(s => s.Turma)
-            .Where(s => s.LojaId == lojaId && s.DataHora >= deUtc && s.DataHora < ateUtc)
-            .OrderBy(s => s.DataHora)
-            .ToListAsync();
-
-        var resultado = new List<object>();
-        foreach (var s in sessoes)
-        {
-            var inscricoes = await db.InscricoesSessao
-                .Include(i => i.Profissional)
-                .Where(i => i.SessaoTurmaId == s.Id && i.Status != "faltou")
-                .Join(db.Clientes, i => i.ClienteId, c => c.Id, (i, c) => new
-                {
-                    i.Id,
-                    i.ClienteId,
-                    nome = c.Nome,
-                    i.Tipo,
-                    i.Status,
-                    i.RemarcadoParaSessaoId,
-                    profissionalId = i.ProfissionalId,
-                    profissionalNome = i.Profissional != null ? i.Profissional.Nome : null,
-                })
-                .ToListAsync();
-
-            resultado.Add(new
-            {
-                s.Id,
-                s.TurmaId,
-                nomeTurma = s.Turma!.Nome,
-                dataHora = s.DataHora,
-                s.Status,
-                capacidade = s.Turma.Capacidade,
-                vagasOcupadas = inscricoes.Count(i => i.Status != "falta_avisada" && i.RemarcadoParaSessaoId == null),
-                alunos = inscricoes,
-            });
-        }
-
-        return Ok(resultado);
-    }
-
-    // ── Vagas disponíveis noutras sessões (pra remarcar) ────────────
+    // Vagas disponíveis noutras sessões (pra remarcar)
     [HttpGet("sessoes-com-vaga")]
-    public async Task<IActionResult> SessoesComVaga([FromQuery] DateTime de, [FromQuery] DateTime ate)
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return Ok(Array.Empty<object>());
-
-        var deUtc = DateTime.SpecifyKind(de.Date, DateTimeKind.Utc);
-        var ateUtc = DateTime.SpecifyKind(ate.Date, DateTimeKind.Utc).AddDays(1);
-
-        var sessoes = await db.SessoesTurma
-            .Include(s => s.Turma)
-            .Where(s => s.LojaId == lojaId && s.DataHora >= deUtc && s.DataHora < ateUtc && s.Status == "aberta")
-            .OrderBy(s => s.DataHora)
-            .ToListAsync();
-
-        var resultado = new List<object>();
-        foreach (var s in sessoes)
-        {
-            var ocupadas = await db.InscricoesSessao.CountAsync(i =>
-                i.SessaoTurmaId == s.Id && i.Status != "falta_avisada" && i.RemarcadoParaSessaoId == null);
-
-            var vagas = s.Turma!.Capacidade - ocupadas;
-            if (vagas > 0)
-                resultado.Add(new { s.Id, nomeTurma = s.Turma.Nome, dataHora = s.DataHora, vagas });
-        }
-
-        return Ok(resultado);
-    }
+    public async Task<IActionResult> SessoesComVaga([FromQuery] DateTime de, [FromQuery] DateTime ate) =>
+        (await servico.SessoesComVagaAsync(await lojaAtual.ObterIdAsync(User), de, ate)).ParaResposta(this);
 
     // ══════════════════ FALTA / REMARCAÇÃO ══════════════════
 
-    public record RemarcarRequest(Guid? SessaoDestinoId); // null = só avisa falta, sem remarcar ainda
-
     [HttpPost("inscricoes/{id:guid}/falta")]
-    public async Task<IActionResult> MarcarFaltaAvisada(Guid id, [FromBody] RemarcarRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var inscricao = await db.InscricoesSessao.FirstOrDefaultAsync(i => i.Id == id && i.LojaId == lojaId);
-        if (inscricao is null) return NotFound();
-
-        inscricao.Status = "falta_avisada";
-
-        if (req.SessaoDestinoId.HasValue)
-        {
-            var destino = await db.SessoesTurma.Include(s => s.Turma).FirstOrDefaultAsync(s => s.Id == req.SessaoDestinoId.Value && s.LojaId == lojaId);
-            if (destino is null) return NotFound(new { erro = "Sessão de destino não encontrada." });
-
-            var ocupadas = await db.InscricoesSessao.CountAsync(i =>
-                i.SessaoTurmaId == destino.Id && i.Status != "falta_avisada" && i.RemarcadoParaSessaoId == null);
-            if (ocupadas >= destino.Turma!.Capacidade)
-                return BadRequest(new { erro = "Sessão de destino está sem vagas." });
-
-            inscricao.RemarcadoParaSessaoId = destino.Id;
-
-            db.InscricoesSessao.Add(new InscricaoSessao
-            {
-                LojaId = lojaId!.Value,
-                SessaoTurmaId = destino.Id,
-                ClienteId = inscricao.ClienteId,
-                Tipo = "remarcacao",
-                Status = "confirmado",
-            });
-        }
-
-        await db.SaveChangesAsync();
-        return Ok(new { mensagem = req.SessaoDestinoId.HasValue ? "Remarcado com sucesso." : "Falta registrada." });
-    }
+    public async Task<IActionResult> MarcarFaltaAvisada(Guid id, [FromBody] RemarcarRequest req) =>
+        (await servico.MarcarFaltaAvisadaAsync(await lojaAtual.ObterIdAsync(User), id, req)).ParaResposta(this);
 
     // ══════════════════ CHAMADA (presença real) ══════════════════
 
-    public record MarcarPresencaRequest(bool Compareceu);
-
     [HttpPost("inscricoes/{id:guid}/presenca")]
-    public async Task<IActionResult> MarcarPresenca(Guid id, [FromBody] MarcarPresencaRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var inscricao = await db.InscricoesSessao.FirstOrDefaultAsync(i => i.Id == id && i.LojaId == lojaId);
-        if (inscricao is null) return NotFound();
-
-        inscricao.Status = req.Compareceu ? "compareceu" : "faltou";
-        await db.SaveChangesAsync();
-
-        return Ok(new { inscricao.Id, inscricao.Status });
-    }
+    public async Task<IActionResult> MarcarPresenca(Guid id, [FromBody] MarcarPresencaRequest req) =>
+        (await servico.MarcarPresencaAsync(await lojaAtual.ObterIdAsync(User), id, req)).ParaResposta(this);
 
     // ══════════════════ PROFISSIONAIS ══════════════════
 
     [HttpGet("profissionais")]
-    public async Task<IActionResult> ListarProfissionais()
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return Ok(Array.Empty<object>());
-
-        var lista = await db.Profissionais
-            .Where(p => p.LojaId == lojaId && p.Ativo)
-            .OrderBy(p => p.Nome)
-            .Select(p => new { p.Id, p.Nome })
-            .ToListAsync();
-
-        return Ok(lista);
-    }
-
-    public record SalvarProfissionalRequest(string Nome);
+    public async Task<IActionResult> ListarProfissionais() =>
+        (await servico.ListarProfissionaisAsync(await lojaAtual.ObterIdAsync(User))).ParaResposta(this);
 
     [HttpPost("profissionais")]
-    public async Task<IActionResult> CriarProfissional([FromBody] SalvarProfissionalRequest req)
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
-
-        var prof = new Profissional { LojaId = lojaId.Value, Nome = req.Nome.Trim() };
-        db.Profissionais.Add(prof);
-        await db.SaveChangesAsync();
-
-        return Ok(new { prof.Id, prof.Nome });
-    }
+    public async Task<IActionResult> CriarProfissional([FromBody] SalvarProfissionalRequest req) =>
+        (await servico.CriarProfissionalAsync(await lojaAtual.ObterIdAsync(User), req)).ParaResposta(this);
 
     [HttpPatch("profissionais/{id:guid}/ativo")]
-    public async Task<IActionResult> AlternarProfissional(Guid id)
-    {
-        var lojaId = await GetLojaId();
-        var prof = await db.Profissionais.FirstOrDefaultAsync(p => p.Id == id && p.LojaId == lojaId);
-        if (prof is null) return NotFound();
+    public async Task<IActionResult> AlternarProfissional(Guid id) =>
+        (await servico.AlternarProfissionalAsync(await lojaAtual.ObterIdAsync(User), id)).ParaResposta(this);
 
-        prof.Ativo = !prof.Ativo;
-        await db.SaveChangesAsync();
-        return Ok(new { prof.Id, prof.Ativo });
-    }
-
-    // ── Define/troca o profissional de um aluno NESSA sessão ───────
-    public record DefinirProfissionalRequest(Guid? ProfissionalId);
-
+    // Define/troca o profissional de um aluno NESSA sessão
     [HttpPatch("inscricoes/{id:guid}/profissional")]
-    public async Task<IActionResult> DefinirProfissional(Guid id, [FromBody] DefinirProfissionalRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var inscricao = await db.InscricoesSessao.FirstOrDefaultAsync(i => i.Id == id && i.LojaId == lojaId);
-        if (inscricao is null) return NotFound();
-
-        inscricao.ProfissionalId = req.ProfissionalId;
-        await db.SaveChangesAsync();
-
-        return Ok(new { inscricao.Id, inscricao.ProfissionalId });
-    }
+    public async Task<IActionResult> DefinirProfissional(Guid id, [FromBody] DefinirProfissionalRequest req) =>
+        (await servico.DefinirProfissionalAsync(await lojaAtual.ObterIdAsync(User), id, req)).ParaResposta(this);
 }

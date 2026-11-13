@@ -1,6 +1,6 @@
 # Testes do backend
 
-Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara**, **Carteira** e **Serviços/Agenda**; os próximos módulos migrados ganham a
+Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara**, **Carteira**, **Serviços/Agenda**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas** e **Corretora**; os próximos módulos migrados ganham a
 sua pasta ao lado (`tests/LojaApi.Tests/<Modulo>/...` e `Integracao/`).
 
 ## No Visual Studio
@@ -30,8 +30,9 @@ dotnet test tests/LojaApi.Tests
 
 | Pasta | Tipo | O que prova |
 |---|---|---|
-| `Chacara/Dominio`, `Carteira/Dominio`, `Servicos/Dominio` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira, horários livres e conflito da agenda, comissão, regras do plano de assinatura e da mensalidade |
+| `Chacara/Dominio`, `Carteira/Dominio`, `Servicos/Dominio`, `Ajuda/Dominio`, `Fiscal/Dominio`, `Turmas/Dominio`, `Corretora/Dominio` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira, horários livres e conflito da agenda, comissão, regras do plano de assinatura e da mensalidade |
 | `Compartilhado` | Unitários | `Resultado<T>` → 200/400/404/409/500 |
+| `Arquitetura` | Unitários | Guardas das camadas: service sem `AppDbContext` nos módulos com repository, Domain sem EF/ASP.NET, Application sem a API |
 | `Integracao` | **Integração**, API de verdade + PostgreSQL | Fluxos completos pelo HTTP, com login (JWT), banco real e migrations |
 
 Integração (`Integracao/`):
@@ -46,10 +47,16 @@ Integração (`Integracao/`):
 - `AgendamentosApiTests` – agenda do painel: criar/editar/listar, status, comissão do profissional, regras do plano ao agendar, isolamento (cliente/profissional de outra loja)
 - `PlanosApiTests` – planos, assinantes, mensalidade (marcar, pagar com juros, quitar atraso), histórico, consumos e plano do cliente
 - `AgendamentoOnlinePublicoApiTests` – página pública: dados da loja, horários livres, agendar (aprovação/automático), reconhecer cliente pelo telefone
+- `ClientesApiTests` – cadastro (CPF único por loja, busca, total de compras e saldo da carteira, excluir só admin e sem saldo)
+- `FiscalApiTests` – configuração fiscal, emitir/listar/cancelar NFC-e com provedor falso (`ProvedorFiscalFalso`)
+- `AjudaApiTests` – Central de Ajuda: leitura pública, gestão só do superadmin, link do YouTube, renomear/excluir categoria
+- `TurmasApiTests` – turmas, matrícula, sessões geradas, falta/remarcação, presença, profissionais e isolamento
+- `CorretoraApiTests` – seguradoras, funil, comissão no financeiro, apólices, resumo e dashboard, isolamento
 - `CarteiraApiTests` – carteira do cliente (fiado): venda no caixa (inteira ou dividida), limite, recebimento (entra no caixa), extrato, excluir venda/cliente, isolamento entre lojas
 
 ## Como os testes funcionam por dentro
 
+- Para testar outros papéis (superadmin, operador) use `api.SuperadminAsync(loja)` / `api.OperadorAsync(loja)` / `api.ComPapelAsync(loja, "admin")` (`CenariosPapeis`).
 - `ApiFixture` sobe a API em memória (`WebApplicationFactory`) uma única vez, com um banco novo.
 - Cada teste chama `api.NovaLojaAsync()` (ou `PrepararParaReservasAsync()`): cria **a sua própria loja** (cadastro + login).
   Por isso os testes não dependem da ordem nem se atrapalham.

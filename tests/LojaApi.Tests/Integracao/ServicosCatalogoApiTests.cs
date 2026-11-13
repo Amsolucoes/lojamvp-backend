@@ -104,4 +104,20 @@ public class ServicosCatalogoApiTests(ApiFixture api)
         Assert.Equal(404, (await b.Painel.Delete($"/api/servicos/{idA}")).Codigo);
         Assert.Equal("Só da A", (await a.Painel.Get("/api/servicos")).Json[0].GetProperty("nome").GetString());
     }
+
+    // Pendência do PR anterior: criar, editar e excluir serviço exige admin; o operador só consulta.
+    [FatoIntegracao]
+    public async Task Operador_so_consulta_o_catalogo_e_nao_cria_edita_nem_exclui()
+    {
+        var loja = await api.NovaLojaDeServicosAsync();
+        var id = await loja.ServicoIdAsync();
+        var operador = await api.OperadorAsync(loja);
+
+        Assert.Equal(200, (await operador.Get("/api/servicos")).Codigo);
+        Assert.Equal(403, (await operador.Post("/api/servicos", new { nome = "Novo", categoria = "X", preco = 10, duracaoMin = 30, ativo = true })).Codigo);
+        Assert.Equal(403, (await operador.Put($"/api/servicos/{id}", new { nome = "Mudou", categoria = "X", preco = 10, duracaoMin = 30, ativo = true })).Codigo);
+        Assert.Equal(403, (await operador.Delete($"/api/servicos/{id}")).Codigo);
+        Assert.Equal(1, (await loja.Painel.Get("/api/servicos")).Json.GetArrayLength());
+        Assert.Equal("Banho", (await loja.Painel.Get("/api/servicos")).Json[0].GetProperty("nome").GetString());
+    }
 }

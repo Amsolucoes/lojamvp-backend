@@ -1,7 +1,7 @@
 using LojaApi.Models;
 using LojaApi.src.Models.Fiscal;
 
-namespace LojaApi.src.Services.Fiscal;
+namespace LojaApi.Application.Fiscal;
 
 public record ResultadoEmissaoFiscal(
     bool Sucesso,
@@ -15,8 +15,8 @@ public record ResultadoEmissaoFiscal(
     string? MotivoErro = null
 );
 
-// Abstração do provedor de emissão fiscal (Focus NFe, PlugNotas, eNotas etc.), pra trocar de
-// provedor no futuro sem alterar controller, modelo de dados ou o resto da API.
+// Porta do provedor de emissão fiscal (Focus NFe, PlugNotas, eNotas etc.): trocar de provedor no futuro não mexe
+// no service, no modelo de dados nem no resto da API. A implementação fica em Infrastructure/Fiscal.
 public interface IProvedorFiscal
 {
     string Chave { get; }

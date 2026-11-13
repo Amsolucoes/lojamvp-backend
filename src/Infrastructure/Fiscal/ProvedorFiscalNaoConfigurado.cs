@@ -1,7 +1,8 @@
+using LojaApi.Application.Fiscal;
 using LojaApi.Models;
 using LojaApi.src.Models.Fiscal;
 
-namespace LojaApi.src.Services.Fiscal;
+namespace LojaApi.Infrastructure.Fiscal;
 
 // Implementação usada enquanto nenhum provedor terceirizado estiver contratado. Mantém a API
 // de emissão fiscal pronta e funcional (sem 500/crash), só recusando a emissão de forma

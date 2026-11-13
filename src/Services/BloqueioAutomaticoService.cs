@@ -1,4 +1,5 @@
-﻿using LojaApi.src.Services;
+﻿using LojaApi.Application.Turmas;
+using LojaApi.src.Services;
 using LojaApi.Application.Chacara;
 
 namespace LojaApi.Services;
@@ -49,7 +50,7 @@ public class BloqueioAutomaticoService(
                 await financeiroService.GerarPendenciasMensaisAsync();
                 await financeiroService.GerarPendenciasCartaoFixoAsync();
 
-                var turmasService = scope.ServiceProvider.GetRequiredService<TurmasService>();
+                var turmasService = scope.ServiceProvider.GetRequiredService<GeradorSessoesTurmaService>();
                 await turmasService.GerarSessoesFuturasAsync();
 
                 var alertaEmailService = scope.ServiceProvider.GetRequiredService<AlertaEmailService>();

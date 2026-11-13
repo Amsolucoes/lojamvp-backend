@@ -1,5 +1,6 @@
 using LojaApi.Data;
 using LojaApi.Services;
+using LojaApi.Application.Fiscal;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -41,6 +42,9 @@ public sealed class ApiFixture : IAsyncLifetime
     // Mercado Pago de mentira (nenhuma chamada à internet); o teste controla o que ele responde.
     public MercadoPagoFalso MercadoPago { get; } = new();
 
+    // Provedor de emissão fiscal de mentira: por padrão recusa (como o real "não configurado"); o teste pode mandar autorizar.
+    public ProvedorFiscalFalso ProvedorFiscal { get; } = new();
+
     internal WebApplicationFactory<Program> Fabrica => _fabrica ?? throw new InvalidOperationException("API de teste não iniciada.");
 
     public Task InitializeAsync()
@@ -62,6 +66,8 @@ public sealed class ApiFixture : IAsyncLifetime
                 s.AddSingleton(Resend);
                 s.RemoveAll<MercadoPagoService>();
                 s.AddSingleton<MercadoPagoService>(MercadoPago);
+                s.RemoveAll<IProvedorFiscal>();
+                s.AddSingleton<IProvedorFiscal>(ProvedorFiscal);
             });
         });
         _ = _fabrica.Server; // inicia a API (roda as migrations no banco novo)

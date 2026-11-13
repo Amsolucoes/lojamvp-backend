@@ -13,7 +13,8 @@ próprios** (cada uma com o seu `.csproj`), então o compilador **impede** depen
 src/
   Domain/            projeto LojaApi.Domain       <- só depende do .NET. Entidades e regras de negócio, por módulo.
   Data/              projeto LojaApi.Data         <- AppDbContext, Models (entidades) e Migrations. Depende do Domain.
-  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos) + Resultado<T> e ILojaAtual (Shared).
+  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora)
+                                                     + Resultado<T> e ILojaAtual (Shared).
                                                      Depende do Domain e do Data. Nunca da API.
   Controllers/<Modulo>/    (projeto da API: LojaApi.csproj, na raiz)  <- SÓ controllers (HTTP)
   Infrastructure/<Modulo>/ (projeto da API)  <- PDF, rotinas em segundo plano, registro do módulo e os adaptadores das portas
@@ -37,6 +38,22 @@ O Application não pode referenciar a API. O que vem de fora (Mercado Pago, crip
 `IGeradorContratoChacara`) e é **implementado na API** (`Infrastructure/Chacara/AdaptadoresChacara.cs`), ligado em `ChacaraModule`.
 Os testes trocam o Mercado Pago por um falso exatamente por esse caminho.
 
+### Service x Repository (módulos novos)
+Nos módulos migrados a partir de **Ajuda, Clientes, Fiscal, Turmas e Corretora** a camada Application separa as duas coisas:
+
+- **Service** (`Application/<Modulo>/<X>Service.cs`): as regras de negócio e a orquestração. Devolve `Resultado<T>`. **Não usa o `AppDbContext`.**
+- **Repository** (interface `I<Modulo>Repository` em `Application/<Modulo>`, implementação EF Core em `Infrastructure/<Modulo>`): só lê e grava,
+  com métodos nomeados pelo que fazem (`ObterTurmaAsync`, `CpfJaCadastradoAsync`, `ListarApolicesAsync`...). Sem repository genérico (o EF já é
+  um). Expõe `SalvarAsync()` para gravar o que o service alterou. A implementação mora na API (e não no `Data`) porque o Application já
+  depende do Data: assim não há referência circular, e é o mesmo caminho das portas acima.
+- **Domain** (`Domain/<Modulo>`): regras puras (calcular, validar, decidir) sem banco; é onde ficam os testes unitários.
+- **Registro**: `Infrastructure/<Modulo>/<Modulo>Module.cs` (`AddXModule()`), chamado no `Program.cs`.
+
+Ganhos: o service pode ser testado com um repository falso (sem banco) e a regra não se mistura com a consulta. Um teste de arquitetura
+(`tests/LojaApi.Tests/Arquitetura/CamadasTests.cs`) **falha** se um service desses módulos voltar a receber o `AppDbContext`, se o Domain
+passar a depender de EF/ASP.NET ou se o Application passar a depender da API. Ao migrar um módulo novo, acrescente o nome dele na lista
+`ModulosComRepositorio` desse teste. **Chacara, Carteira e Servicos** (migrados antes) ainda consultam o banco direto no service.
+
 ### Migrations (mudou de lugar)
 As migrations moram no projeto **Data**. Comandos do EF Core agora precisam dos dois projetos:
 ```powershell
@@ -49,7 +66,7 @@ No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaA
 Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
-Hoje só **Chacara**, **Carteira** e **Servicos** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
+Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas** e **Corretora** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
 dentro do controller) e, ao serem migrados, ganham `Application/<Modulo>` e `Domain/<Modulo>`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
@@ -132,25 +149,25 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 | **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Controllers + testes |
 | **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Controllers` (a migrar) |
 | **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | só `Controllers` |
-| **Fiscal** | EmissaoFiscal | só `Controllers` |
+| **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Controllers` |
-| **Clientes** | Clientes (cadastro de clientes da loja) | só `Controllers` |
+| **Clientes** | Clientes (cadastro de clientes da loja) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Servicos** | Servicos, Agendamentos, Planos, Publico (agendamento online) | ✅ Domain/Application/Infrastructure/Controllers + testes |
 | **Equipe** | Funcionarios, Comissoes | só `Controllers` |
-| **Corretora** | Corretora | só `Controllers` |
-| **Turmas** | Turmas | só `Controllers` |
+| **Corretora** | Corretora (seguradoras, funil, apólices) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
+| **Turmas** | Turmas (matrícula, sessões, remarcação; rotina que gera as sessões) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **OrdemServico** | OrdemServico, Patrimonio | só `Controllers` |
 | **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma) | só `Controllers` |
 | **Plataforma** | Admin, Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Pagamentos (assinatura), Push | só `Controllers` |
-| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | só `Controllers` |
+| **Ajuda** | VideoAjuda, CategoriasVideoAjuda | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 
 ## Próximos passos sugeridos
 
 1. Migrar os módulos um a um (um PR por módulo), do menor para o maior, terminando pelo Financeiro.
 2. Quando todos estiverem migrados, separar em projetos (`Domain`, `Application`, `Infrastructure`, `Api`),
    o que passa a ser mecânico e faz o compilador **impedir** dependências no sentido errado.
-3. Trocar o uso direto do `AppDbContext` na camada Application por abstrações (repositórios ou uma interface do
-   contexto) se for desejado isolar totalmente o domínio do EF Core.
+3. Os módulos novos já usam repository (veja "Service x Repository"). Falta, se for desejado, levar o mesmo padrão a Chacara, Carteira e
+   Servicos, que ainda consultam o banco direto no service.
 
 ## Observação sobre as migrations
 
