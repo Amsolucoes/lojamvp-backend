@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="LojaApi.Tests.Suporte" />
     <Using Include="System.Net.Http.Json" />
     <Using Include="System.Text.Json" />
   </ItemGroup>

@@ -140,8 +140,9 @@ if (erro != null) return Resultado.Invalido(erro);
 
 ## Testes
 
-`tests/LojaApi.Tests` tem testes **unitários** (regras do Domain, sem banco) e de **integração** (API de verdade +
-PostgreSQL, serviços externos trocados por dublês). Como rodar e como escrever: `tests/README.md`.
+`tests/LojaApi.Tests` tem testes **unitários** (regras do Domain e services com repository falso, sem banco) e de **integração**
+(API de verdade + PostgreSQL, serviços externos trocados por dublês). As pastas espelham os projetos do `src`
+(`Domain/<Modulo>Teste`, `Application/Services/<Modulo>Teste`, `Api/<Modulo>Teste`). Como rodar e como escrever: `tests/README.md`.
 Cada módulo migrado deve vir com os seus testes.
 
 ## Como uma mudança chega ao ar

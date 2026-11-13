@@ -1,7 +1,7 @@
 # Testes do backend
 
 Projeto `tests/LojaApi.Tests` (xUnit). Hoje cobre os módulos **Chácara**, **Carteira**, **Serviços/Agenda**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas** e **Corretora**; os próximos módulos migrados ganham a
-sua pasta ao lado (`tests/LojaApi.Tests/<Modulo>/...` e `Integracao/`).
+sua pasta `<Modulo>Teste` em cada camada (veja "Como as pastas são organizadas").
 
 ## No Visual Studio
 
@@ -26,33 +26,45 @@ dotnet test tests/LojaApi.Tests
   Use um servidor de desenvolvimento, nunca o de produção. A variável não leva `Database=`.
 - Docker, se preferir: `docker run -d -p 5432:5432 -e POSTGRES_PASSWORD=postgres postgres:16`.
 
+## Como as pastas são organizadas
+
+As pastas **espelham os projetos do `src`**, e dentro de cada uma há uma subpasta por módulo com o sufixo `Teste`
+(`AjudaTeste`, `ClientesTeste`...). O namespace segue a pasta (`LojaApi.Tests.<Camada>.<Modulo>Teste`).
+
+```
+tests/LojaApi.Tests/
+  Domain/<Modulo>Teste/                 regras puras (unitários, rápidos, sem banco)   ex.: Domain/AjudaTeste/YoutubeIdTests.cs
+  Application/Services/<Modulo>Teste/   SERVICES com repository falso (unitários, sem banco)   ex.: VideosAjudaServiceTests.cs
+  Application/Shared/                   Resultado<T> -> 200/400/404/409/500
+  Api/<Modulo>Teste/                    integração pelo HTTP: API de verdade + PostgreSQL   ex.: Api/AjudaTeste/AjudaApiTests.cs
+  Arquitetura/                          guardas das camadas
+  Suporte/                              ApiFixture, ClienteApi, Cenarios*, Datas, FatoIntegracao e falsos (MercadoPagoFalso, ProvedorFiscalFalso)
+  Suporte/Falsos/                       repositórios em memória (ex.: RepositorioAjudaFalso)
+```
+`Suporte` é um `using` global do projeto de testes. Ao testar um módulo novo, crie a pasta `<Modulo>Teste` em cada camada que ele precisar
+(só as que tiver teste; não precisa criar pasta vazia).
+
 ## O que existe
 
 | Pasta | Tipo | O que prova |
 |---|---|---|
-| `Chacara/Dominio`, `Carteira/Dominio`, `Servicos/Dominio`, `Ajuda/Dominio`, `Fiscal/Dominio`, `Turmas/Dominio`, `Corretora/Dominio` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira, horários livres e conflito da agenda, comissão, regras do plano de assinatura e da mensalidade |
-| `Compartilhado` | Unitários | `Resultado<T>` → 200/400/404/409/500 |
+| `Domain/*Teste` | **Unitários**, rápidos, sem banco | Regras de negócio puras: estados da reserva, cálculo de preço, taxa do cartão, agenda, limite e recebimento da carteira, horários livres e conflito da agenda, comissão, regras do plano e da mensalidade, link do YouTube, fiscal, turmas, corretora |
+| `Application/Services/AjudaTeste` | **Unitários** (repository falso) | As regras dos services da Ajuda sem banco nem HTTP: validações, extrair o id do link, renomear categoria, excluir em uso |
+| `Application/Shared` | Unitários | `Resultado<T>` → 200/400/404/409/500 |
 | `Arquitetura` | Unitários | Guardas das camadas: service sem `AppDbContext` nos módulos com repository, Domain sem EF/ASP.NET, Application sem a API |
-| `Integracao` | **Integração**, API de verdade + PostgreSQL | Fluxos completos pelo HTTP, com login (JWT), banco real e migrations |
+| `Api/*Teste` | **Integração**, API de verdade + PostgreSQL | Fluxos completos pelo HTTP, com login (JWT), banco real e migrations |
 
-Integração (`Integracao/`):
+Integração (`Api/`):
 
-- `ConfiguracaoChacaraApiTests` – dados da chácara, preços, faixas, horários, períodos especiais, fotos, Mercado Pago
-- `ReservasChacaraApiTests` – painel do dono: reserva manual, confirmar, pagamentos, negociação, expirar/reativar, editar, contrato PDF, dashboard
-- `SitePublicoChacaraApiTests` – site do cliente: página, disponibilidade, valor, reservar, cancelar, avaliar
-- `PagamentoChacaraApiTests` – Pix, cartão e combinado até a confirmação da reserva
-- `IsolamentoEntreLojasApiTests` – uma loja nunca vê nem altera dados de outra (multi-loja)
-- `RotinasChacaraApiTests` – expiração automática e aviso de 24h
-- `ServicosCatalogoApiTests` – cadastro de serviços (padrões, ordem, excluir com agendamentos, isolamento)
-- `AgendamentosApiTests` – agenda do painel: criar/editar/listar, status, comissão do profissional, regras do plano ao agendar, isolamento (cliente/profissional de outra loja)
-- `PlanosApiTests` – planos, assinantes, mensalidade (marcar, pagar com juros, quitar atraso), histórico, consumos e plano do cliente
-- `AgendamentoOnlinePublicoApiTests` – página pública: dados da loja, horários livres, agendar (aprovação/automático), reconhecer cliente pelo telefone
-- `ClientesApiTests` – cadastro (CPF único por loja, busca, total de compras e saldo da carteira, excluir só admin e sem saldo)
-- `FiscalApiTests` – configuração fiscal, emitir/listar/cancelar NFC-e com provedor falso (`ProvedorFiscalFalso`)
-- `AjudaApiTests` – Central de Ajuda: leitura pública, gestão só do superadmin, link do YouTube, renomear/excluir categoria
-- `TurmasApiTests` – turmas, matrícula, sessões geradas, falta/remarcação, presença, profissionais e isolamento
-- `CorretoraApiTests` – seguradoras, funil, comissão no financeiro, apólices, resumo e dashboard, isolamento
-- `CarteiraApiTests` – carteira do cliente (fiado): venda no caixa (inteira ou dividida), limite, recebimento (entra no caixa), extrato, excluir venda/cliente, isolamento entre lojas
+- `ChacaraTeste/` – `ConfiguracaoChacaraApiTests` (dados, preços, faixas, horários, períodos, fotos, Mercado Pago), `ReservasChacaraApiTests` (painel do dono: reserva manual, confirmar, pagamentos, negociação, expirar/reativar, editar, contrato PDF, dashboard), `SitePublicoChacaraApiTests` (site do cliente: disponibilidade, valor, reservar, cancelar, avaliar), `PagamentoChacaraApiTests` (Pix, cartão e combinado), `RotinasChacaraApiTests` (expiração automática e aviso de 24h)
+- `IsolamentoTeste/` – `IsolamentoEntreLojasApiTests`: uma loja nunca vê nem altera dados de outra (multi-loja)
+- `ServicosTeste/` – `ServicosCatalogoApiTests` (cadastro de serviços), `AgendamentosApiTests` (agenda, status, comissão, regras do plano), `PlanosApiTests` (planos, assinantes, mensalidade), `AgendamentoOnlinePublicoApiTests` (página pública)
+- `ClientesTeste/` – `ClientesApiTests`: CPF único por loja, busca, total de compras e saldo da carteira, excluir só admin e sem saldo
+- `FiscalTeste/` – `FiscalApiTests`: configuração, emitir/listar/cancelar NFC-e com provedor falso
+- `AjudaTeste/` – `AjudaApiTests`: leitura pública, gestão só do superadmin, link do YouTube, renomear/excluir categoria
+- `TurmasTeste/` – `TurmasApiTests`: turmas, matrícula, sessões geradas, falta/remarcação, presença, profissionais
+- `CorretoraTeste/` – `CorretoraApiTests`: seguradoras, funil, comissão no financeiro, apólices, resumo e dashboard
+- `CarteiraTeste/` – `CarteiraApiTests`: fiado — venda no caixa (inteira ou dividida), limite, recebimento, extrato, excluir venda/cliente
 
 ## Como os testes funcionam por dentro
 
