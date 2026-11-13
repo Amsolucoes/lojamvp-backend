@@ -1,6 +1,6 @@
 using LojaApi.Domain.Servicos;
 
-namespace LojaApi.Tests.Domain.ServicosTeste;
+namespace LojaApi.Tests.Domain.Services.ServicosTeste;
 
 public class PlanoUsoRegrasTests
 {

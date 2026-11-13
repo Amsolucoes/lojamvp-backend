@@ -11,7 +11,7 @@ próprios** (cada uma com o seu `.csproj`), então o compilador **impede** depen
 
 ```
 src/
-  Domain/            projeto LojaApi.Domain       <- só depende do .NET. Entidades e regras de negócio, por módulo.
+  Domain/            projeto LojaApi.Domain       <- só depende do .NET. Entities, Enumerations e Services, e dentro uma pasta por módulo.
   Data/              projeto LojaApi.Data         <- AppDbContext, Entidades (tabelas do banco) e Migrations. Depende do Domain.
   Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora, Equipe)
                                                      + Resultado<T> e ILojaAtual (Shared).
@@ -62,7 +62,9 @@ Nos módulos migrados a partir de **Ajuda, Clientes, Fiscal, Turmas, Corretora e
   com métodos nomeados pelo que fazem (`ObterTurmaAsync`, `CpfJaCadastradoAsync`, `ListarApolicesAsync`...). Sem repository genérico (o EF já é
   um). Expõe `SalvarAsync()` para gravar o que o service alterou. A implementação mora na API (e não no `Data`) porque o Application já
   depende do Data: assim não há referência circular, e é o mesmo caminho das portas acima.
-- **Domain** (`Domain/<Modulo>`): regras puras (calcular, validar, decidir) sem banco; é onde ficam os testes unitários.
+- **Domain** (pastas por tipo e, dentro, por módulo): `Entities/<Modulo>` (classes com comportamento, como `Reserva`), `Enumerations/<Modulo>` (listas fixas
+  de valores, como `StatusReserva`) e `Services/<Modulo>` (serviços de domínio: regras e cálculos puros, sem estado: calcular, validar, decidir). Sem banco; é onde
+  ficam os testes unitários. Os namespaces continuam `LojaApi.Domain.<Modulo>` (a pasta só organiza; o `AppDbContext` depende desse nome).
 - **Registro**: `Infrastructure/<Modulo>/<Modulo>Module.cs` (`AddXModule()`), chamado no `Program.cs`.
 
 Ganhos: o service pode ser testado com um repository falso (sem banco) e a regra não se mistura com a consulta. Um teste de arquitetura
@@ -83,7 +85,7 @@ Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas prec
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
 Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora** e **Equipe** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
-dentro do controller) e, ao serem migrados, ganham `Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `Domain/<Modulo>`.
+dentro do controller) e, ao serem migrados, ganham `Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `Domain/{Entities,Enumerations,Services}/<Modulo>`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
 > estrangeiras depende disso. Por isso o `AppDbContext` fixa, para toda entidade em `LojaApi.Domain.*`, o nome da FK como
@@ -130,8 +132,8 @@ if (erro != null) return Resultado.Invalido(erro);
 
 ## Como criar um novo módulo
 
-1. Crie `src/Domain/<Modulo>`, `src/Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `src/Infrastructure/<Modulo>` (os controllers já estão em `src/Controllers/<Modulo>`).
-2. Mova as entidades para `src/Domain/<Modulo>` (namespace `LojaApi.Domain.<Modulo>`) e atualize os nomes no
+1. Crie `src/Domain/{Entities,Enumerations,Services}/<Modulo>` (só as pastas que o módulo precisar), `src/Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `src/Infrastructure/<Modulo>` (os controllers já estão em `src/Controllers/<Modulo>`).
+2. Mova as entidades para `src/Domain/Entities/<Modulo>` (namespace `LojaApi.Domain.<Modulo>`) e atualize os nomes no
    `AppDbContextModelSnapshot.cs`. **Não** altere tabelas/colunas.
 3. Para cada controller: crie o serviço de aplicação com a lógica (copie, não reescreva) e deixe o controller fino.
 4. Crie `<Modulo>Module.cs` com `AddXModule()` e chame no `Program.cs`.
@@ -142,7 +144,7 @@ if (erro != null) return Resultado.Invalido(erro);
 
 `tests/LojaApi.Tests` tem testes **unitários** (regras do Domain e services com repository falso, sem banco) e de **integração**
 (API de verdade + PostgreSQL, serviços externos trocados por dublês). As pastas espelham os projetos do `src`
-(`Domain/<Modulo>Teste`, `Application/Services/<Modulo>Teste`, `Api/<Modulo>Teste`). Como rodar e como escrever: `tests/README.md`.
+(`Domain/Services/<Modulo>Teste`, `Domain/Entities/<Modulo>Teste`, `Application/Services/<Modulo>Teste`, `Api/<Modulo>Teste`). Como rodar e como escrever: `tests/README.md`.
 Cada módulo migrado deve vir com os seus testes.
 
 ## Como uma mudança chega ao ar

@@ -1,6 +1,6 @@
 using LojaApi.Domain.Equipe;
 
-namespace LojaApi.Tests.Domain.EquipeTeste;
+namespace LojaApi.Tests.Domain.Services.EquipeTeste;
 
 public class EquipeRegrasTests
 {
