@@ -1,29 +1,29 @@
-﻿using LojaApi.Data;
+﻿using LojaApi.Application.OrdemServico;
+using LojaApi.Data;
 using Microsoft.EntityFrameworkCore;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 using Resend;
 
-namespace LojaApi.src.Services;
+namespace LojaApi.Infrastructure.OrdemServico;
 
-public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, IHttpClientFactory httpClientFactory, ILogger<OrdemServicoNotificacaoService> logger)
+// Adaptador da porta IOrcamentoNotificacao: monta e envia o e-mail do orçamento (Resend) e gera o PDF (QuestPDF).
+public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, IHttpClientFactory httpClientFactory, ILogger<OrdemServicoNotificacaoService> logger) : IOrcamentoNotificacao
 {
-    public record ResultadoEnvio(bool Enviado, string? Erro);
-
-    public async Task<ResultadoEnvio> EnviarPorEmailAsync(Guid orcamentoId, Guid lojaId)
+    public async Task<ResultadoEnvioOrcamentoDto> EnviarPorEmailAsync(Guid orcamentoId, Guid lojaId)
     {
         var orcamento = await db.OrcamentosServico
             .Include(o => o.Itens)
             .FirstOrDefaultAsync(o => o.Id == orcamentoId && o.LojaId == lojaId);
-        if (orcamento is null) return new ResultadoEnvio(false, "Orçamento não encontrado.");
+        if (orcamento is null) return new ResultadoEnvioOrcamentoDto(false, "Orçamento não encontrado.");
 
         var cliente = await db.Clientes.FindAsync(orcamento.ClienteId);
         if (cliente is null || string.IsNullOrWhiteSpace(cliente.Email))
-            return new ResultadoEnvio(false, "Cliente não tem e-mail cadastrado.");
+            return new ResultadoEnvioOrcamentoDto(false, "Cliente não tem e-mail cadastrado.");
 
         var loja = await db.Lojas.FindAsync(lojaId);
-        if (loja is null) return new ResultadoEnvio(false, "Loja não encontrada.");
+        if (loja is null) return new ResultadoEnvioOrcamentoDto(false, "Loja não encontrada.");
 
         var linhas = string.Join("", orcamento.Itens.Select(i =>
             $"<tr><td style='padding:6px 10px;border-bottom:1px solid #eee'>{i.Descricao} ({i.Quantidade}x)</td>" +
@@ -68,12 +68,12 @@ public class OrdemServicoNotificacaoService(AppDbContext db, IResend resend, IHt
             msg.To.Add(cliente.Email);
             await resend.EmailSendAsync(msg);
             logger.LogInformation("Orçamento {OrcamentoId} enviado por e-mail para {Email}.", orcamento.Id, cliente.Email);
-            return new ResultadoEnvio(true, null);
+            return new ResultadoEnvioOrcamentoDto(true, null);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Erro ao enviar orçamento {OrcamentoId} por e-mail.", orcamento.Id);
-            return new ResultadoEnvio(false, "Falha ao enviar o e-mail. Tente novamente.");
+            return new ResultadoEnvioOrcamentoDto(false, "Falha ao enviar o e-mail. Tente novamente.");
         }
     }
 

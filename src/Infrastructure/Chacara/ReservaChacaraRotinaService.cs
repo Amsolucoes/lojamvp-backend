@@ -1,4 +1,3 @@
-using LojaApi.src.Services;
 
 using LojaApi.Domain.Chacara;
 using LojaApi.Application.Chacara;

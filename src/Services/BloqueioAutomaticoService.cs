@@ -1,5 +1,4 @@
 ﻿using LojaApi.Application.Turmas;
-using LojaApi.src.Services;
 using LojaApi.Application.Chacara;
 
 namespace LojaApi.Services;
