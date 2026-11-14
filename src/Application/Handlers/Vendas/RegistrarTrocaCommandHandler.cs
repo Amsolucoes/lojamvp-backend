@@ -17,6 +17,17 @@ public class RegistrarTrocaCommandHandler(IVendasRepository repositorio) : IComm
         if (!req.Devolvidos.Any() || !req.Novos.Any())
             return Resultado.Invalido("A troca precisa de ao menos um produto devolvido e um novo.");
 
+        // Os devolvidos não podem ser de outra loja (produto já excluído continua aceito, como antes)
+        if (lojaId.HasValue)
+        {
+            foreach (var item in req.Devolvidos)
+            {
+                var produto = await repositorio.ObterProdutoAsync(item.ProdutoId, null);
+                if (produto != null && produto.LojaId != lojaId)
+                    return Resultado.Invalido($"Produto '{item.NomeProduto}' não encontrado.");
+            }
+        }
+
         // Valida estoque dos novos
         foreach (var item in req.Novos)
         {

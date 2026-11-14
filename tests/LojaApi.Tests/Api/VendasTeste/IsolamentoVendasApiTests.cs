@@ -64,6 +64,9 @@ public class IsolamentoVendasApiTests(ApiFixture api)
 
         Assert.Equal((400, "Cliente não encontrado."), (r1.Codigo, r1.Erro));
         Assert.Equal((400, "Estoque insuficiente para 'Dela'."), (r2.Codigo, r2.Erro));
+        var r3 = await minha.Painel.Post("/api/trocas", new { clienteId = clienteMeu, devolvidos = new[] { ItemTroca(produtoDela, "Dela") }, novos = new[] { ItemTroca(meu, "Meu") } });
+        Assert.Equal((400, "Produto 'Dela' não encontrado."), (r3.Codigo, r3.Erro));
+        Assert.Empty(await api.MovimentosDoProdutoAsync(produtoDela));
         Assert.Equal(10m, (await api.ProdutoDaLojaNoBancoAsync(produtoDela)).Estoque);
         Assert.Equal(10m, (await api.ProdutoDaLojaNoBancoAsync(meu)).Estoque);
         Assert.Equal(0m, await api.CreditoDoClienteAsync(clienteDela));
