@@ -92,6 +92,22 @@ public class ProdutosHandlersTests
     }
 
     [Fact]
+    public async Task Atualizar_so_confere_marca_e_fornecedor_quando_eles_mudam()
+    {
+        var marcaHerdada = new Marca { LojaId = _outraLoja }; _repo.Marcas.Add(marcaHerdada);
+        var produto = NovoProduto("Antigo", marca: marcaHerdada.Id);       // vínculo antigo com marca de outra loja
+        var handler = new AtualizarProdutoCommandHandler(_repo);
+
+        var mantendo = await handler.HandleAsync(new(_loja, produto.Id, Req("Antigo editado", marca: marcaHerdada.Id)));
+        var outraMarcaDeOutra = new Marca { LojaId = _outraLoja }; _repo.Marcas.Add(outraMarcaDeOutra);
+        var trocando = await handler.HandleAsync(new(_loja, produto.Id, Req("Antigo", marca: outraMarcaDeOutra.Id)));
+
+        Assert.Equal(TipoResultado.Ok, mantendo.Tipo);
+        Assert.Equal("Marca não encontrada.", trocando.Mensagem);
+        Assert.Equal(("Antigo editado", marcaHerdada.Id), (produto.Nome, produto.MarcaId));
+    }
+
+    [Fact]
     public async Task Buscar_e_listar_mostram_a_soma_das_variacoes_ativas_e_isolam_por_loja()
     {
         var p = NovoProduto("Camisa", 9m);

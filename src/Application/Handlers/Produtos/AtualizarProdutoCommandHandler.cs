@@ -16,7 +16,10 @@ public class AtualizarProdutoCommandHandler(IProdutosRepository repositorio) : I
             && await repositorio.CodigoDeBarrasDeProdutoEmUsoAsync(req.CodigoBarras, lojaId, id))
             return Resultado.Conflito($"O código de barras '{req.CodigoBarras}' já está cadastrado em outro produto da sua loja.");
 
-        var erroReferencia = await ValidarMarcaEFornecedorAsync(repositorio, lojaId, req.MarcaId, req.FornecedorId);
+        // Só confere marca e fornecedor quando eles mudam: um produto antigo, com vínculo herdado, continua editável
+        var erroReferencia = await ValidarMarcaEFornecedorAsync(repositorio, lojaId,
+            req.MarcaId != produto.MarcaId ? req.MarcaId : null,
+            req.FornecedorId != produto.FornecedorId ? req.FornecedorId : null);
         if (erroReferencia != null) return Resultado.Invalido(erroReferencia);
 
         produto.Nome = req.Nome; produto.Descricao = req.Descricao;
