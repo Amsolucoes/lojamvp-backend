@@ -51,7 +51,7 @@ Application/
   (quem usa um módulo importa um namespace só). A pasta só organiza os arquivos.
 - Ao criar um módulo novo, crie o arquivo dele em cada pasta de tipo (só as que ele precisar).
 
-### Command e Handler (padrão novo: Equipe e Acessorios)
+### Command e Handler (padrão novo: Equipe, Acessorios e Vendas)
 Em vez de um service com vários métodos, **cada caso de uso é um Command (ou Query) e um Handler**, sem biblioteca de mediador:
 
 - `Commands/<Modulo>`: records que **mudam** dados (`CriarFuncionarioCommand(LojaId, Req)`); `Queries/<Modulo>`: records que só **leem** (`ResumoComissoesQuery`).
@@ -100,7 +100,7 @@ No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaA
 Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
-Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora**, **Equipe** e **Acessorios** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
+Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora**, **Equipe**, **Acessorios** e **Vendas** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
 dentro do controller) e, ao serem migrados, ganham `Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `Domain/AggregatesModel/<Modulo>Aggregate`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
@@ -183,7 +183,7 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 | **Chacara** | reservas, site público, preços, horários, períodos, fotos, dados, painel | ✅ Domain/Application/Infrastructure/Controllers + testes |
 | **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Controllers + testes |
 | **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Controllers` (a migrar) |
-| **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | só `Controllers` |
+| **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes (a venda usa a carteira, que ainda é um service) |
 | **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, NfImportacao, Etiquetas | só `Controllers` |
 | **Clientes** | Clientes (cadastro de clientes da loja) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
