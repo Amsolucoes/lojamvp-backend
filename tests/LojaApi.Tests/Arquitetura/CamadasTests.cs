@@ -8,7 +8,7 @@ namespace LojaApi.Tests.Arquitetura;
 public class CamadasTests
 {
     // Módulos que já separam "regra de negócio" (service) de "consulta ao banco" (repository)
-    private static readonly string[] ModulosComRepositorio = ["Ajuda", "Clientes", "Fiscal", "Turmas", "Corretora", "Equipe", "Acessorios", "Vendas", "OrdemServico"];
+    private static readonly string[] ModulosComRepositorio = ["Ajuda", "Clientes", "Fiscal", "Turmas", "Corretora", "Equipe", "Acessorios", "Vendas", "OrdemServico", "Produtos"];
 
     private static readonly Assembly Application = typeof(Resultado<>).Assembly;
     private static readonly Assembly Domain = typeof(LojaApi.Domain.Chacara.DiaDeReserva).Assembly;
