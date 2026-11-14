@@ -75,51 +75,6 @@ public record AtualizarPrecosEmLoteRequest(List<ProdutoPrecoItem> Produtos);
 
 public record AtualizarStatusEmLoteRequest(List<Guid> Ids, bool Ativo);
 
-// ── Venda ─────────────────────────────────────────────────────────
-public record ItemVendaRequest(
-    Guid? ProdutoId,
-    decimal Quantidade,
-    decimal PrecoUnitario,
-    Guid? VariacaoId = null,
-    Guid? ServicoId = null,
-    Guid? AgendamentoId = null,
-    Guid? AssinaturaId = null
-);
-
-public record CriarVendaRequest(
-    List<ItemVendaRequest> Itens,
-    Guid? ClienteId,
-    decimal Desconto,
-    string FormaPagamento,
-    string? FormasPagamento,
-    decimal? Troco,
-    decimal? CreditoUsado,
-    DateTime? DataVenda,
-    Guid? OrigemVendaId,
-    Guid? FuncionarioId = null
-);
-
-public record ItemVendaDto(
-    Guid Id, Guid? ProdutoId, string NomeProduto,
-    decimal Quantidade, decimal PrecoUnitario, decimal Subtotal,
-    Guid? ServicoId = null
-);
-
-public record VendaDto(
-    Guid Id,
-    Guid? ClienteId, string? NomeCliente,
-    decimal Total, decimal Desconto, decimal TotalFinal,
-    string FormaPagamento, string? FormasPagamento,
-    decimal? Troco,
-    DateTime CriadaEm,
-    List<ItemVendaDto> Itens,
-    string? OrigemNome,
-    decimal? CreditoUsado = null,
-    Guid? FuncionarioId = null,
-    string? NomeFuncionario = null,
-    decimal? ValorCarteira = null
-);
-
 // ── Estoque ───────────────────────────────────────────────────────
 public record AjusteEstoqueRequest(
     Guid ProdutoId, decimal Quantidade,
@@ -131,21 +86,6 @@ public record MovimentoDto(
     Guid Id, Guid ProdutoId, string NomeProduto,
     string Tipo, decimal Quantidade,
     string? Observacao, DateTime CriadoEm
-);
-
-// ── Relatórios ────────────────────────────────────────────────────
-public record ProdutoRankingDto(
-    Guid Id, string Nome, string Categoria,
-    decimal QtdVendida, decimal Receita, decimal LucroEstimado
-);
-
-public record FluxoDiaDto(string Data, int QtdVendas, decimal Entradas, decimal Descontos);
-public record FluxoMesDto(int Mes, string NomeMes, int QtdVendas, decimal Entradas, decimal Descontos);
-
-public record ResumoVendasDto(
-    decimal TotalVendido, decimal TotalDescontos,
-    decimal TicketMedio, decimal TotalItensVendidos,
-    int TotalVendas
 );
 
 // ── Perfis ────────────────────────────────────────────────────────
@@ -184,20 +124,6 @@ public record AjusteVariacaoRequest(
     Guid ProdutoId, Guid VariacaoId,
     int Quantidade, string Tipo,
     string? Observacao
-);
-
-// ── Trocas ────────────────────────────────────────────────────────
-public record ItemTrocaRequest(
-    Guid ProdutoId, string NomeProduto,
-    Guid? VariacaoId, int Quantidade,
-    decimal PrecoUnitario, bool VoltaEstoque
-);
-
-public record CriarTrocaRequest(
-    Guid ClienteId,
-    List<ItemTrocaRequest> Devolvidos,
-    List<ItemTrocaRequest> Novos,
-    string? FormaPagamento
 );
 
 // ── Categoriias ────────────────────────────────────────────────────────
