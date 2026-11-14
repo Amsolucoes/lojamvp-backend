@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 using static LojaApi.Tests.Suporte.CenariosNfImportacao;
 
@@ -286,5 +287,52 @@ public class NfImportacaoManualApiTests(ApiFixture api)
         Assert.Empty(await api.ProdutosPorNomeNoBancoAsync(loja.Id, "Novo da nota"));
         Assert.DoesNotContain(await api.MovimentosDaLojaNoBancoAsync(loja.Id), m => m.Observacao == "Nota fiscal manual 950");
         Assert.Equal(200, (await loja.LancarManualAsync(fornecedor, "950", null, null, ItemManual(produto, 1m))).Codigo);      // o número volta a ficar livre
+    }
+
+    [FatoIntegracao]
+    public async Task Numero_da_nota_duplicada_e_comparado_sem_diferenciar_maiuscula()
+    {
+        var loja = await NovaAsync();
+        var fornecedor = await loja.FornecedorIdAsync("Alfa");
+        var produto = await loja.ProdutoPelaApiAsync("Camisa", 5m);
+        await loja.NfManualAsync(fornecedor, "a1", ItemManual(produto, 1m));
+
+        Assert.Equal((409, "Já existe uma nota A1 lançada para o fornecedor Alfa."), await Erro(loja.LancarManualAsync(fornecedor, "A1", null, null, ItemManual(produto, 1m))));
+    }
+
+    private Task DefinirEstoqueDaVariacaoAsync(Guid variacao, int estoque) =>
+        api.NoBancoAsync(db => db.ProdutoVariacoes.Where(v => v.Id == variacao).ExecuteUpdateAsync(s => s.SetProperty(v => v.Estoque, estoque)));
+
+    [FatoIntegracao]
+    public async Task Editar_e_desfazer_nao_deixam_o_estoque_da_variacao_negativo()
+    {
+        var loja = await NovaAsync();
+        var fornecedor = await loja.FornecedorIdAsync("Alfa");
+        var produto = await loja.ProdutoPelaApiAsync("Vestido", 0m);
+        var variacao = await loja.VariacaoPelaApiAsync(produto, "M", "Azul", 0);
+        var nf = await loja.NfManualAsync(fornecedor, "31", ItemManual(produto, 6m, variacao: variacao));
+        await DefinirEstoqueDaVariacaoAsync(variacao, 2);                  // sobrou menos do que a nota trouxe
+
+        (await loja.Painel.Put($"{Rota}/{nf}/editar", new { fornecedorId = fornecedor, numeroNf = "31", dataEmissao = (DateTime?)null, valorTotal = (decimal?)null,
+            itens = new object[] { new { produtoId = produto, variacaoId = (Guid?)variacao, quantidade = 1m, precoCusto = (decimal?)null } } })).DeveSerSucesso();
+        Assert.Equal(0, (await api.VariacaoNoBancoDoProdutoAsync(variacao)).Estoque);          // 2 + (1 - 6) = -3, limitado a zero
+
+        await DefinirEstoqueDaVariacaoAsync(variacao, 0);
+        (await loja.Painel.Post($"{Rota}/{nf}/desfazer")).DeveSerSucesso();
+        Assert.Equal(0, (await api.VariacaoNoBancoDoProdutoAsync(variacao)).Estoque);          // 0 - 1 = -1, limitado a zero
+    }
+
+    [FatoIntegracao]
+    public async Task Desfazer_nao_apaga_os_movimentos_de_outra_loja_com_o_mesmo_numero_de_nota()
+    {
+        var loja = await NovaAsync();
+        var outra = await NovaAsync();
+        var nf = await loja.NfManualAsync(await loja.FornecedorIdAsync("Alfa"), "777", ItemManual(await loja.ProdutoPelaApiAsync("A", 1m), 1m));
+        await outra.NfManualAsync(await outra.FornecedorIdAsync("Beta"), "777", ItemManual(await outra.ProdutoPelaApiAsync("B", 1m), 1m));
+
+        (await loja.Painel.Post($"{Rota}/{nf}/desfazer")).DeveSerSucesso();
+
+        Assert.Single(await api.MovimentosDaLojaNoBancoAsync(outra.Id), m => m.Observacao == "Nota fiscal manual 777");
+        Assert.DoesNotContain(await api.MovimentosDaLojaNoBancoAsync(loja.Id), m => m.Observacao == "Nota fiscal manual 777");
     }
 }

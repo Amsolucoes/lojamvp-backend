@@ -344,4 +344,30 @@ public class NfImportacaoXmlApiTests(ApiFixture api)
         Assert.Equal(200, (await loja.ConfirmarAsync(chave, "91", ItemConfirmacao("A", "Tênis Novo", 5m, custo: 10m))).Codigo);       // a mesma chave pode voltar depois de desfeita
         Assert.Single(await api.ProdutosPorNomeNoBancoAsync(loja.Id, "Tênis Novo"));
     }
+
+    [FatoIntegracao]
+    public async Task A_mesma_chave_de_acesso_pode_ser_importada_por_outra_loja()
+    {
+        var loja = await NovaAsync();
+        var outra = await NovaAsync();
+        var chave = NovaChave();
+        (await loja.ConfirmarAsync(chave, "1", ItemConfirmacao("A", "Tênis Novo", 1m, custo: 10m))).DeveSerSucesso();
+
+        Assert.Equal(409, (await loja.ConfirmarAsync(chave, "1", ItemConfirmacao("A", "Tênis Novo", 1m, custo: 10m))).Codigo);
+        Assert.Equal(200, (await outra.PreviewAsync(Xml(chave, "1", itens: new ItemXml("A", null, "Tênis Novo")))).Codigo);
+        (await outra.ConfirmarAsync(chave, "1", ItemConfirmacao("A", "Tênis Novo", 1m, custo: 10m))).DeveSerSucesso();
+    }
+
+    [FatoIntegracao]
+    public async Task Categoria_nova_reaproveita_a_existente_sem_diferenciar_maiuscula()
+    {
+        var loja = await NovaAsync();
+        (await loja.ConfirmarAsync(NovaChave(), "1", ItemConfirmacao("A", "Produto A", 1m, custo: 1m, categoria: "Mercearia"))).DeveSerSucesso();
+
+        var r = await loja.ConfirmarAsync(NovaChave(), "2", ItemConfirmacao("B", "Produto B", 1m, custo: 1m, categoria: "mercearia"));
+
+        Assert.Equal(0, r.Json.GetProperty("categoriasCriadas").GetInt32());
+        Assert.Equal(["Mercearia"], (await api.CategoriasNoBancoAsync(loja.Id)).Select(c => c.Nome));
+        Assert.Equal("Mercearia", Assert.Single(await api.ProdutosPorNomeNoBancoAsync(loja.Id, "Produto B")).Categoria);
+    }
 }
