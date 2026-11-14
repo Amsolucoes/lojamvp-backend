@@ -51,7 +51,7 @@ Application/
   (quem usa um módulo importa um namespace só). A pasta só organiza os arquivos.
 - Ao criar um módulo novo, crie o arquivo dele em cada pasta de tipo (só as que ele precisar).
 
-### Command e Handler (padrão novo, piloto na Equipe)
+### Command e Handler (padrão novo: Equipe e Acessorios)
 Em vez de um service com vários métodos, **cada caso de uso é um Command (ou Query) e um Handler**, sem biblioteca de mediador:
 
 - `Commands/<Modulo>`: records que **mudam** dados (`CriarFuncionarioCommand(LojaId, Req)`); `Queries/<Modulo>`: records que só **leem** (`ResumoComissoesQuery`).
@@ -100,7 +100,7 @@ No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaA
 Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
-Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora** e **Equipe** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
+Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora**, **Equipe** e **Acessorios** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
 dentro do controller) e, ao serem migrados, ganham `Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `Domain/AggregatesModel/<Modulo>Aggregate`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
@@ -192,7 +192,7 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 | **Corretora** | Corretora (seguradoras, funil, apólices) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Turmas** | Turmas (matrícula, sessões, remarcação; rotina que gera as sessões) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **OrdemServico** | OrdemServico, Patrimonio | só `Controllers` |
-| **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma) | só `Controllers` |
+| **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma; Mercado Pago pela porta `IPagamentoOnlineAcessorio`) | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes |
 | **Plataforma** | Admin, Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Pagamentos (assinatura), Push | só `Controllers` |
 | **Ajuda** | VideoAjuda, CategoriasVideoAjuda | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 

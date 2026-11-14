@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="LojaApi.Tests" />   <!-- os testes leem as respostas montadas na hora (tipos anônimos) -->
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Domain\LojaApi.Domain.csproj" />
     <ProjectReference Include="..\Data\LojaApi.Data.csproj" />
   </ItemGroup>

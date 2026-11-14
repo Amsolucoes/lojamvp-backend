@@ -1,6 +1,7 @@
 ﻿using LojaApi.Data;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using LojaApi.Infrastructure.Carteira;
+using LojaApi.Infrastructure.Acessorios;
 using LojaApi.Infrastructure.Ajuda;
 using LojaApi.Infrastructure.Chacara;
 using LojaApi.Infrastructure.Clientes;
@@ -69,6 +70,7 @@ internal class Program
         builder.Services.AddChacaraModule();
         builder.Services.AddCarteiraModule();
         builder.Services.AddServicosModule();
+        builder.Services.AddAcessoriosModule();
         builder.Services.AddAjudaModule();
         builder.Services.AddClientesModule();
         builder.Services.AddFiscalModule();
