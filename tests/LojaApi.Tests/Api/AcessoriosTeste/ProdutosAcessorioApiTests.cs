@@ -288,6 +288,36 @@ public class ProdutosAcessorioApiTests(ApiFixture api)
         Assert.Equal((4d, 1), (vitrine.GetProperty("mediaAvaliacoes").GetDouble(), vitrine.GetProperty("totalAvaliacoes").GetInt32()));
     }
 
+    // O e-mail do pedido guarda a caixa original; a comparação com o e-mail digitado ignora maiúsculas/minúsculas
+    [FatoIntegracao]
+    public async Task Avaliar_aceita_o_email_com_caixa_diferente_da_usada_na_compra()
+    {
+        var (super, visitante, _) = await api.AcessoriosAsync();
+        var produto = await super.ProdutoAcessorioAsync();
+        var r = await visitante.Post($"{P}/pedidos", CenariosAcessorios.CorpoPedido(produto, email: "Cliente@Loja.COM"));
+        var pedido = Id(r.Json);
+        await api.NoBancoAsync(db => db.PedidosAcessorio.Where(p => p.Id == pedido).ExecuteUpdateAsync(s => s.SetProperty(p => p.Status, "pago").SetProperty(p => p.PagoEm, DateTime.UtcNow)));
+        Assert.Equal("Cliente@Loja.COM", (await api.PedidoNoBancoAsync(pedido)).ClienteEmail);
+
+        var avaliou = await visitante.Post($"{P}/avaliacoes", new { produtoId = produto, email = "  cliente@loja.com ", nota = 5, comentario = "ok" });
+
+        Assert.Equal(200, avaliou.Codigo);
+    }
+
+    [FatoIntegracao]
+    public async Task Vitrine_desempata_pelo_nome_quando_a_ordem_e_igual()
+    {
+        var (super, visitante, _) = await api.AcessoriosAsync();
+        var categoria = $"cat_{Guid.NewGuid():N}"[..14];
+        var b = await super.ProdutoAcessorioAsync("B produto", categoria: categoria, ordem: 5);
+        var a = await super.ProdutoAcessorioAsync("A produto", categoria: categoria, ordem: 5);
+        var primeiro = await super.ProdutoAcessorioAsync("Z produto", categoria: categoria, ordem: 1);
+
+        var lista = Lista(await visitante.Get($"{P}?categoria={categoria}"));
+
+        Assert.Equal([primeiro, a, b], lista.Select(Id).ToList());
+    }
+
     [FatoIntegracao]
     public async Task Avaliacoes_de_produto_sem_nenhuma_vem_com_media_zero_e_comentario_em_branco_vira_nulo()
     {
