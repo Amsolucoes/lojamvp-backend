@@ -58,6 +58,25 @@ public class NfImportacaoManualApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Lancar_com_item_invalido_depois_de_um_produto_novo_nao_deixa_o_produto_novo_nem_estoque_alterado()
+    {
+        var loja = await NovaAsync();
+        var fornecedor = await loja.FornecedorIdAsync("Alfa");
+        var produto = await loja.ProdutoPelaApiAsync("Camisa", 5m);
+
+        var r = await loja.LancarManualAsync(fornecedor, "150", null, null,
+            ItemManual(produto, 2m),
+            ItemManual(null, 1m, 3m, acao: "novo", nomeBase: "Fantasma", categoria: "CatFantasma"),
+            ItemManual(Guid.NewGuid(), 1m));
+
+        Assert.Equal((400, "Produto não encontrado."), (r.Codigo, r.Erro));
+        Assert.Empty(await api.ProdutosPorNomeNoBancoAsync(loja.Id, "Fantasma"));      // antes ficava criado, com a categoria
+        Assert.DoesNotContain(await api.CategoriasNoBancoAsync(loja.Id), c => c.Nome == "CatFantasma");
+        Assert.Equal(5m, (await api.ProdutoDaLojaNoBancoAsync(produto)).Estoque);      // e o estoque do 1º item era gravado junto
+        Assert.Empty((await loja.Painel.Get($"{Rota}/historico")).Json.EnumerateArray());
+    }
+
+    [FatoIntegracao]
     public async Task Lancar_item_existente_soma_o_estoque_troca_o_custo_e_registra_a_nota_e_o_movimento()
     {
         var loja = await NovaAsync();
