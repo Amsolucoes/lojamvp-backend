@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using LojaApi.Infrastructure.Carteira;
 using LojaApi.Infrastructure.Acessorios;
 using LojaApi.Infrastructure.Vendas;
+using LojaApi.Infrastructure.OrdemServico;
 using LojaApi.Infrastructure.Ajuda;
 using LojaApi.Infrastructure.Chacara;
 using LojaApi.Infrastructure.Clientes;
@@ -14,7 +15,6 @@ using LojaApi.Infrastructure.Servicos;
 using LojaApi.Shared;
 using LojaApi.Services;
 using LojaApi.src.Middleware;
-using LojaApi.src.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -73,6 +73,7 @@ internal class Program
         builder.Services.AddServicosModule();
         builder.Services.AddAcessoriosModule();
         builder.Services.AddVendasModule();
+        builder.Services.AddOrdemServicoModule();
         builder.Services.AddAjudaModule();
         builder.Services.AddClientesModule();
         builder.Services.AddFiscalModule();
@@ -82,7 +83,6 @@ internal class Program
         // Avisos push de contas a pagar que vencem hoje (07:00 de Brasília)
         builder.Services.AddSingleton<PushService>();
         builder.Services.AddHostedService<AvisosVencimentoService>();
-        builder.Services.AddScoped<OrdemServicoNotificacaoService>();
         builder.Services.AddHttpClient();
 
         // ── Controllers + Swagger ─────────────────────────────────────────
