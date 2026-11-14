@@ -1,4 +1,5 @@
 using LojaApi.Application.Produtos;
+using LojaApi.Domain.Produtos;
 using LojaApi.Models;
 using LojaApi.Shared.Application;
 using LojaApi.src.Models;
@@ -105,6 +106,25 @@ public class ProdutosHandlersTests
         Assert.Equal((5m, 2), (dto.Estoque, dto.Variacoes!.Count));
         Assert.Equal("Camisa", Assert.Single(lista).Nome);
         Assert.Equal(TipoResultado.NaoEncontrado, (await new BuscarProdutoQueryHandler(_repo).HandleAsync(new(_loja, deOutra.Id))).Tipo);
+    }
+
+    [Fact]
+    public async Task Gerar_codigos_pula_os_ja_usados_na_loja_nas_variacoes_e_na_tela()
+    {
+        var usadoNoProduto = ProdutosRegras.CodigoInterno(1);
+        var usadoNaVariacao = ProdutosRegras.CodigoInterno(2);
+        var usadoNaTela = ProdutosRegras.CodigoInterno(3);
+        var doutraLoja = ProdutosRegras.CodigoInterno(4);
+        var p = NovoProduto("Com código", codigo: usadoNoProduto);
+        NovoProduto("Dele", loja: _outraLoja, codigo: doutraLoja);
+        _repo.Variacoes.Add(new ProdutoVariacao { ProdutoId = p.Id, CodigoBarras = usadoNaVariacao });
+        var sequencia = new Queue<long>([1, 2, 3, 5, 5, 6]);        // 1, 2 e 3 já estão em uso; o 5 sai uma vez só; o 4 é de outra loja e pode sair
+        var handler = new GerarCodigosQueryHandler(_repo, () => sequencia.Dequeue());
+
+        var r = await handler.HandleAsync(new(_loja, 2, usadoNaTela));
+
+        var codigos = ((dynamic)r.Valor!).codigos as List<string>;
+        Assert.Equal([ProdutosRegras.CodigoInterno(5), ProdutosRegras.CodigoInterno(6)], codigos);
     }
 
     // ── Lote e exclusão ──────────────────────────────────────────────────────
