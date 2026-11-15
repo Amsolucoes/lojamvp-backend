@@ -35,8 +35,16 @@ public class PerfisModulosPushApiTests(ApiFixture api)
         Assert.NotEmpty(ordens);
         Assert.Equal(ordens.Order().ToList(), ordens);
 
-        var ativos = await api.NoBancoAsync(db => db.PerfisLoja.CountAsync(x => x.Ativo));
-        Assert.Equal(ativos, r.Json.GetArrayLength());                                                       // só os ativos aparecem
+        // perfil inativo não aparece (cria um para o teste não depender do que já existe no banco)
+        var nomeInativo = $"Inativo {Guid.NewGuid():N}"[..24];
+        await api.NoBancoAsync(async db =>
+        {
+            db.PerfisLoja.Add(new LojaApi.Models.PerfilLoja { Nome = nomeInativo, Ativo = false });
+            await db.SaveChangesAsync();
+        });
+        var nomes = (await loja.Site.Get("/api/perfis")).Json.EnumerateArray().Select(p => p.GetProperty("nome").GetString()).ToList();
+        Assert.DoesNotContain(nomeInativo, nomes);
+        Assert.Contains(r.Json.EnumerateArray().First().GetProperty("nome").GetString(), nomes);
     }
 
     [FatoIntegracao]
