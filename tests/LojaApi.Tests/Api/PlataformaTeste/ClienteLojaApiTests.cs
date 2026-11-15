@@ -133,6 +133,18 @@ public class ClienteLojaApiTests(ApiFixture api)
         Assert.Equal(200, (await loja.Site.Post("/api/auth/login", new { email = emailNovo, senha = "123456" })).Codigo);
     }
 
+    [FatoIntegracao]
+    public async Task Trocar_email_para_o_proprio_email_atual_nao_da_conflito()
+    {
+        var loja = await NovaAsync();
+
+        var r = await loja.Painel.Patch("/api/cliente/email", new { novoEmail = EmailDe(loja).ToUpper(), senhaAtual = "123456" });
+
+        Assert.Equal(200, r.Codigo);
+    }
+
+    private static string EmailDe(LojaTeste loja) => $"dono-{loja.Slug[2..]}@teste.com";
+
     // ── Loja ────────────────────────────────────────────────────────────────
 
     [FatoIntegracao]

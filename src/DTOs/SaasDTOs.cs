@@ -1,6 +1,5 @@
-using static LojaApi.Controllers.Plataforma.AdminController;
-
 using LojaApi.Application.Plataforma;
+using static LojaApi.Controllers.Plataforma.AdminController;
 
 namespace LojaApi.DTOs;
 

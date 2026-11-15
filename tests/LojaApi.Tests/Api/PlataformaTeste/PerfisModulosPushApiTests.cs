@@ -84,6 +84,27 @@ public class PerfisModulosPushApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Aplicar_com_campos_extras_antigos_e_sem_categorias_substitui_os_campos()
+    {
+        var perfilId = await PerfilComCategoriasAsync();
+        var loja = await NovaAsync();
+        await api.NoBancoAsync(async db =>
+        {
+            await db.CategoriasLoja.Where(c => c.LojaId == loja.Id).ExecuteDeleteAsync();
+            await db.CamposExtrasLoja.Where(c => c.LojaId == loja.Id).ExecuteDeleteAsync();
+            db.CamposExtrasLoja.Add(new LojaApi.Models.CampoExtraLoja { LojaId = loja.Id, Chave = "zz_antigo", Label = "Antigo" });
+            await db.SaveChangesAsync();
+        });
+
+        (await loja.Painel.Post("/api/perfis/aplicar", new { perfilLojaId = perfilId })).DeveSerSucesso();
+
+        var chaves = await api.NoBancoAsync(db => db.CamposExtrasLoja.Where(c => c.LojaId == loja.Id).Select(c => c.Chave).ToListAsync());
+        Assert.DoesNotContain("zz_antigo", chaves);                                                        // os campos antigos saem junto com as categorias
+        var doPerfil = await api.NoBancoAsync(db => db.CamposExtrasPerfil.Where(c => c.PerfilLojaId == Guid.Parse(perfilId)).Select(c => c.Chave).ToListAsync());
+        Assert.Equal(doPerfil.Order(), chaves.Order());
+    }
+
+    [FatoIntegracao]
     public async Task Categorias_e_campos_da_loja_listam_so_os_ativos_dela_e_adicionar_categoria_cria()
     {
         var loja = await NovaAsync();
