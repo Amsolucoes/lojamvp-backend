@@ -37,7 +37,8 @@ public class PlataformaRepository(AppDbContext db) : IPlataformaRepository
         return vinculo?.Loja;
     }
 
-    public Task<bool> EmailDeLojaExisteAsync(string email) => db.Lojas.AnyAsync(l => l.Email.ToLower() == email.ToLower());
+    public Task<bool> EmailDeLojaExisteAsync(string email, Guid? ignorarLojaId = null) =>
+        db.Lojas.AnyAsync(l => l.Email.ToLower() == email.ToLower() && (ignorarLojaId == null || l.Id != ignorarLojaId));
 
     public Task<bool> SlugEmUsoAsync(string slug, Guid ignorarLojaId) => db.Lojas.AnyAsync(l => l.Slug == slug && l.Id != ignorarLojaId);
 
@@ -45,6 +46,26 @@ public class PlataformaRepository(AppDbContext db) : IPlataformaRepository
 
     public void Adicionar(Loja loja) => db.Lojas.Add(loja);
     public void Adicionar(Pagamento pagamento) => db.Pagamentos.Add(pagamento);
+
+    // ── Faturas (mensalidade) ──
+
+    public async Task<Pagamento?> ObterPagamentoAsync(Guid id) => await db.Pagamentos.FindAsync(id);
+
+    public Task<Pagamento?> ObterPagamentoComLojaAsync(Guid id) =>
+        db.Pagamentos.Include(p => p.Loja).FirstOrDefaultAsync(p => p.Id == id);
+
+    public Task<Pagamento?> ObterPagamentoDaCobrancaAsync(string mpPaymentId) =>
+        db.Pagamentos.Include(p => p.Loja).FirstOrDefaultAsync(p => p.MpPaymentId == mpPaymentId || p.CobrancaMpPaymentId == mpPaymentId);
+
+    public Task<bool> PagamentoDoMpJaPagoAsync(string mpPaymentId) =>
+        db.Pagamentos.AnyAsync(p => p.MpPaymentId == mpPaymentId && p.Status == "pago");
+
+    public Task<Pagamento?> ObterFaturaEmAbertoAsync(Guid lojaId) =>
+        db.Pagamentos.FirstOrDefaultAsync(p => p.LojaId == lojaId && (p.Status == "pendente" || p.Status == "atrasado"));
+
+    public Task<int> ContarFaturasPagasAsync(Guid lojaId) => db.Pagamentos.CountAsync(p => p.LojaId == lojaId && p.Status == "pago");
+
+    public Task<Loja?> ObterLojaPorAssinaturaAsync(string preapprovalId) => db.Lojas.FirstOrDefaultAsync(l => l.MpPreapprovalId == preapprovalId);
 
     // ── Perfis ──
 

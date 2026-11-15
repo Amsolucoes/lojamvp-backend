@@ -239,4 +239,24 @@ public class PagamentosApiTests(ApiFixture api)
         Assert.Equal("pago", (await loja.Painel.Get($"/api/pagamentos/{fatura.Id}/status")).Json.GetProperty("status").GetString());          // consultar já registra o pagamento
         Assert.Equal(LojaApi.Models.StatusLoja.Ativo, (await api.LojaNoBancoAsync(loja.Id)).Status);
     }
+
+    // ── Isolamento entre lojas (correção: antes bastava saber o id da fatura) ──
+
+    [FatoIntegracao]
+    public async Task Assinante_nao_cria_cobranca_nem_consulta_a_fatura_de_outra_loja_mas_o_superadmin_pode()
+    {
+        var loja = await NovaAsync();
+        var outra = await NovaAsync();
+        var faturaDaOutra = await api.FaturaPendenteAsync(outra.Id);
+        var super = await api.SuperadminAsync(loja);
+
+        Assert.Equal((404, "Fatura não encontrada."), await Erro(loja.Painel.Post("/api/pagamentos/criar", CriarFatura(faturaDaOutra.Id, "pix"))));
+        Assert.Equal(404, (await loja.Painel.Get($"/api/pagamentos/{faturaDaOutra.Id}/status")).Codigo);
+        var banco = await api.PagamentoNoBancoAsync(faturaDaOutra.Id);
+        Assert.Null(banco.MpPaymentId);                                                                                       // nada foi gerado na fatura alheia
+
+        Assert.Equal(200, (await super.Post("/api/pagamentos/criar", CriarFatura(faturaDaOutra.Id, "pix"))).Codigo);
+        Assert.Equal(200, (await super.Get($"/api/pagamentos/{faturaDaOutra.Id}/status")).Codigo);
+        Assert.Equal(200, (await outra.Painel.Get($"/api/pagamentos/{faturaDaOutra.Id}/status")).Codigo);                       // a dona continua vendo
+    }
 }

@@ -124,5 +124,25 @@ public static class PlataformaRegras
         return modulos;
     }
 
+    // ── Cobrança ──
+
+    // Vencimento do próximo mês (pagou em julho → vence em agosto), às 12:00 UTC para não "voltar um dia" no fuso local
+    public static DateTime ProximoVencimento(int dia, DateTime agoraUtc)
+    {
+        var mesAlvo = new DateTime(agoraUtc.Year, agoraUtc.Month, 1, 12, 0, 0, DateTimeKind.Utc).AddMonths(1);
+        var maxDia = DateTime.DaysInMonth(mesAlvo.Year, mesAlvo.Month);
+        return new DateTime(mesAlvo.Year, mesAlvo.Month, Math.Min(dia, maxDia), 12, 0, 0, DateTimeKind.Utc);
+    }
+
+    // Próxima ocorrência do dia de vencimento (de 1 a 28): se já passou (ou é agora), vai para o mês seguinte
+    public static DateTime ProximoDiaDeCobranca(int dia, DateTime agoraUtc)
+    {
+        var diaValido = Math.Clamp(dia, 1, 28);
+        var candidato = new DateTime(agoraUtc.Year, agoraUtc.Month, diaValido, 12, 0, 0, DateTimeKind.Utc);
+        if (candidato <= agoraUtc.AddHours(1))
+            candidato = candidato.AddMonths(1);
+        return candidato;
+    }
+
     public static string NormalizarEmail(string? email) => (email ?? "").Trim().ToLower();
 }
