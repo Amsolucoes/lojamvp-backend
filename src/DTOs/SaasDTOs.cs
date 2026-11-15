@@ -1,5 +1,7 @@
 using static LojaApi.Controllers.Plataforma.AdminController;
 
+using LojaApi.Application.Plataforma;
+
 namespace LojaApi.DTOs;
 
 // ── Loja ──────────────────────────────────────────────────────────
@@ -58,36 +60,15 @@ public record LojaResumoDto(
     bool EmAtraso, int DiasAtraso
 );
 
-public record LojaConfigDto(
-    Guid Id, string Nome,
-    string CorPrimaria, string? LogoUrl,
-    string Status, string? MotivoBloqueo,
-    string? Endereco, string? Telefone
-);
-
 public record AlterarStatusLojaRequest(string Status, string? Motivo);
 
 // ── Agendamento ─────────────────────────────────────────────────────
-public record AgendaHorarioRequest(int HoraInicio, int HoraFim);
-
-public record AgendamentoOnlineConfigRequest(bool Ativo, string? Confirmacao, string? Slug);
-
 public record AtualizarValorRequest(
     decimal NovoValor,
     bool SincronizarAssinatura   // true = também atualiza no MP; false = só próximas faturas
 );
 
 // ── Pagamento ─────────────────────────────────────────────────────
-public record PagamentoDto(
-    Guid Id, Guid LojaId, string NomeLoja,
-    decimal Valor, string Status,
-    DateTime Vencimento, DateTime? PagoEm,
-    string? FormaPagamento, string? Observacao,
-    string? MpQrCode, string? MpQrCodeBase64,
-    string? MpBoletoUrl, string? MpBoletoBarcode,
-    DateTime CriadoEm
-);
-
 public record RegistrarPagamentoManualRequest(
     Guid LojaId, decimal Valor,
     DateTime Vencimento, DateTime PagoEm,
@@ -142,21 +123,6 @@ public record DashboardAdminDto(
     List<LojaResumoDto> LojasAtrasadas,
     List<PagamentoDto> UltimosPagamentos,
     List<ProjecaoMensalDto> ProjecaoMensal
-);
-
-// ── Dashboard cliente ─────────────────────────────────────────────
-public record DashboardClienteDto(
-    string NomeLoja,
-    string Status,
-    DateTime? TrialAte,
-    DateTime? ProximoVencimento,
-    decimal MensalidadeValor,
-    bool EmAtraso,
-    int DiasAtraso,
-    PagamentoDto? FaturaPendente,
-    List<PagamentoDto> HistoricoFaturas,
-    string? AssinaturaStatus = null,
-    string? AssinaturaCartaoFinal = null
 );
 
 public record AtualizarPlanoRequest(string TipoPlano, string? ModulosAtivos);

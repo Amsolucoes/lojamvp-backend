@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using LojaApi.Data;
+using LojaApi.Application.Plataforma;
+using LojaApi.Domain.Plataforma;
 using LojaApi.Models;
 
 namespace LojaApi.Services;
@@ -7,12 +9,11 @@ namespace LojaApi.Services;
 public class TenantService(AppDbContext db, ILogger<TenantService> logger)
 {
     // Bloqueia quando passa 1 dia do vencimento (vence dia D → bloqueia na madrugada de D+1).
-    private const int DIAS_ATRASO_BLOQUEIO = 1;
-    private static readonly TimeSpan OffsetBrasilia = TimeSpan.FromHours(-3); // sem horário de verão desde 2019
+    private const int DIAS_ATRASO_BLOQUEIO = PlataformaRegras.DiasAtrasoBloqueio;
 
     // Dias de atraso contados em dias corridos no horário de Brasília (negativo = ainda não venceu).
     public static int DiasDeAtraso(DateTime vencimentoUtc, DateTime agoraUtc)
-        => ((agoraUtc + OffsetBrasilia).Date - (vencimentoUtc + OffsetBrasilia).Date).Days;
+        => PlataformaRegras.DiasDeAtraso(vencimentoUtc, agoraUtc);
 
     public async Task VerificarStatusAsync()
     {
@@ -27,33 +28,7 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
         logger.LogInformation("Status verificado para {N} lojas.", lojas.Count);
     }
 
-    public void AtualizarStatusLoja(Loja loja)
-    {
-        var agora = DateTime.UtcNow;
-
-        // Trial: só bloqueia após a carência de 1 dia do fim do trial
-        if (loja.Status == StatusLoja.Trial)
-        {
-            var diasAposTrial = DiasDeAtraso(loja.TrialAte, agora);
-            if (diasAposTrial >= DIAS_ATRASO_BLOQUEIO)
-            {
-                loja.Status = StatusLoja.Bloqueado;
-                loja.AtualizadoEm = agora;
-            }
-            return;
-        }
-
-        // Ativo: bloqueia 1 dia após o vencimento
-        if (loja.Status == StatusLoja.Ativo && loja.ProximoVencimento.HasValue)
-        {
-            var diasAtraso = DiasDeAtraso(loja.ProximoVencimento.Value, agora);
-            if (diasAtraso >= DIAS_ATRASO_BLOQUEIO)
-            {
-                loja.Status = StatusLoja.Bloqueado;
-                loja.AtualizadoEm = agora;
-            }
-        }
-    }
+    public void AtualizarStatusLoja(Loja loja) => PlataformaApoio.AtualizarStatusDaLoja(loja, DateTime.UtcNow);
 
     public async Task<bool> RegistrarPagamentoAsync(
         Guid lojaId, decimal valor, DateTime vencimento,
@@ -148,13 +123,7 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
         return new DateTime(mesAlvo.Year, mesAlvo.Month, Math.Min(dia, maxDia), 12, 0, 0, DateTimeKind.Utc);
     }
 
-    public static string GerarSchemaNome(string nomeLoja)
-    {
-        var slug = new string(nomeLoja.ToLower()
-            .Replace(" ", "_").Replace("-", "_")
-            .Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
-        return $"loja_{slug}_{DateTime.UtcNow.Ticks % 10000}";
-    }
+    public static string GerarSchemaNome(string nomeLoja) => PlataformaRegras.GerarSchemaNome(nomeLoja, DateTime.UtcNow);
 
     public async Task<(bool Ativa, string? Motivo)> VerificarAcessoAsync(Guid lojaId)
     {
@@ -176,31 +145,5 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
 
     // Retorna info do trial/carência para exibir contador
     public static (string Fase, int DiasRestantes) CalcularSituacao(Loja loja)
-    {
-        var agora = DateTime.UtcNow;
-
-        if (loja.Status == StatusLoja.Trial)
-        {
-            var diasTrial = (int)Math.Ceiling((loja.TrialAte - agora).TotalDays);
-            if (diasTrial >= 0)
-                return ("trial", diasTrial);
-
-            // Trial vencido, em carência
-            var diasCarencia = DIAS_ATRASO_BLOQUEIO - DiasDeAtraso(loja.TrialAte, agora);
-            return ("carencia", Math.Max(0, diasCarencia));
-        }
-
-        if (loja.Status == StatusLoja.Ativo && loja.ProximoVencimento.HasValue)
-        {
-            var diasAteVenc = (int)Math.Ceiling((loja.ProximoVencimento.Value - agora).TotalDays);
-            if (diasAteVenc < 0)
-            {
-                var diasCarencia = DIAS_ATRASO_BLOQUEIO - DiasDeAtraso(loja.ProximoVencimento.Value, agora);
-                return ("carencia", Math.Max(0, diasCarencia));
-            }
-            return ("ativo", diasAteVenc);
-        }
-
-        return (loja.Status.ToString().ToLower(), 0);
-    }
+        => PlataformaRegras.CalcularSituacao(loja.Status.ToString(), loja.TrialAte, loja.ProximoVencimento, DateTime.UtcNow);
 }
