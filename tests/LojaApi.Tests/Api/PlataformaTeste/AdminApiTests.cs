@@ -187,6 +187,40 @@ public class AdminApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Criar_loja_com_perfil_de_servicos_so_define_o_plano_se_nao_vieram_modulos()
+    {
+        var super = await SuperAsync();
+        var perfilId = await api.NoBancoAsync(async db =>
+        {
+            var p = new LojaApi.Models.PerfilLoja { Nome = $"Perfil Serviços {Guid.NewGuid():N}"[..28], TipoPlanoAplica = "servicos", Ativo = true };
+            db.PerfisLoja.Add(p);
+            await db.SaveChangesAsync();
+            return p.Id.ToString();
+        });
+
+        var (semModulos, _, _) = await CriarLojaAsync(super, perfilId: perfilId);
+        var a = await api.LojaNoBancoAsync(semModulos);
+        Assert.Equal(("servicos", "servicos"), (a.TipoPlano, a.ModulosAtivos));
+
+        var (comModulos, _, _) = await CriarLojaAsync(super, perfilId: perfilId, modulos: "financeiro");
+        var b = await api.LojaNoBancoAsync(comModulos);
+        Assert.Equal(("loja", "financeiro"), (b.TipoPlano, b.ModulosAtivos));                                           // o admin escolheu os módulos: o perfil não mexe
+    }
+
+    [FatoIntegracao]
+    public async Task Dashboard_nao_lista_loja_cancelada_entre_as_atrasadas()
+    {
+        var super = await SuperAsync();
+        var (id, _, _) = await CriarLojaAsync(super);
+        await api.NoBancoAsync(db => db.Lojas.Where(l => l.Id == id).ExecuteUpdateAsync(s => s
+            .SetProperty(l => l.Status, LojaApi.Models.StatusLoja.Cancelado).SetProperty(l => l.ProximoVencimento, DateTime.UtcNow.AddDays(-10))));
+
+        var j = (await super.Get("/api/admin/dashboard")).Json;
+
+        Assert.DoesNotContain(j.GetProperty("lojasAtrasadas").EnumerateArray(), l => l.GetProperty("id").GetGuid() == id);
+    }
+
+    [FatoIntegracao]
     public async Task Atualizar_loja_troca_os_campos_e_so_mexe_em_plano_modulos_e_teste_se_vierem()
     {
         var super = await SuperAsync();
@@ -293,6 +327,13 @@ public class AdminApiTests(ApiFixture api)
         var sincronizada = (await super.Patch($"/api/admin/lojas/{id}/valor", new { novoValor = 170m, sincronizarAssinatura = true })).Json;
         Assert.Equal(("Valor atualizado na loja e na assinatura recorrente.", true), (sincronizada.GetProperty("mensagem").GetString()!, sincronizada.GetProperty("sincronizou").GetBoolean()));
         Assert.Contains(api.MercadoPago.ValoresAtualizados, v => v.PreapprovalId == "pre-teste" && v.Valor == 170m);
+
+        await api.NoBancoAsync(db => db.Lojas.Where(l => l.Id == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.AssinaturaStatus, "cancelled")));
+        var antes = api.MercadoPago.ValoresAtualizados.Count;
+        var cancelada = (await super.Patch($"/api/admin/lojas/{id}/valor", new { novoValor = 175m, sincronizarAssinatura = true })).Json;
+        Assert.StartsWith("A loja não tem assinatura ativa para sincronizar.", cancelada.GetProperty("aviso").GetString());       // assinatura cancelada não é sincronizada
+        Assert.Equal(antes, api.MercadoPago.ValoresAtualizados.Count);
+        await api.NoBancoAsync(db => db.Lojas.Where(l => l.Id == id).ExecuteUpdateAsync(s => s.SetProperty(l => l.AssinaturaStatus, "authorized")));
 
         api.MercadoPago.FalharAtualizacaoDeValor = true;
         try
@@ -452,6 +493,12 @@ public class AdminApiTests(ApiFixture api)
         var http = api.Fabrica.CreateClient();
         http.DefaultRequestHeaders.Authorization = new("Bearer", r.Json.GetProperty("token").GetString());
         Assert.Equal(200, (await new ClienteApi(http).Get("/api/cliente/dashboard")).Codigo);                            // o token funciona como o admin da loja
+
+        // e é marcado como acesso de suporte: usar a sessão não conta como login real do cliente
+        var antigo = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        await api.NoBancoAsync(db => db.Usuarios.Where(u => u.Email == adminEmail).ExecuteUpdateAsync(s => s.SetProperty(u => u.UltimoLoginEm, antigo)));
+        Assert.Equal(200, (await new ClienteApi(http).Get("/api/auth/me")).Codigo);
+        Assert.Equal(antigo, await api.NoBancoAsync(db => db.Usuarios.Where(u => u.Email == adminEmail).Select(u => u.UltimoLoginEm).SingleAsync()));
 
         Assert.Equal((404, "Loja não encontrada."), await Erro(super.Post($"/api/admin/lojas/{Guid.NewGuid()}/acessar")));
         await api.NoBancoAsync(db => db.UsuariosLoja.Where(ul => ul.LojaId == id).ExecuteUpdateAsync(s => s.SetProperty(ul => ul.Ativo, false)));

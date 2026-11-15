@@ -203,6 +203,14 @@ public class PagamentosApiTests(ApiFixture api)
         Assert.Equal(("cartao", "Cobrança recorrente automática (assinatura)", auth), (paga.FormaPagamento, paga.Observacao, paga.MpPaymentId));
         Assert.Equal(LojaApi.Models.StatusLoja.Ativo, (await api.LojaNoBancoAsync(loja.Id)).Status);
 
+        // o mesmo aviso repetido pelo Mercado Pago não registra a cobrança de novo
+        var faturasAntes = (await api.PagamentosDaLojaNoBancoAsync(loja.Id)).Count;
+        await api.WebhookAsync(EventoMp("subscription_authorized_payment", auth));
+        await api.WebhookAsync(EventoMp("subscription_authorized_payment", auth));
+        var depois = await api.PagamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal(faturasAntes, depois.Count);
+        Assert.Single(depois, p => p.Status == "pago");
+
         api.MercadoPago.DefinirCobrancaDeAssinatura("auth-sem-loja", "pre-que-nao-existe", "processed");
         Assert.Equal(200, (int)(await api.WebhookAsync(EventoMp("subscription_authorized_payment", "auth-sem-loja"))).StatusCode);
     }
