@@ -1,23 +1,5 @@
 namespace LojaApi.DTOs;
 
-// ── Auth ──────────────────────────────────────────────────────────
-public record LoginRequest(string Email, string Senha);
-public record LoginResponse(string Token, string Nome, string Email, string Role);
-
-public record SignupRequest(
-    string NomeLoja,
-    string PerfilId,
-    string NomeResponsavel,
-    string Email,
-    string Senha,
-    string? Telefone,
-    List<string>? ModulosExtras = null
-);
-
-public record TrocarSenhaRequest(string SenhaAtual, string NovaSenha);
-
-public record TrocarMeuEmailRequest(string NovoEmail, string SenhaAtual);
-
 // ── Usuario ───────────────────────────────────────────────────────
 public record UsuarioDto(Guid Id, string Nome, string Email, string Role, bool Ativo);
 public record CriarUsuarioRequest(string Nome, string Email, string Senha, string Role);

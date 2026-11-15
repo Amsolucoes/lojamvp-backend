@@ -1,36 +1,23 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using LojaApi.Application.Plataforma;
+using LojaApi.Shared.Api;
+using LojaApi.Shared.Application;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using LojaApi.Data;
 
 namespace LojaApi.Controllers.Plataforma;
 
+// Preço de cada módulo (todos veem; só o superadmin altera).
 [ApiController]
 [Route("api/modulos-preco")]
 [Authorize]
-public class ModulosPrecoController(AppDbContext db) : ControllerBase
+public class ModulosPrecoController : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> Listar()
-    {
-        var lista = await db.ModulosPreco.OrderBy(m => m.Nome).ToListAsync();
-        return Ok(lista);
-    }
-
-    public record AtualizarModuloPrecoRequest(decimal Valor, bool DisponivelParaAtivar);
+    public async Task<IActionResult> Listar([FromServices] IQueryHandler<ListarModulosPrecoQuery> handler) =>
+        (await handler.HandleAsync(new())).ParaResposta(this);
 
     [HttpPut("{id:guid}")]
     [Authorize(Roles = "superadmin")]
-    public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarModuloPrecoRequest req)
-    {
-        var modulo = await db.ModulosPreco.FindAsync(id);
-        if (modulo is null) return NotFound();
-
-        modulo.Valor = req.Valor;
-        modulo.DisponivelParaAtivar = req.DisponivelParaAtivar;
-        modulo.AtualizadoEm = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-
-        return Ok(modulo);
-    }
+    public async Task<IActionResult> Atualizar(Guid id, [FromBody] AtualizarModuloPrecoRequest req, [FromServices] ICommandHandler<AtualizarModuloPrecoCommand> handler) =>
+        (await handler.HandleAsync(new(id, req))).ParaResposta(this);
 }

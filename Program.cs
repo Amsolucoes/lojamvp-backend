@@ -1,10 +1,11 @@
-﻿using LojaApi.Data;
+using LojaApi.Data;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using LojaApi.Infrastructure.Carteira;
 using LojaApi.Infrastructure.Acessorios;
 using LojaApi.Infrastructure.Vendas;
 using LojaApi.Infrastructure.OrdemServico;
 using LojaApi.Infrastructure.NfImportacao;
+using LojaApi.Infrastructure.Plataforma;
 using LojaApi.Infrastructure.Produtos;
 using LojaApi.Infrastructure.Ajuda;
 using LojaApi.Infrastructure.Chacara;
@@ -78,6 +79,7 @@ internal class Program
         builder.Services.AddOrdemServicoModule();
         builder.Services.AddProdutosModule();
         builder.Services.AddNfImportacaoModule();
+        builder.Services.AddPlataformaModule();
         builder.Services.AddAjudaModule();
         builder.Services.AddClientesModule();
         builder.Services.AddFiscalModule();
