@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -42,7 +42,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Criar boleto ──────────────────────────────────────────────
-    public async Task<MpPaymentResult> CriarBoleto(
+    public virtual async Task<MpPaymentResult> CriarBoleto(
         decimal valor, string descricao,
         string emailPagador, string cpfPagador,
         string nomePagador, Guid pagamentoId)
@@ -134,7 +134,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Verificar uma cobrança recorrente (authorized_payment) ────
-    public async Task<(string? preapprovalId, string? status)> VerificarCobrancaAssinatura(string authorizedPaymentId)
+    public virtual async Task<(string? preapprovalId, string? status)> VerificarCobrancaAssinatura(string authorizedPaymentId)
     {
         try
         {
@@ -160,7 +160,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Criar assinatura recorrente (preapproval) ─────────────────
-    public async Task<MpAssinaturaResult> CriarAssinatura(
+    public virtual async Task<MpAssinaturaResult> CriarAssinatura(
         decimal valorMensal, string motivo,
         string cardToken, string emailPagador,
         DateTime dataInicio, string backUrl)
@@ -217,7 +217,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Verificar status de uma assinatura ────────────────────────
-    public async Task<string?> VerificarAssinatura(string preapprovalId)
+    public virtual async Task<string?> VerificarAssinatura(string preapprovalId)
     {
         try
         {
@@ -237,7 +237,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Cancelar assinatura ───────────────────────────────────────
-    public async Task<bool> CancelarAssinatura(string preapprovalId)
+    public virtual async Task<bool> CancelarAssinatura(string preapprovalId)
     {
         try
         {
@@ -257,7 +257,7 @@ public class MercadoPagoService(IConfiguration config, ILogger<MercadoPagoServic
     }
 
     // ── Atualizar valor de uma assinatura ─────────────────────────
-    public async Task<bool> AtualizarValorAssinatura(string preapprovalId, decimal novoValor)
+    public virtual async Task<bool> AtualizarValorAssinatura(string preapprovalId, decimal novoValor)
     {
         try
         {
