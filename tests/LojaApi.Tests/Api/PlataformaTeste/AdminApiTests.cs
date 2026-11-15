@@ -208,6 +208,21 @@ public class AdminApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Dashboard_ultimos_pagamentos_ignora_as_lojas_de_teste()
+    {
+        var super = await SuperAsync();
+        var (teste, _, _) = await CriarLojaAsync(super, ehTeste: true);
+        var (real, _, _) = await CriarLojaAsync(super);
+        await api.NoBancoAsync(db => db.Pagamentos.Where(p => p.LojaId == teste || p.LojaId == real)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.Status, "pago").SetProperty(p => p.PagoEm, DateTime.UtcNow.AddMinutes(1))));
+
+        var ultimos = (await super.Get("/api/admin/dashboard")).Json.GetProperty("ultimosPagamentos").EnumerateArray().Select(p => p.GetProperty("lojaId").GetGuid()).ToList();
+
+        Assert.Contains(real, ultimos);
+        Assert.DoesNotContain(teste, ultimos);
+    }
+
+    [FatoIntegracao]
     public async Task Dashboard_nao_lista_loja_cancelada_entre_as_atrasadas()
     {
         var super = await SuperAsync();

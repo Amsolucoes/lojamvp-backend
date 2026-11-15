@@ -30,8 +30,6 @@ public class TenantService(AppDbContext db, ILogger<TenantService> logger)
 
     public void AtualizarStatusLoja(Loja loja) => PlataformaApoio.AtualizarStatusDaLoja(loja, DateTime.UtcNow);
 
-    public static DateTime ProximoVencimentoDate(int dia) => PlataformaRegras.ProximoVencimento(dia, DateTime.UtcNow);
-
     public static string GerarSchemaNome(string nomeLoja) => PlataformaRegras.GerarSchemaNome(nomeLoja, DateTime.UtcNow);
 
     public async Task<(bool Ativa, string? Motivo)> VerificarAcessoAsync(Guid lojaId)

@@ -177,6 +177,22 @@ public class PagamentosApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Webhook_da_cobranca_de_aviso_registra_a_forma_pix_mesmo_que_a_fatura_tenha_outra()
+    {
+        var loja = await NovaAsync();
+        var fatura = await api.FaturaPendenteAsync(loja.Id);
+        var cobranca = "cob-" + Guid.NewGuid().ToString("N");
+        await api.NoBancoAsync(db => db.Pagamentos.Where(p => p.Id == fatura.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.CobrancaMpPaymentId, cobranca).SetProperty(p => p.FormaPagamento, "cartao")));
+        api.MercadoPago.Aprovar(cobranca);
+
+        await api.WebhookAsync(EventoMp("payment", cobranca));
+
+        var paga = await api.PagamentoNoBancoAsync(fatura.Id);
+        Assert.Equal(("pago", "pix"), (paga.Status, paga.FormaPagamento));
+    }
+
+    [FatoIntegracao]
     public async Task Webhook_responde_200_para_tipo_desconhecido_json_invalido_e_pagamento_inexistente()
     {
         Assert.Equal(200, (int)(await api.WebhookAsync(EventoMp("outra_coisa", "1"))).StatusCode);
