@@ -18,7 +18,7 @@ public class AjusteEstoqueCommandHandler(IProdutosRepository repositorio) : ICom
         if (erroTipo is not null) return Resultado.Invalido(erroTipo);
 
         if (req.Tipo == ProdutosRegras.MovimentoSaida && req.Quantidade > produto.Estoque)
-            return Resultado.Invalido($"A quantidade da saída ({req.Quantidade}) é maior que o estoque atual ({produto.Estoque}).");
+            return Resultado.Invalido($"A quantidade da saída ({req.Quantidade}) é maior que o estoque atual ({ProdutosRegras.FormatarEstoque(produto.Estoque)}).");
 
         produto.Estoque = ProdutosRegras.NovoEstoque(req.Tipo, produto.Estoque, req.Quantidade);
         produto.AtualizadoEm = DateTime.UtcNow;

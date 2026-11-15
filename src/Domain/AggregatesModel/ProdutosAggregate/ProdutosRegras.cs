@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace LojaApi.Domain.Produtos;
 
 // Endereço do fornecedor já limpo: os campos detalhados e o texto completo (compatível com dados e telas antigas)
@@ -43,6 +45,9 @@ public static class ProdutosRegras
         var soma = estoqueDasVariacoesAtivas.Sum();
         return soma > 0 ? soma : estoqueDoProduto;
     }
+
+    // Mantém a escala do estoque do produto (decimal(10,3)) na mensagem de validação, sem perder zeros à direita.
+    public static string FormatarEstoque(decimal estoque) => estoque.ToString("0.000", CultureInfo.InvariantCulture);
 
     // Código em branco vira nulo
     public static string? CodigoDaVariacao(string? codigo) => string.IsNullOrWhiteSpace(codigo) ? null : codigo;
