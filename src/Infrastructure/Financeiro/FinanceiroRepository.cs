@@ -45,7 +45,8 @@ public class FinanceiroRepository(AppDbContext db) : IFinanceiroRepository
 
         // Faturas pagas debitam da conta da fatura (ou, se não houver, da conta padrão do cartão).
         var faturasPagas = await db.FaturasCartao.AsNoTracking()
-            .Where(f => f.LojaId == lojaId && !f.NaoAfetaSaldo && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada"))
+            .Where(f => f.LojaId == lojaId && !f.NaoAfetaSaldo && (f.Status == "pago" || f.Status == "parcial" || f.Status == "financiada")
+                && ids.Contains(f.ContaBancariaId ?? f.CartaoCredito!.ContaBancariaId))
             .Select(f => new { ContaId = f.ContaBancariaId ?? f.CartaoCredito!.ContaBancariaId, f.ValorPago })
             .ToListAsync();
         foreach (var f in faturasPagas)

@@ -264,6 +264,20 @@ public class FinanceiroContasCategoriasApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Criar_categoria_com_o_mesmo_nome_de_outra_loja_cria_a_propria_e_nao_devolve_a_alheia()
+    {
+        var loja = await NovaAsync();
+        var outra = await NovaAsync();
+        var daOutra = (await outra.Painel.Post($"{Rota}/categorias", new { nome = "Aluguel", tipo = "pagar" })).Json.GetProperty("id").GetGuid();
+
+        var minha = (await loja.Painel.Post($"{Rota}/categorias", new { nome = "Aluguel", tipo = "pagar" })).Json.GetProperty("id").GetGuid();
+
+        Assert.NotEqual(daOutra, minha);
+        Assert.Equal([minha], (await api.CategoriasFinanceirasNoBancoAsync(loja.Id)).Select(c => c.Id));
+        Assert.Equal([daOutra], (await api.CategoriasFinanceirasNoBancoAsync(outra.Id)).Select(c => c.Id));
+    }
+
+    [FatoIntegracao]
     public async Task Atualizar_categoria_troca_nome_tipo_e_icone_e_recusa_a_de_outra_loja()
     {
         var loja = await NovaAsync();
