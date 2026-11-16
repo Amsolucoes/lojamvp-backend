@@ -10,6 +10,8 @@ namespace LojaApi.Tests.Suporte;
 //  - Pix nasce "pending" até o teste chamar Aprovar(...).
 //  - Cartão é aprovado na hora, a não ser que o token do cartão seja "cartao-recusado".
 //  - FalharPix = true faz o Pix voltar com erro.
+//  - Boleto nasce "pending"; assinatura recorrente nasce "authorized"; cancelamento e troca de valor da assinatura dão certo,
+//    a não ser que o teste ligue FalharCancelamento / FalharAtualizacaoDeValor / FalharAssinatura.
 public sealed class MercadoPagoFalso() : MercadoPagoService(new ConfigurationBuilder().Build(), NullLogger<MercadoPagoService>.Instance)
 {
     private readonly ConcurrentDictionary<string, string> _status = new();
@@ -54,4 +56,55 @@ public sealed class MercadoPagoFalso() : MercadoPagoService(new ConfigurationBui
         StatusConsultados.Enqueue((mpPaymentId, accessToken ?? ""));
         return Task.FromResult(_status.TryGetValue(mpPaymentId, out var s) ? s : null);
     }
+
+    // ── Boleto e assinatura recorrente (plano mensal da plataforma) ──
+
+    public bool FalharAssinatura { get; set; }
+    public bool FalharCancelamento { get; set; }
+    public bool FalharAtualizacaoDeValor { get; set; }
+
+    public ConcurrentQueue<(decimal Valor, string Email)> AssinaturasCriadas { get; } = new();
+    public ConcurrentQueue<string> AssinaturasCanceladas { get; } = new();
+    public ConcurrentQueue<(string PreapprovalId, decimal Valor)> ValoresAtualizados { get; } = new();
+
+    private readonly ConcurrentDictionary<string, string> _statusAssinatura = new();
+    private readonly ConcurrentDictionary<string, (string? PreapprovalId, string? Status)> _cobrancasDeAssinatura = new();
+
+    // O que o MP vai responder quando a API perguntar pelo status da assinatura ou da cobrança recorrente (webhook)
+    public void DefinirStatusDaAssinatura(string preapprovalId, string status) => _statusAssinatura[preapprovalId] = status;
+    public void DefinirCobrancaDeAssinatura(string authorizedPaymentId, string? preapprovalId, string? status) => _cobrancasDeAssinatura[authorizedPaymentId] = (preapprovalId, status);
+
+    public override Task<MpPaymentResult> CriarBoleto(decimal valor, string descricao, string emailPagador, string cpfPagador, string nomePagador, Guid pagamentoId)
+    {
+        var id = "boleto-" + Guid.NewGuid().ToString("N");
+        _status[id] = "pending";
+        return Task.FromResult(new MpPaymentResult { MpPaymentId = id, Status = "pending", BoletoUrl = "https://boleto.test/" + id, BoletoBarcode = "23790.00000 00000.000000" });
+    }
+
+    public override Task<MpAssinaturaResult> CriarAssinatura(decimal valorMensal, string motivo, string cardToken, string emailPagador, DateTime dataInicio, string backUrl)
+    {
+        if (FalharAssinatura) return Task.FromResult(new MpAssinaturaResult { Erro = "Cartão recusado para a assinatura." });
+        AssinaturasCriadas.Enqueue((valorMensal, emailPagador));
+        return Task.FromResult(new MpAssinaturaResult { PreapprovalId = "pre-" + Guid.NewGuid().ToString("N"), Status = "authorized" });
+    }
+
+    public override Task<bool> CancelarAssinatura(string preapprovalId)
+    {
+        if (FalharCancelamento) return Task.FromResult(false);
+        AssinaturasCanceladas.Enqueue(preapprovalId);
+        return Task.FromResult(true);
+    }
+
+    public override Task<bool> AtualizarValorAssinatura(string preapprovalId, decimal novoValor)
+    {
+        if (FalharAtualizacaoDeValor) return Task.FromResult(false);
+        ValoresAtualizados.Enqueue((preapprovalId, novoValor));
+        return Task.FromResult(true);
+    }
+
+    public override Task<string?> VerificarAssinatura(string preapprovalId) =>
+        Task.FromResult(_statusAssinatura.TryGetValue(preapprovalId, out var s) ? s : null);
+
+    public override Task<(string? preapprovalId, string? status)> VerificarCobrancaAssinatura(string authorizedPaymentId) =>
+        Task.FromResult(_cobrancasDeAssinatura.TryGetValue(authorizedPaymentId, out var c) ? c : ((string?)null, (string?)null));
 }

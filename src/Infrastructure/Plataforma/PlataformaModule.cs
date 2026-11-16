@@ -10,6 +10,9 @@ public static class PlataformaModule
         services.AddScoped<IGeradorDeToken, GeradorDeTokenAdaptador>();
         services.AddScoped<INotificadorDeCadastro, NotificadorDeCadastroResend>();
         services.AddScoped<IServicoDePush, ServicoDePushAdaptador>();
+        services.AddScoped<IAdminRepository, AdminRepository>();
+        services.AddScoped<IGatewayDePagamentoPlataforma, GatewayDePagamentoPlataformaAdaptador>();
+        services.AddScoped<IEnvioDeComunicados, EnvioDeComunicadosAdaptador>();
         services.AddHandlersDoModulo("Plataforma");   // todos os handlers de Application/Handlers/Plataforma
         return services;
     }

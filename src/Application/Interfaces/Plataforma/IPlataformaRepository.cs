@@ -18,11 +18,20 @@ public interface IPlataformaRepository
     // ── Lojas ──
     Task<Loja?> ObterLojaAsync(Guid id);
     Task<Loja?> ObterMinhaLojaComPagamentosAsync(Guid usuarioId);                                  // a loja do vínculo ativo, com as faturas
-    Task<bool> EmailDeLojaExisteAsync(string email);                                               // sem diferenciar maiúscula
+    Task<bool> EmailDeLojaExisteAsync(string email, Guid? ignorarLojaId = null);                  // sem diferenciar maiúscula
     Task<bool> SlugEmUsoAsync(string slug, Guid ignorarLojaId);
     Task<int> ContarLojasDaPromocaoAsync();                                                        // fora as de teste e as de financeiro puro
     void Adicionar(Loja loja);
     void Adicionar(Pagamento pagamento);
+
+    // ── Faturas (mensalidade) ──
+    Task<Pagamento?> ObterPagamentoAsync(Guid id);
+    Task<Pagamento?> ObterPagamentoComLojaAsync(Guid id);
+    Task<Pagamento?> ObterPagamentoDaCobrancaAsync(string mpPaymentId);                            // pelo id da cobrança no Mercado Pago, com a loja
+    Task<bool> PagamentoDoMpJaPagoAsync(string mpPaymentId);
+    Task<Pagamento?> ObterFaturaEmAbertoAsync(Guid lojaId);                                        // a primeira pendente ou atrasada
+    Task<int> ContarFaturasPagasAsync(Guid lojaId);
+    Task<Loja?> ObterLojaPorAssinaturaAsync(string preapprovalId);
 
     // ── Perfis ──
     Task<List<PerfilLoja>> ListarPerfisAtivosAsync();                                              // com categorias e campos extras por ordem

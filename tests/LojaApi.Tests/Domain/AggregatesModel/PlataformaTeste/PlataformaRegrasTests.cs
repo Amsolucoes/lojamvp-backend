@@ -100,4 +100,22 @@ public class PlataformaRegrasTests
     [InlineData("loja", "Moda", "")]
     public void Modulos_do_perfil(string tipoPlano, string nome, string esperado) =>
         Assert.Equal(esperado, string.Join(",", PlataformaRegras.ModulosDoPerfil(tipoPlano, nome)));
+
+    [Fact]
+    public void Proximo_vencimento_e_sempre_no_mes_seguinte_e_respeita_o_ultimo_dia()
+    {
+        Assert.Equal(new DateTime(2031, 6, 10, 12, 0, 0, DateTimeKind.Utc), PlataformaRegras.ProximoVencimento(10, new DateTime(2031, 5, 25, 3, 0, 0, DateTimeKind.Utc)));
+        Assert.Equal(new DateTime(2031, 2, 28, 12, 0, 0, DateTimeKind.Utc), PlataformaRegras.ProximoVencimento(31, new DateTime(2031, 1, 5, 0, 0, 0, DateTimeKind.Utc)));
+        Assert.Equal(new DateTime(2032, 1, 15, 12, 0, 0, DateTimeKind.Utc), PlataformaRegras.ProximoVencimento(15, new DateTime(2031, 12, 20, 0, 0, 0, DateTimeKind.Utc)));
+    }
+
+    [Fact]
+    public void Proximo_dia_de_cobranca_vai_para_o_mes_seguinte_se_ja_passou_e_limita_o_dia_a_28()
+    {
+        var hoje = new DateTime(2031, 5, 10, 15, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(new DateTime(2031, 5, 20, 12, 0, 0, DateTimeKind.Utc), PlataformaRegras.ProximoDiaDeCobranca(20, hoje));
+        Assert.Equal(new DateTime(2031, 6, 5, 12, 0, 0, DateTimeKind.Utc), PlataformaRegras.ProximoDiaDeCobranca(5, hoje));
+        Assert.Equal(new DateTime(2031, 5, 28, 12, 0, 0, DateTimeKind.Utc), PlataformaRegras.ProximoDiaDeCobranca(31, hoje));
+        Assert.Equal(new DateTime(2031, 6, 1, 12, 0, 0, DateTimeKind.Utc), PlataformaRegras.ProximoDiaDeCobranca(0, hoje));
+    }
 }
