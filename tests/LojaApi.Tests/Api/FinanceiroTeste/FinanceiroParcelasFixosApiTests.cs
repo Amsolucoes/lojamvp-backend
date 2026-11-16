@@ -17,6 +17,22 @@ public class FinanceiroParcelasFixosApiTests(ApiFixture api)
 
     private async Task<Guid> PrimeiraParcelaAsync(Guid grupo) => (await api.GrupoNoBancoAsync(grupo))[0].Id;
 
+    [FatoIntegracao]
+    public async Task Fixos_exigem_login_mas_qualquer_papel_da_loja_usa()
+    {
+        var loja = await NovaAsync();
+        var operador = await api.OperadorAsync(loja);
+        var conta = await loja.ContaPelaApiAsync();
+        var corpo = new { contaBancariaId = conta, tipo = "pagar", descricao = "Fixo", valor = 1m, diaVencimento = 5 };
+        var id = Guid.NewGuid();
+
+        Assert.Equal(401, (await loja.Site.Post($"{Rota}/fixos", corpo)).Codigo);
+        Assert.Equal(401, (await loja.Site.Put($"{Rota}/fixos/{id}", corpo)).Codigo);
+        Assert.Equal(401, (await loja.Site.Post($"{Rota}/fixos/{id}/regenerar")).Codigo);
+        Assert.Equal(401, (await loja.Site.Patch($"{Rota}/fixos/{id}/ativo")).Codigo);
+        Assert.Equal(200, (await operador.Post($"{Rota}/fixos", corpo)).Codigo);
+    }
+
     // ── Parcelas ─────────────────────────────────────────────────────────────
 
     [FatoIntegracao]
@@ -223,7 +239,7 @@ public class FinanceiroParcelasFixosApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
-    public async Task Atualizar_fixo_troca_os_dados_do_modelo_mas_hoje_perde_os_meses_futuros()
+    public async Task Atualizar_fixo_troca_os_dados_do_modelo_e_regera_os_meses_futuros_com_o_valor_novo()
     {
         var loja = await NovaAsync();
         var outra = await NovaAsync();
@@ -239,11 +255,12 @@ public class FinanceiroParcelasFixosApiTests(ApiFixture api)
         Assert.Equal(["id", "geradoAte"], r.Json.EnumerateObject().Select(x => x.Name));
         var fixo = Assert.Single(await api.FixosNoBancoAsync(loja.Id));
         Assert.Equal(("pagar", "Aluguel novo", 1000m, 20, nova, "original"), (fixo.Tipo, fixo.Descricao, fixo.Valor, fixo.DiaVencimento, fixo.ContaBancariaId, fixo.Observacao));
-        // COMPORTAMENTO ANTIGO (defeito): apaga os pendentes futuros e tenta regerar sem salvar antes; a regeração enxerga os
-        // registros ainda no banco e pula todos os meses, então só sobra o do mês atual quando o vencimento dele já passou.
-        var depois = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
-        Assert.Equal(depois.Count(l => l.Vencimento < DateTime.UtcNow.Date), depois.Count);
-        Assert.DoesNotContain(depois, l => l.Vencimento.Year == proximo.Year && l.Vencimento.Month == proximo.Month);
+        // Os meses futuros são regerados com os dados novos (no código antigo eram apagados e não voltavam: defeito corrigido na migração)
+        var todos = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal(60, todos.Count(l => l.LancamentoFixoId == id));
+        var doProximoMes = todos.Single(l => l.Vencimento.Year == proximo.Year && l.Vencimento.Month == proximo.Month);
+        Assert.Equal(("Aluguel novo", 1000m, 20, nova), (doProximoMes.Descricao, doProximoMes.Valor, doProximoMes.Vencimento.Day, doProximoMes.ContaBancariaId));
+        Assert.Equal(("Aluguel novo", 1000m), (todos.Last().Descricao, todos.Last().Valor));
 
         Assert.Equal(404, (await outra.Painel.Put($"{Rota}/fixos/{id}", new { contaBancariaId = conta, tipo = "pagar", descricao = "x", valor = 1m, diaVencimento = 5 })).Codigo);
         Assert.Equal(404, (await loja.Painel.Put($"{Rota}/fixos/{Guid.NewGuid()}", new { contaBancariaId = conta, tipo = "pagar", descricao = "x", valor = 1m, diaVencimento = 5 })).Codigo);
@@ -316,26 +333,29 @@ public class FinanceiroParcelasFixosApiTests(ApiFixture api)
     {
         var loja = await NovaAsync();
         var conta = await loja.ContaPelaApiAsync();
+        var nova = await loja.ContaPelaApiAsync("Nova");
         var todas = await loja.ParceladoPelaApiAsync(conta, 4, 50m, "2032-01-10");
         var p = await api.GrupoNoBancoAsync(todas);
         await loja.Painel.Post($"{Rota}/lancamentos/{p[0].Id}/parcelas/pagamento", new { ids = new[] { p[0].Id }, pago = true });
 
-        await loja.Painel.Put($"{Rota}/lancamentos/{p[2].Id}?modo=todas", new { descricao = "Todas", contaBancariaId = conta, valor = 80m, vencimento = "2032-03-31", observacao = "o" });
+        await loja.Painel.Put($"{Rota}/lancamentos/{p[2].Id}?modo=todas", new { descricao = "Todas", contaBancariaId = nova, valor = 80m, vencimento = "2032-03-31", observacao = "o" });
 
         var depoisTodas = await api.GrupoNoBancoAsync(todas);
         Assert.Equal(["Financiamento", "Todas", "Todas", "Todas"], depoisTodas.Select(x => x.Descricao));
         Assert.Equal([50m, 80m, 80m, 80m], depoisTodas.Select(x => x.Valor));
+        Assert.Equal([conta, nova, nova, nova], depoisTodas.Select(x => x.ContaBancariaId));
         Assert.Equal([Utc(2032, 1, 10), Utc(2032, 2, 29), Utc(2032, 3, 31), Utc(2032, 4, 30)], depoisTodas.Select(x => x.Vencimento));
 
         var futuras = await loja.ParceladoPelaApiAsync(conta, 4, 50m, "2032-01-10");
         var f = await api.GrupoNoBancoAsync(futuras);
         await loja.Painel.Post($"{Rota}/lancamentos/{f[2].Id}/parcelas/pagamento", new { ids = new[] { f[2].Id }, pago = true });
 
-        await loja.Painel.Put($"{Rota}/lancamentos/{f[1].Id}?modo=futuras", new { descricao = "Futuras", contaBancariaId = conta, valor = 90m, vencimento = "2032-02-05" });
+        await loja.Painel.Put($"{Rota}/lancamentos/{f[1].Id}?modo=futuras", new { descricao = "Futuras", contaBancariaId = nova, valor = 90m, vencimento = "2032-02-05" });
 
         var depoisFuturas = await api.GrupoNoBancoAsync(futuras);
         Assert.Equal(["Financiamento", "Futuras", "Financiamento", "Futuras"], depoisFuturas.Select(x => x.Descricao));
         Assert.Equal([50m, 90m, 50m, 90m], depoisFuturas.Select(x => x.Valor));
+        Assert.Equal([conta, nova, conta, nova], depoisFuturas.Select(x => x.ContaBancariaId));
         Assert.Equal([Utc(2032, 1, 10), Utc(2032, 2, 5), Utc(2032, 3, 10), Utc(2032, 4, 5)], depoisFuturas.Select(x => x.Vencimento));
     }
 

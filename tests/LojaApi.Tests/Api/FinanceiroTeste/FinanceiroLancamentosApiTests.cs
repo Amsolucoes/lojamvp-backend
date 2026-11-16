@@ -300,12 +300,15 @@ public class FinanceiroLancamentosApiTests(ApiFixture api)
         var paga = await loja.AvulsoPelaApiAsync(conta, "pagar", "Paga", jaPago: true);
         var receber = await loja.AvulsoPelaApiAsync(conta, "receber", "Receber");
         var alheia = await outra.AvulsoPelaApiAsync(contaAlheia, "pagar", "Alheia");
+        var deCartao = await loja.AvulsoPelaApiAsync(conta, "pagar", "Parcela de fatura financiada");
+        await api.NoBancoAsync(db => db.LancamentosFinanceiros.Where(l => l.Id == deCartao).ExecuteUpdateAsync(s => s.SetProperty(l => l.CartaoOrigemId, Guid.NewGuid())));
         const string naoPendente = "Alguma conta selecionada não está mais pendente. Atualize a lista e tente de novo.";
 
         Assert.Equal((400, "Selecione ao menos uma conta."), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = Array.Empty<Guid>(), forma = "conta", contaBancariaId = conta })));
         Assert.Equal((400, naoPendente), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { pendente, paga }, forma = "conta", contaBancariaId = conta })));
         Assert.Equal((400, naoPendente), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { receber }, forma = "conta", contaBancariaId = conta })));
         Assert.Equal((400, naoPendente), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { alheia }, forma = "conta", contaBancariaId = contaAlheia })));
+        Assert.Equal((400, naoPendente), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { deCartao }, forma = "conta", contaBancariaId = conta })));
         Assert.Equal((400, "Escolha a conta de onde sai o pagamento."), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { pendente }, forma = "conta", contaBancariaId = contaAlheia })));
         Assert.Equal((400, "Escolha a conta de onde sai o pagamento."), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { pendente }, forma = "conta" })));
         Assert.Equal((400, "Escolha o cartão de crédito."), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { pendente }, forma = "cartao" })));

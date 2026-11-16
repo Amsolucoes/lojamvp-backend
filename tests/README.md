@@ -66,6 +66,7 @@ Integração (`Api/`):
 - `TurmasTeste/` – `TurmasApiTests`: turmas, matrícula, sessões geradas, falta/remarcação, presença, profissionais
 - `CorretoraTeste/` – `CorretoraApiTests`: seguradoras, funil, comissão no financeiro, apólices, resumo e dashboard
 - `EquipeTeste/` – `FuncionariosApiTests` (cadastro, remuneração, salário fixo → lançamento fixo no Financeiro, endereço, comissão por serviço) e `ComissoesApiTests` (resumo, detalhe por origem, fechar/pagar, histórico, desfazer)
+- `FinanceiroTeste/` – `FinanceiroContasCategoriasApiTests` (contas, saldo, ajuste, transferência, categorias), `FinanceiroLancamentosApiTests` (avulso, parcelado, a receber unificado, pagamento, aviso, descrições, pagar em lote na conta e no cartão) e `FinanceiroParcelasFixosApiTests` (parcelas, fixos, editar e excluir única/futuras/todas)
 - `CarteiraTeste/` – `CarteiraApiTests`: fiado — venda no caixa (inteira ou dividida), limite, recebimento, extrato, excluir venda/cliente
 
 ## Como os testes funcionam por dentro
