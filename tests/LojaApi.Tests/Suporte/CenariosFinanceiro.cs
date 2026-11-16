@@ -59,6 +59,46 @@ public static class CenariosFinanceiro
             await db.SaveChangesAsync();
         });
 
+    // ── Lançamentos (parte 2) ────────────────────────────────────────────────
+
+    public static async Task<Guid> AvulsoPelaApiAsync(this LojaTeste loja, Guid contaId, string tipo = "pagar", string descricao = "Conta avulsa", decimal valor = 100m, string vencimento = "2032-03-10", Guid? categoriaId = null, bool jaPago = false)
+    {
+        var r = await loja.Painel.Post($"{Rota}/lancamentos/avulso", new { contaBancariaId = contaId, tipo, descricao, categoriaId, valor, vencimento, observacao = (string?)null, jaPago });
+        r.DeveSerSucesso();
+        return r.Json.GetProperty("id").GetGuid();
+    }
+
+    public static async Task<Guid> ParceladoPelaApiAsync(this LojaTeste loja, Guid contaId, int parcelas = 3, decimal valorParcela = 50m, string primeiroVencimento = "2032-01-15", string tipo = "pagar", string descricao = "Financiamento")
+    {
+        var r = await loja.Painel.Post($"{Rota}/lancamentos/parcelado", new { contaBancariaId = contaId, tipo, descricao, valorParcela, totalParcelas = parcelas, primeiroVencimento });
+        r.DeveSerSucesso();
+        return r.Json.GetProperty("grupoParcelamentoId").GetGuid();
+    }
+
+    public static Task<List<LancamentoFinanceiro>> LancamentosDaLojaNoBancoAsync(this ApiFixture api, Guid lojaId) =>
+        api.NoBancoAsync(db => db.LancamentosFinanceiros.AsNoTracking().Where(l => l.LojaId == lojaId).OrderBy(l => l.Vencimento).ThenBy(l => l.NumeroParcela).ToListAsync());
+
+    public static Task<LancamentoFinanceiro> LancamentoNoBancoPorIdAsync(this ApiFixture api, Guid id) =>
+        api.NoBancoAsync(db => db.LancamentosFinanceiros.AsNoTracking().FirstAsync(l => l.Id == id));
+
+    public static Task<List<LancamentoFinanceiro>> GrupoNoBancoAsync(this ApiFixture api, Guid grupoId) =>
+        api.NoBancoAsync(db => db.LancamentosFinanceiros.AsNoTracking().Where(l => l.GrupoParcelamentoId == grupoId).OrderBy(l => l.NumeroParcela).ToListAsync());
+
+    public static Task<List<LancamentoFixo>> FixosNoBancoAsync(this ApiFixture api, Guid lojaId) =>
+        api.NoBancoAsync(db => db.LancamentosFixos.AsNoTracking().Where(f => f.LojaId == lojaId).ToListAsync());
+
+    public static Task<Guid> CartaoNoBancoAsync(this ApiFixture api, Guid lojaId, Guid contaId, string nome = "Cartão Teste") =>
+        api.NoBancoAsync(async db =>
+        {
+            var cartao = new CartaoCredito { LojaId = lojaId, Nome = nome, ContaBancariaId = contaId };
+            db.CartoesCredito.Add(cartao);
+            await db.SaveChangesAsync();
+            return cartao.Id;
+        });
+
+    public static Task<List<LancamentoCartao>> LancamentosDeCartaoNoBancoAsync(this ApiFixture api, Guid lojaId) =>
+        api.NoBancoAsync(db => db.LancamentosCartao.AsNoTracking().Where(l => l.LojaId == lojaId).OrderBy(l => l.DataCompra).ToListAsync());
+
     public static async Task SemVinculoAsync(this ApiFixture api, LojaTeste loja) =>
         await api.NoBancoAsync(db => db.UsuariosLoja.Where(ul => ul.LojaId == loja.Id).ExecuteUpdateAsync(s => s.SetProperty(ul => ul.Ativo, false)));
 }
