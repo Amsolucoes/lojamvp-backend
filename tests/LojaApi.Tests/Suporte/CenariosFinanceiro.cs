@@ -99,6 +99,36 @@ public static class CenariosFinanceiro
     public static Task<List<LancamentoCartao>> LancamentosDeCartaoNoBancoAsync(this ApiFixture api, Guid lojaId) =>
         api.NoBancoAsync(db => db.LancamentosCartao.AsNoTracking().Where(l => l.LojaId == lojaId).OrderBy(l => l.DataCompra).ToListAsync());
 
+    // ── Cartões (parte 3a) ───────────────────────────────────────────────────
+
+    public static async Task<Guid> CartaoPelaApiAsync(this LojaTeste loja, Guid contaId, string nome = "Cartão Teste", int diaFechamento = 10, int diaVencimento = 15, string? bandeira = null)
+    {
+        var r = await loja.Painel.Post($"{Rota}/cartoes", new { nome, limite = 1000m, diaFechamento, diaVencimento, contaBancariaId = contaId, taxaJurosMensal = 0m, bandeira });
+        r.DeveSerSucesso();
+        return r.Json.GetProperty("id").GetGuid();
+    }
+
+    public static Task<CartaoCredito> CartaoNoBancoPorIdAsync(this ApiFixture api, Guid id) =>
+        api.NoBancoAsync(db => db.CartoesCredito.AsNoTracking().FirstAsync(c => c.Id == id));
+
+    public static Task<List<LancamentoCartao>> ComprasDoCartaoNoBancoAsync(this ApiFixture api, Guid cartaoId) =>
+        api.NoBancoAsync(db => db.LancamentosCartao.AsNoTracking().Where(l => l.CartaoCreditoId == cartaoId).OrderBy(l => l.DataCompra).ThenBy(l => l.NumeroParcela).ToListAsync());
+
+    public static Task<List<CartaoLancamentoFixo>> FixosDoCartaoNoBancoAsync(this ApiFixture api, Guid cartaoId) =>
+        api.NoBancoAsync(db => db.CartaoLancamentosFixos.AsNoTracking().Where(f => f.CartaoCreditoId == cartaoId).ToListAsync());
+
+    // Fatura já paga do mês de vencimento informado (as compras do ciclo dela ficam travadas)
+    public static Task FaturaPagaDoMesNoBancoAsync(this ApiFixture api, Guid lojaId, Guid cartaoId, int ano, int mes) =>
+        api.NoBancoAsync(async db =>
+        {
+            db.FaturasCartao.Add(new FaturaCartao
+            {
+                LojaId = lojaId, CartaoCreditoId = cartaoId, MesReferencia = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc),
+                Vencimento = new DateTime(ano, mes, 15, 12, 0, 0, DateTimeKind.Utc), Total = 1m, ValorPago = 1m, Status = "pago", PagoEm = DateTime.UtcNow,
+            });
+            await db.SaveChangesAsync();
+        });
+
     public static async Task SemVinculoAsync(this ApiFixture api, LojaTeste loja) =>
         await api.NoBancoAsync(db => db.UsuariosLoja.Where(ul => ul.LojaId == loja.Id).ExecuteUpdateAsync(s => s.SetProperty(ul => ul.Ativo, false)));
 }
