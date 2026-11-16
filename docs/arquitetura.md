@@ -182,7 +182,7 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 |---|---|---|
 | **Chacara** | reservas, site público, preços, horários, períodos, fotos, dados, painel | ✅ Domain/Application/Infrastructure/Controllers + testes |
 | **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Controllers + testes |
-| **Financeiro** | `FinanceiroController` (+ Planejamento) — o maior, ~3.600 linhas | só `Controllers` (a migrar) |
+| **Financeiro** | Em 4 partes (o maior módulo, ~3.600 linhas): **1 ✅ contas bancárias (saldo, ajuste, transferência) e categorias**; 2 lançamentos, parcelas e fixos; 3 cartões e faturas; 4 relatórios e Planejamento | parcial: partes 2 a 4 ainda só `Controllers` com `AppDbContext` direto |
 | **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes (a venda usa a carteira, que ainda é um service) |
 | **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Produtos** | Produtos, Estoque, Categorias, Marcas, Fornecedores, Etiquetas | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes |

@@ -4,6 +4,7 @@ using LojaApi.Infrastructure.Carteira;
 using LojaApi.Infrastructure.Acessorios;
 using LojaApi.Infrastructure.Vendas;
 using LojaApi.Infrastructure.OrdemServico;
+using LojaApi.Infrastructure.Financeiro;
 using LojaApi.Infrastructure.NfImportacao;
 using LojaApi.Infrastructure.Plataforma;
 using LojaApi.Infrastructure.Produtos;
@@ -80,6 +81,7 @@ internal class Program
         builder.Services.AddProdutosModule();
         builder.Services.AddNfImportacaoModule();
         builder.Services.AddPlataformaModule();
+        builder.Services.AddFinanceiroModule();
         builder.Services.AddAjudaModule();
         builder.Services.AddClientesModule();
         builder.Services.AddFiscalModule();
