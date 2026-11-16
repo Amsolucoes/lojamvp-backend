@@ -240,6 +240,7 @@ public class FinanceiroCartoesApiTests(ApiFixture api)
         await loja.Painel.Post($"{Rota}/cartoes/{cartao}/lancamentos/parcelado", new { descricao = "Sofá", valorParcela = 50m, totalParcelas = 3, dataCompra = "2032-01-05" });
         var compras = await api.ComprasDoCartaoNoBancoAsync(cartao);
         await api.FaturaPagaDoMesNoBancoAsync(loja.Id, cartao, 2032, 2);
+        await api.FaturaPagaDoMesNoBancoAsync(loja.Id, cartao, 2032, 3, "parcial"); // só fatura paga trava as parcelas
 
         await loja.Painel.Put($"{Rota}/cartoes/lancamentos/{compras[2].Id}?modo=todas", new { descricao = " Sofá L ", valor = 90m, dataCompra = "2035-05-05" });
 

@@ -118,13 +118,13 @@ public static class CenariosFinanceiro
         api.NoBancoAsync(db => db.CartaoLancamentosFixos.AsNoTracking().Where(f => f.CartaoCreditoId == cartaoId).ToListAsync());
 
     // Fatura já paga do mês de vencimento informado (as compras do ciclo dela ficam travadas)
-    public static Task FaturaPagaDoMesNoBancoAsync(this ApiFixture api, Guid lojaId, Guid cartaoId, int ano, int mes) =>
+    public static Task FaturaPagaDoMesNoBancoAsync(this ApiFixture api, Guid lojaId, Guid cartaoId, int ano, int mes, string status = "pago") =>
         api.NoBancoAsync(async db =>
         {
             db.FaturasCartao.Add(new FaturaCartao
             {
                 LojaId = lojaId, CartaoCreditoId = cartaoId, MesReferencia = new DateTime(ano, mes, 1, 0, 0, 0, DateTimeKind.Utc),
-                Vencimento = new DateTime(ano, mes, 15, 12, 0, 0, DateTimeKind.Utc), Total = 1m, ValorPago = 1m, Status = "pago", PagoEm = DateTime.UtcNow,
+                Vencimento = new DateTime(ano, mes, 15, 12, 0, 0, DateTimeKind.Utc), Total = 1m, ValorPago = 1m, Status = status, PagoEm = DateTime.UtcNow,
             });
             await db.SaveChangesAsync();
         });

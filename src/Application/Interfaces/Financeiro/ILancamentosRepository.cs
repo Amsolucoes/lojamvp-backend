@@ -15,8 +15,8 @@ public interface ILancamentosRepository
     Task<LancamentoFinanceiro?> ObterAsync(Guid id, Guid lojaId);
     Task<List<LancamentoFinanceiro>> ListarGrupoAsync(Guid grupoId, Guid lojaId);                    // por número da parcela e vencimento
     Task<List<LancamentoFinanceiro>> ListarPendentesParaPagarEmLoteAsync(List<Guid> ids, Guid lojaId); // a pagar, pendentes e que não vieram de cartão
-    Task<List<LancamentoFinanceiro>> ListarPendentesDoGrupoAsync(Guid grupoId, DateTime? aPartirDe);
-    Task<List<LancamentoFinanceiro>> ListarPendentesDoFixoAsync(Guid fixoId, DateTime aPartirDe);
+    Task<List<LancamentoFinanceiro>> ListarPendentesDoGrupoAsync(Guid grupoId, Guid lojaId, DateTime? aPartirDe);
+    Task<List<LancamentoFinanceiro>> ListarPendentesDoFixoAsync(Guid fixoId, Guid lojaId, DateTime aPartirDe);
     Task<LancamentoFinanceiro?> ObterPrimeiraOcorrenciaDoFixoAsync(Guid fixoId);
     void Adicionar(LancamentoFinanceiro lancamento);
     void Adicionar(IEnumerable<LancamentoFinanceiro> lancamentos);
@@ -25,7 +25,6 @@ public interface ILancamentosRepository
 
     // ── Fixos ──
     Task<LancamentoFixo?> ObterFixoAsync(Guid id, Guid lojaId);
-    Task<LancamentoFixo?> ObterFixoPorIdAsync(Guid id);
     void Adicionar(LancamentoFixo fixo);
 
     // ── Cartão (pagamento em lote no cartão) ──

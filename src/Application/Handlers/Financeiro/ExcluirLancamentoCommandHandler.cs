@@ -15,15 +15,15 @@ public class ExcluirLancamentoCommandHandler(ILancamentosRepository repositorio)
 
         if (modo == "todas" && lanc.Modo == "fixa" && lanc.LancamentoFixoId.HasValue)
         {
-            var fixo = await repositorio.ObterFixoPorIdAsync(lanc.LancamentoFixoId.Value);
+            var fixo = await repositorio.ObterFixoAsync(lanc.LancamentoFixoId.Value, lojaId);
             if (fixo != null) fixo.Ativa = false; // para de gerar novos meses
 
-            var futurosPendentes = await repositorio.ListarPendentesDoFixoAsync(lanc.LancamentoFixoId.Value, lanc.Vencimento);
+            var futurosPendentes = await repositorio.ListarPendentesDoFixoAsync(lanc.LancamentoFixoId.Value, lojaId, lanc.Vencimento);
             repositorio.Remover(futurosPendentes);
         }
         else if (modo == "todas" && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
         {
-            var pendentesGrupo = await repositorio.ListarPendentesDoGrupoAsync(lanc.GrupoParcelamentoId.Value, null);
+            var pendentesGrupo = await repositorio.ListarPendentesDoGrupoAsync(lanc.GrupoParcelamentoId.Value, lojaId, null);
             repositorio.Remover(pendentesGrupo);
         }
         else

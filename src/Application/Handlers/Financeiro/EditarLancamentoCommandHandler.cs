@@ -19,7 +19,7 @@ public class EditarLancamentoCommandHandler(ILancamentosRepository repositorio, 
 
         if (modo == "todas" && lanc.Modo == "fixa" && lanc.LancamentoFixoId.HasValue)
         {
-            var fixo = await repositorio.ObterFixoPorIdAsync(lanc.LancamentoFixoId.Value);
+            var fixo = await repositorio.ObterFixoAsync(lanc.LancamentoFixoId.Value, lojaId);
             if (fixo is null) return Resultado.NaoEncontrado();
 
             LancamentosApoio.AplicarEdicaoNoFixo(fixo, req, novoDia);
@@ -31,11 +31,11 @@ public class EditarLancamentoCommandHandler(ILancamentosRepository repositorio, 
         }
         else if (modo == "futuras" && lanc.Modo == "fixa" && lanc.LancamentoFixoId.HasValue)
         {
-            var fixo = await repositorio.ObterFixoPorIdAsync(lanc.LancamentoFixoId.Value);
+            var fixo = await repositorio.ObterFixoAsync(lanc.LancamentoFixoId.Value, lojaId);
             if (fixo is null) return Resultado.NaoEncontrado();
 
             var corte = LancamentosRegras.PrimeiroDiaDoMes(lanc.Vencimento);
-            var daquiPraFrente = await repositorio.ListarPendentesDoFixoAsync(fixo.Id, corte);
+            var daquiPraFrente = await repositorio.ListarPendentesDoFixoAsync(fixo.Id, lojaId, corte);
             foreach (var p in daquiPraFrente) LancamentosApoio.AplicarEdicaoNaOcorrencia(p, req, novoDia);
 
             LancamentosApoio.AplicarEdicaoNoFixo(fixo, req, novoDia);
@@ -43,12 +43,12 @@ public class EditarLancamentoCommandHandler(ILancamentosRepository repositorio, 
         else if (modo == "futuras" && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
         {
             var corte = LancamentosRegras.PrimeiroDiaDoMes(lanc.Vencimento);
-            var daquiPraFrente = await repositorio.ListarPendentesDoGrupoAsync(lanc.GrupoParcelamentoId.Value, corte);
+            var daquiPraFrente = await repositorio.ListarPendentesDoGrupoAsync(lanc.GrupoParcelamentoId.Value, lojaId, corte);
             foreach (var p in daquiPraFrente) LancamentosApoio.AplicarEdicaoNaOcorrencia(p, req, novoDia);
         }
         else if (modo == "todas" && lanc.Modo == "parcelada" && lanc.GrupoParcelamentoId.HasValue)
         {
-            var pendentes = await repositorio.ListarPendentesDoGrupoAsync(lanc.GrupoParcelamentoId.Value, null);
+            var pendentes = await repositorio.ListarPendentesDoGrupoAsync(lanc.GrupoParcelamentoId.Value, lojaId, null);
             foreach (var p in pendentes) LancamentosApoio.AplicarEdicaoNaOcorrencia(p, req, novoDia);
         }
         else
