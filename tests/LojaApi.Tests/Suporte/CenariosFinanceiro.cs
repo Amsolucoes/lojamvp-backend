@@ -43,7 +43,7 @@ public static class CenariosFinanceiro
         });
 
     // Cartão ligado à conta, com uma fatura já paga (valorPago) — a fatura debita da conta dela (ou, sem conta, da conta do cartão)
-    public static Task FaturaPagaNoBancoAsync(this ApiFixture api, Guid lojaId, Guid contaDoCartao, decimal valorPago, Guid? contaDaFatura = null, bool naoAfetaSaldo = false, decimal antecipado = 0m, Guid? contaDoAntecipado = null) =>
+    public static Task FaturaPagaNoBancoAsync(this ApiFixture api, Guid lojaId, Guid contaDoCartao, decimal valorPago, Guid? contaDaFatura = null, bool naoAfetaSaldo = false, decimal antecipado = 0m, Guid? contaDoAntecipado = null, string status = "pago") =>
         api.NoBancoAsync(async db =>
         {
             var cartao = new CartaoCredito { LojaId = lojaId, Nome = $"Cartão {Guid.NewGuid():N}"[..14], ContaBancariaId = contaDoCartao };
@@ -51,7 +51,7 @@ public static class CenariosFinanceiro
             var fatura = new FaturaCartao
             {
                 LojaId = lojaId, CartaoCreditoId = cartao.Id, MesReferencia = new DateTime(2031, 1, 1, 0, 0, 0, DateTimeKind.Utc), Vencimento = new DateTime(2031, 1, 15, 0, 0, 0, DateTimeKind.Utc),
-                ContaBancariaId = contaDaFatura, Total = valorPago, ValorPago = valorPago, Status = "pago", PagoEm = DateTime.UtcNow, NaoAfetaSaldo = naoAfetaSaldo,
+                ContaBancariaId = contaDaFatura, Total = valorPago, ValorPago = valorPago, Status = status, PagoEm = DateTime.UtcNow, NaoAfetaSaldo = naoAfetaSaldo,
             };
             db.FaturasCartao.Add(fatura);
             if (antecipado > 0)

@@ -79,14 +79,17 @@ public class FinanceiroContasCategoriasApiTests(ApiFixture api)
         await api.FaturaPagaNoBancoAsync(loja.Id, contaDoCartao: conta, valorPago: 1000m, contaDaFatura: outraConta); // fatura paga em outra conta não mexe nesta
         await api.FaturaPagaNoBancoAsync(loja.Id, contaDoCartao: conta, valorPago: 1000m, naoAfetaSaldo: true);        // "não afeta saldo" não conta
         await api.FaturaPagaNoBancoAsync(loja.Id, contaDoCartao: outraConta, valorPago: 0m, antecipado: 4m, contaDoAntecipado: conta);   // antecipado -4
+        await api.FaturaPagaNoBancoAsync(loja.Id, contaDoCartao: conta, valorPago: 2m, status: "parcial");                             // fatura paga em parte: debita o que foi pago
+        await api.FaturaPagaNoBancoAsync(loja.Id, contaDoCartao: conta, valorPago: 1m, status: "financiada");                          // fatura financiada: idem
+        await api.FaturaPagaNoBancoAsync(loja.Id, contaDoCartao: conta, valorPago: 1000m, status: "pendente");                         // pendente não conta
 
-        // 100 + 50 - 20 + 10 - 5 + 3 - 7 - 4
+        // 100 + 50 - 20 + 10 - 5 + 3 - 7 - 4 - 2 - 1
         var lista = (await loja.Painel.Get($"{Rota}/contas")).Json.EnumerateArray().ToList();
-        Assert.Equal(127m, lista.Single(c => c.GetProperty("id").GetGuid() == conta).GetProperty("saldoAtual").GetDecimal());
+        Assert.Equal(124m, lista.Single(c => c.GetProperty("id").GetGuid() == conta).GetProperty("saldoAtual").GetDecimal());
         Assert.Equal(-1000m, lista.Single(c => c.GetProperty("id").GetGuid() == outraConta).GetProperty("saldoAtual").GetDecimal());
 
         var atualizada = await loja.Painel.Put($"{Rota}/contas/{conta}", new { nome = "Principal", saldoInicial = 100m });      // o mesmo saldo pelo caminho da conta única
-        Assert.Equal(127m, atualizada.Json.GetProperty("saldoAtual").GetDecimal());
+        Assert.Equal(124m, atualizada.Json.GetProperty("saldoAtual").GetDecimal());
     }
 
     [FatoIntegracao]
