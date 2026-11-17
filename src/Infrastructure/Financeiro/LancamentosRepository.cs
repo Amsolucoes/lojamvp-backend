@@ -77,6 +77,9 @@ public class LancamentosRepository(AppDbContext db) : ILancamentosRepository
     public Task<LancamentoFinanceiro?> ObterPrimeiraOcorrenciaDoFixoAsync(Guid fixoId) =>
         db.LancamentosFinanceiros.Where(l => l.LancamentoFixoId == fixoId).OrderBy(l => l.Vencimento).FirstOrDefaultAsync();
 
+    public Task<List<LancamentoFinanceiro>> ListarTodosDoFixoAsync(Guid fixoId, Guid lojaId) =>
+        db.LancamentosFinanceiros.Where(l => l.LojaId == lojaId && l.LancamentoFixoId == fixoId).ToListAsync();
+
     public void Adicionar(LancamentoFinanceiro lancamento) => db.LancamentosFinanceiros.Add(lancamento);
     public void Adicionar(IEnumerable<LancamentoFinanceiro> lancamentos) => db.LancamentosFinanceiros.AddRange(lancamentos);
     public void Remover(LancamentoFinanceiro lancamento) => db.LancamentosFinanceiros.Remove(lancamento);

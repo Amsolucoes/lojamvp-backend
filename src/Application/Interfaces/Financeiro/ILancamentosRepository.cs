@@ -19,6 +19,7 @@ public interface ILancamentosRepository
     Task<List<LancamentoFinanceiro>> ListarPendentesDoGrupoAsync(Guid grupoId, Guid lojaId, DateTime? aPartirDe);
     Task<List<LancamentoFinanceiro>> ListarPendentesDoFixoAsync(Guid fixoId, Guid lojaId, DateTime aPartirDe);
     Task<LancamentoFinanceiro?> ObterPrimeiraOcorrenciaDoFixoAsync(Guid fixoId);
+    Task<List<LancamentoFinanceiro>> ListarTodosDoFixoAsync(Guid fixoId, Guid lojaId);              // todas as ocorrências, qualquer status
     void Adicionar(LancamentoFinanceiro lancamento);
     void Adicionar(IEnumerable<LancamentoFinanceiro> lancamentos);
     void Remover(LancamentoFinanceiro lancamento);
