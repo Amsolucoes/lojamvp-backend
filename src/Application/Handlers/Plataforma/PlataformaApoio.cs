@@ -28,6 +28,16 @@ public static class PlataformaApoio
         }
     }
 
+    // A fatura em aberto guarda o valor de quando foi gerada. Quando a mensalidade da loja muda (módulo ligado/desligado, valor
+    // trocado pelo admin), a fatura em aberto acompanha, senão o cliente seria cobrado pelo valor antigo. Se já existe uma
+    // cobrança gerada no Mercado Pago (Pix, boleto ou cartão), o valor dela não muda mais, então a fatura fica como está.
+    public static async Task SincronizarFaturaEmAbertoAsync(IPlataformaRepository repositorio, Loja loja)
+    {
+        var fatura = await repositorio.ObterFaturaEmAbertoAsync(loja.Id);
+        if (fatura is null || !string.IsNullOrEmpty(fatura.MpPaymentId)) return;
+        fatura.Valor = loja.MensalidadeValor;
+    }
+
     public static PagamentoDto ParaDto(Pagamento p) => new(
         p.Id, p.LojaId, p.Loja?.Nome ?? "",
         p.Valor, p.Status,

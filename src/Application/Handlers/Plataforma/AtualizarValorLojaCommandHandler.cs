@@ -2,7 +2,7 @@ using LojaApi.Shared.Application;
 
 namespace LojaApi.Application.Plataforma;
 
-// Muda o valor da mensalidade (vale para as próximas faturas) e, se pedido e houver assinatura ativa, também a assinatura no Mercado Pago.
+// Muda o valor da mensalidade (vale para a fatura em aberto, se ainda não tem cobrança gerada, e para as próximas) e, se pedido e houver assinatura ativa, também a assinatura no Mercado Pago.
 // Se o Mercado Pago falhar, o valor da loja muda mesmo assim e a resposta traz um aviso.
 public class AtualizarValorLojaCommandHandler(IPlataformaRepository repositorio, IGatewayDePagamentoPlataforma gateway) : ICommandHandler<AtualizarValorLojaCommand>
 {
@@ -35,6 +35,7 @@ public class AtualizarValorLojaCommandHandler(IPlataformaRepository repositorio,
         }
 
         loja.AtualizadoEm = DateTime.UtcNow;
+        await PlataformaApoio.SincronizarFaturaEmAbertoAsync(repositorio, loja);
         await repositorio.SalvarAsync();
 
         return Resultado.Ok(new ValorAtualizadoDto(
