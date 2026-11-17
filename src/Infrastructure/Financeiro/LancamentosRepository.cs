@@ -30,6 +30,17 @@ public class LancamentosRepository(AppDbContext db) : ILancamentosRepository
             .ToListAsync();
     }
 
+    public Task<List<LancamentoListadoDto>> ListarPorTipoAsync(Guid lojaId, string tipo, DateTime? inicio, DateTime? fim)
+    {
+        var q = db.LancamentosFinanceiros.Where(l => l.LojaId == lojaId && l.Tipo == tipo);
+        if (inicio.HasValue && fim.HasValue) q = q.Where(l => l.Vencimento >= inicio.Value && l.Vencimento < fim.Value);
+
+        return q.OrderBy(l => l.Vencimento)
+            .Select(l => new LancamentoListadoDto(l.Id, l.ContaBancariaId, l.Descricao, l.Categoria != null ? l.Categoria.Nome : null, l.Modo, l.Valor, l.Vencimento, l.Status,
+                l.PagoEm, l.NumeroParcela, l.TotalParcelas, "lancamento"))
+            .ToListAsync();
+    }
+
     public Task<List<string>> ListarDescricoesRecentesAsync(Guid lojaId, string tipo) =>
         db.LancamentosFinanceiros
             .Where(l => l.LojaId == lojaId && l.Tipo == tipo)

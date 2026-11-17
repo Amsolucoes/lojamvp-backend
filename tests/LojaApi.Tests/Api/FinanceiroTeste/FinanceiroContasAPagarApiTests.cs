@@ -287,4 +287,89 @@ public class FinanceiroContasAPagarApiTests(ApiFixture api)
         Assert.Equal(("Fatura zerada", 0m, "pago", 1m), (Texto(f, "cartaoNome"), f.GetProperty("total").GetDecimal(), Texto(f, "status"), f.GetProperty("valorPago").GetDecimal()));
         Assert.DoesNotContain(lista, x => x.GetProperty("cartaoId").GetGuid() == vazio);
     }
+
+    // ── Autocorreção, vários cartões e adiantamentos ─────────────────────────
+
+    [FatoIntegracao]
+    public async Task Pagar_unificado_e_listar_lancamentos_corrigem_antes_o_vencimento_das_parcelas_de_financiamento()
+    {
+        var (loja, conta, cartao) = await CenarioAsync();
+        async Task<Guid> ParcelaErradaAsync(string descricao) => await api.NoBancoAsync(async db =>
+        {
+            // nasceu em 02/01/2032 (antes do fechamento de 10/01): deveria vencer em 15/01, mas está com a data de junho
+            var l = new LojaApi.Models.LancamentoFinanceiro
+            {
+                LojaId = loja.Id, ContaBancariaId = conta, Tipo = "pagar", Modo = "parcelada", Descricao = descricao, Valor = 5m, Vencimento = Utc(2032, 6, 15), Status = "pendente",
+                GrupoParcelamentoId = Guid.NewGuid(), NumeroParcela = 1, TotalParcelas = 1, CartaoOrigemId = cartao, CriadoEm = Utc(2032, 1, 2),
+            };
+            db.LancamentosFinanceiros.Add(l);
+            await db.SaveChangesAsync();
+            return l.Id;
+        });
+        var viaPagar = await ParcelaErradaAsync("Errada pagar");
+
+        var linhas = Linhas(await loja.Painel.Get(Pagar()));
+
+        Assert.Equal(Utc(2032, 1, 15), (await api.LancamentoNoBancoPorIdAsync(viaPagar)).Vencimento);
+        var fatura = Assert.Single(linhas);
+        Assert.Equal(("Fatura Cartão Pagar (parcela de financiamento)", 5m), (Texto(fatura, "descricao"), fatura.GetProperty("valor").GetDecimal()));
+
+        var viaLista = await ParcelaErradaAsync("Errada lista");
+        await loja.Painel.Get($"{Rota}/lancamentos?tipo=pagar");
+        Assert.Equal(Utc(2032, 1, 15), (await api.LancamentoNoBancoPorIdAsync(viaLista)).Vencimento);
+    }
+
+    [FatoIntegracao]
+    public async Task Faturas_do_mes_com_varios_cartoes_nao_mistura_parcelas_nem_cronogramas_nem_adiantamentos()
+    {
+        var (loja, conta, cartaoA) = await CenarioAsync("Cartão A");
+        var cartaoB = await loja.CartaoPelaApiAsync(conta, "Cartão B");
+        await loja.CompraNoCartaoAsync(cartaoA, 100m, "2032-01-05");
+        await loja.CompraNoCartaoAsync(cartaoB, 10m, "2032-01-05");
+        await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartaoA, Utc(2032, 1, 15), 25m);
+        // adiantamentos: dois na fatura do A (somam), nenhum na do B
+        await loja.Painel.Post($"{Rota}/cartoes/{cartaoA}/fatura/antecipado?ano=2032&mes=1", new { valor = 10m, data = "2025-01-10", contaBancariaId = conta });
+        await loja.Painel.Post($"{Rota}/cartoes/{cartaoA}/fatura/antecipado?ano=2032&mes=1", new { valor = 20m, data = "2025-01-11", contaBancariaId = conta });
+        // parcela exatamente à meia-noite do mês seguinte: pertence a fevereiro, não entra na fatura de janeiro
+        await api.NoBancoAsync(async db =>
+        {
+            db.LancamentosFinanceiros.Add(new LojaApi.Models.LancamentoFinanceiro
+            {
+                LojaId = loja.Id, ContaBancariaId = conta, Tipo = "pagar", Modo = "parcelada", Descricao = "De fevereiro", Valor = 7m, Vencimento = Utc(2032, 2, 1, 0), Status = "pendente",
+                GrupoParcelamentoId = Guid.NewGuid(), NumeroParcela = 1, TotalParcelas = 1, CartaoOrigemId = cartaoB,
+            });
+            await db.SaveChangesAsync();
+        });
+
+        var lista = Linhas(await loja.Painel.Get(Faturas())).ToDictionary(x => Texto(x, "cartaoNome"));
+
+        Assert.Equal((100m, 25m, 125m, 30m, 95m), (lista["Cartão A"].GetProperty("totalCompras").GetDecimal(), lista["Cartão A"].GetProperty("totalParcelasFinanciamento").GetDecimal(),
+            lista["Cartão A"].GetProperty("total").GetDecimal(), lista["Cartão A"].GetProperty("totalAntecipado").GetDecimal(), lista["Cartão A"].GetProperty("restante").GetDecimal()));
+        Assert.Equal((10m, 0m, 10m, 0m, 10m), (lista["Cartão B"].GetProperty("totalCompras").GetDecimal(), lista["Cartão B"].GetProperty("totalParcelasFinanciamento").GetDecimal(),
+            lista["Cartão B"].GetProperty("total").GetDecimal(), lista["Cartão B"].GetProperty("totalAntecipado").GetDecimal(), lista["Cartão B"].GetProperty("restante").GetDecimal()));
+
+        var agrupado = Linhas(await loja.Painel.Get(Pagar())).ToDictionary(x => Texto(x, "cartaoNome"));
+        Assert.Equal(95m, agrupado["Cartão A"].GetProperty("valor").GetDecimal());
+        Assert.Equal(10m, agrupado["Cartão B"].GetProperty("valor").GetDecimal());
+    }
+
+    [FatoIntegracao]
+    public async Task Faturas_do_mes_mostra_so_o_cronograma_da_fatura_de_cada_cartao()
+    {
+        var (loja, conta, cartaoA) = await CenarioAsync("Cartão A");
+        var cartaoB = await loja.CartaoPelaApiAsync(conta, "Cartão B");
+        foreach (var cartao in new[] { cartaoA, cartaoB })
+        {
+            await loja.CompraNoCartaoAsync(cartao, 100m, "2032-01-05");
+            await loja.Painel.Post($"{Rota}/cartoes/{cartao}/fatura/pagamento?ano=2032&mes=1", new { modo = "parcelado", totalParcelas = 2 });
+        }
+
+        var lista = Linhas(await loja.Painel.Get(Faturas()));
+
+        Assert.Equal(2, lista.Count);
+        Assert.All(lista, f => Assert.Equal(2, f.GetProperty("parcelas").GetArrayLength()));
+        var idsA = (await api.LancamentosDaLojaNoBancoAsync(loja.Id)).Where(l => l.CartaoOrigemId == cartaoA).Select(l => l.Id).ToHashSet();
+        var doA = lista.Single(f => Texto(f, "cartaoNome") == "Cartão A").GetProperty("parcelas").EnumerateArray().Select(p => p.GetProperty("id").GetGuid());
+        Assert.All(doA, id => Assert.Contains(id, idsA));
+    }
 }
