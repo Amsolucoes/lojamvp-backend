@@ -445,6 +445,46 @@ public class FinanceiroLancamentosApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Pagar_lote_na_conta_grava_a_forma_de_pagamento_normalizada_inclusive_nas_partes_e_no_juros()
+    {
+        var loja = await NovaAsync();
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var simples = await loja.AvulsoPelaApiAsync(c1, "pagar", "Simples", 10m);
+        var dividida = await loja.AvulsoPelaApiAsync(c1, "pagar", "Dividida", 100m);
+        var semForma = await loja.AvulsoPelaApiAsync(c1, "pagar", "Sem forma", 5m);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { simples }, forma = "conta", contaBancariaId = c1, formaPagamento = " PIX ", acrescimo = 1m })).DeveSerSucesso();
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new
+        {
+            ids = new[] { dividida }, forma = "conta", formaPagamento = "Débito",
+            divisoes = new object[] { new { contaBancariaId = c1, valor = 60m }, new { contaBancariaId = c2, valor = 40m } },
+        })).DeveSerSucesso();
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { semForma }, forma = "conta", contaBancariaId = c1 })).DeveSerSucesso();
+
+        var lancs = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal("pix", lancs.Single(l => l.Id == simples).FormaPagamento);
+        Assert.Equal("pix", lancs.Single(l => l.Descricao == "Juros/multa - Simples").FormaPagamento);
+        Assert.All(lancs.Where(l => l.Descricao.StartsWith("Dividida")), l => Assert.Equal("debito", l.FormaPagamento));
+        Assert.Null(lancs.Single(l => l.Id == semForma).FormaPagamento);
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_rejeita_forma_de_pagamento_desconhecida_e_ignora_a_forma_no_cartao()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var cartao = await api.CartaoNoBancoAsync(loja.Id, conta);
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Conta", 50m);
+
+        Assert.Equal(400, (await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "conta", contaBancariaId = conta, formaPagamento = "cheque" }))).Item1);
+        Assert.Equal("pendente", (await api.LancamentoNoBancoPorIdAsync(id)).Status);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "cartao", cartaoId = cartao, formaPagamento = "pix" })).DeveSerSucesso();
+        Assert.Single(await api.LancamentosDeCartaoNoBancoAsync(loja.Id));
+    }
+
+    [FatoIntegracao]
     public async Task Pagar_lote_no_cartao_parcelado_divide_em_parcelas_e_a_ultima_absorve_os_centavos()
     {
         var loja = await NovaAsync();

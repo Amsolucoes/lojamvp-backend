@@ -102,6 +102,7 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
                 vencimento = l.Vencimento,
                 status = l.Status,
                 pagoEm = l.PagoEm,
+                formaPagamento = l.FormaPagamento,
                 numeroParcela = l.NumeroParcela,
                 totalParcelas = l.TotalParcelas,
                 origem = "avulso",

@@ -27,6 +27,10 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
         if (req.Acrescimo < 0) return Resultado.Invalido("O juros/multa não pode ser negativo.");
         var acrescimo = Math.Round(req.Acrescimo, 2);
 
+        if (!LancamentosRegras.TentarNormalizarFormaPagamento(req.FormaPagamento, out var formaPagamento))
+            return Resultado.Invalido("Forma de pagamento inválida. Use pix, boleto, débito, dinheiro, transferência ou outro.");
+        if (req.Forma != "conta") formaPagamento = null; // no cartão a forma já é o crédito
+
         var agora = DateTime.UtcNow;
         var dataBase = LancamentosRegras.AoMeioDia(req.Data ?? agora);
         var total = lancs.Sum(l => l.Valor);
@@ -67,6 +71,7 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
             original.ContaBancariaId = partes[0].ContaId;
             original.Status = "pago";
             original.PagoEm = pagoEm;
+            original.FormaPagamento = formaPagamento;
 
             for (int i = 1; i < n; i++)
             {
@@ -82,6 +87,7 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                     Vencimento = original.Vencimento,
                     Status = "pago",
                     PagoEm = pagoEm,
+                    FormaPagamento = formaPagamento,
                     Observacao = original.Observacao,
                 });
             }
@@ -100,6 +106,7 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                     Vencimento = dataBase,
                     Status = "pago",
                     PagoEm = pagoEm,
+                    FormaPagamento = formaPagamento,
                 });
             }
         }
@@ -113,6 +120,7 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                 l.ContaBancariaId = conta.Id;
                 l.Status = "pago";
                 l.PagoEm = req.Data.HasValue ? dataBase : agora;
+                l.FormaPagamento = formaPagamento;
             }
 
             if (acrescimo > 0)
@@ -129,6 +137,7 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                     Vencimento = dataBase,
                     Status = "pago",
                     PagoEm = req.Data.HasValue ? dataBase : agora,
+                    FormaPagamento = formaPagamento,
                 });
             }
         }
