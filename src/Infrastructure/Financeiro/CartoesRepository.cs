@@ -34,6 +34,12 @@ public class CartoesRepository(AppDbContext db) : ICartoesRepository
     public Task<LancamentoCartao?> ObterCompraAsync(Guid id, Guid lojaId) =>
         db.LancamentosCartao.Include(l => l.CartaoCredito).FirstOrDefaultAsync(l => l.Id == id && l.CartaoCredito!.LojaId == lojaId);
 
+    public Task<LancamentoCartao?> ObterCompraDaLojaAsync(Guid id, Guid lojaId) =>
+        db.LancamentosCartao.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
+
+    public Task<List<LancamentoCartao>> ListarComprasDoFixoAsync(Guid fixoId, Guid lojaId) =>
+        db.LancamentosCartao.Where(l => l.LojaId == lojaId && l.CartaoFixoId == fixoId).ToListAsync();
+
     public Task<List<LancamentoCartao>> ListarGrupoDeComprasAsync(Guid grupoId, Guid lojaId) =>
         db.LancamentosCartao.Where(l => l.GrupoParcelamentoId == grupoId && l.LojaId == lojaId).ToListAsync();
 

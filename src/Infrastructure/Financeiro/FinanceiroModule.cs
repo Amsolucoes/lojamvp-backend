@@ -13,6 +13,7 @@ public static class FinanceiroModule
         services.AddScoped<IGeradorDeComprasFixas, GeradorDeComprasFixasAdapter>();
         services.AddScoped<IFaturasRepository, FaturasRepository>();
         services.AddScoped<IContasAPagarConsultas, ContasAPagarConsultas>();
+        services.AddScoped<IPlanejamentoRepository, PlanejamentoRepository>();
         services.AddScoped<CorrecaoDeFinanciamentos>();
         services.AddScoped<CicloAtualDoCartao>();
         services.AddHandlersDoModulo("Financeiro");   // todos os handlers de Application/Handlers/Financeiro

@@ -17,6 +17,8 @@ public interface ICartoesRepository
 
     // ── Compras ──
     Task<LancamentoCartao?> ObterCompraAsync(Guid id, Guid lojaId);                                 // com o cartão
+    Task<LancamentoCartao?> ObterCompraDaLojaAsync(Guid id, Guid lojaId);                           // pela loja da própria compra
+    Task<List<LancamentoCartao>> ListarComprasDoFixoAsync(Guid fixoId, Guid lojaId);                // todas, de qualquer mês
     Task<List<LancamentoCartao>> ListarGrupoDeComprasAsync(Guid grupoId, Guid lojaId);
     Task<List<LancamentoCartao>> ListarComprasDoFixoAPartirDeAsync(Guid fixoId, Guid lojaId, DateTime desde);
     Task<HashSet<(int Ano, int Mes)>> ListarMesesDeFaturasPagasAsync(Guid cartaoId);
