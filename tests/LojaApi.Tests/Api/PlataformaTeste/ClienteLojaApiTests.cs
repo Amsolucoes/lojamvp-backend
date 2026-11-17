@@ -256,6 +256,38 @@ public class ClienteLojaApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Alternar_modulo_atualiza_a_assinatura_recorrente_no_mercado_pago_e_nao_falha_se_o_mercado_pago_falhar()
+    {
+        var loja = await NovaAsync();
+        var modulo = await api.NoBancoAsync(db => db.ModulosPreco.AsNoTracking().FirstAsync(m => m.Chave == "financeiro"));
+        await api.NoBancoAsync(db => db.ModulosPreco.Where(m => m.Id == modulo.Id).ExecuteUpdateAsync(s => s.SetProperty(m => m.DisponivelParaAtivar, true).SetProperty(m => m.Valor, 20m)));
+        try
+        {
+            await AlterarLojaAsync(loja.Id, l => { l.ModulosAtivos = ""; l.MensalidadeValor = 100m; l.ModulosAlteradoEm = new(); l.MpPreapprovalId = "pre-modulo"; l.AssinaturaStatus = "authorized"; });
+
+            (await loja.Painel.Patch("/api/loja/modulos", new { chave = "financeiro", ativar = true })).DeveSerSucesso();
+            Assert.Contains(api.MercadoPago.ValoresAtualizados, v => v.PreapprovalId == "pre-modulo" && v.Valor == 120m);
+
+            var antes = api.MercadoPago.ValoresAtualizados.Count;
+            (await loja.Painel.Patch("/api/loja/modulos", new { chave = "financeiro", ativar = true })).DeveSerSucesso();       // já ligado: valor igual, nada a sincronizar
+            Assert.Equal(antes, api.MercadoPago.ValoresAtualizados.Count);
+
+            await AlterarLojaAsync(loja.Id, l => { l.ModulosAtivos = ""; l.MensalidadeValor = 100m; l.ModulosAlteradoEm = new(); });
+            api.MercadoPago.FalharAtualizacaoDeValor = true;
+            try
+            {
+                var r = (await loja.Painel.Patch("/api/loja/modulos", new { chave = "financeiro", ativar = true })).Json;
+                Assert.Equal(120m, r.GetProperty("mensalidadeValor").GetDecimal());                                                // o módulo liga mesmo se o Mercado Pago falhar
+            }
+            finally { api.MercadoPago.FalharAtualizacaoDeValor = false; }
+        }
+        finally
+        {
+            await api.NoBancoAsync(db => db.ModulosPreco.Where(m => m.Id == modulo.Id).ExecuteUpdateAsync(s => s.SetProperty(m => m.DisponivelParaAtivar, modulo.DisponivelParaAtivar).SetProperty(m => m.Valor, modulo.Valor)));
+        }
+    }
+
+    [FatoIntegracao]
     public async Task Alternar_modulo_valida_disponibilidade_soma_e_subtrai_a_mensalidade_e_aplica_o_cooldown_de_30_dias()
     {
         var loja = await NovaAsync();
@@ -269,9 +301,9 @@ public class ClienteLojaApiTests(ApiFixture api)
 
             var ativou = (await loja.Painel.Patch("/api/loja/modulos", new { chave = "financeiro", ativar = true })).Json;
             Assert.Equal(("financeiro", 120m), (ativou.GetProperty("modulosAtivos").GetString()!, ativou.GetProperty("mensalidadeValor").GetDecimal()));
-            // defeito antigo mantido: ativar de novo um módulo que já está ativo soma o valor outra vez (a lista não duplica, a mensalidade sim)
+            // ligar de novo um módulo que já está ligado não soma o valor outra vez
             var denovo = (await loja.Painel.Patch("/api/loja/modulos", new { chave = "financeiro", ativar = true })).Json;
-            Assert.Equal(("financeiro", 140m), (denovo.GetProperty("modulosAtivos").GetString()!, denovo.GetProperty("mensalidadeValor").GetDecimal()));
+            Assert.Equal(("financeiro", 120m), (denovo.GetProperty("modulosAtivos").GetString()!, denovo.GetProperty("mensalidadeValor").GetDecimal()));
 
             await AlterarLojaAsync(loja.Id, l => { l.ModulosAtivos = "servicos,financeiro"; l.MensalidadeValor = 100m; });
             var desativou = (await loja.Painel.Patch("/api/loja/modulos", new { chave = "financeiro", ativar = false })).Json;
