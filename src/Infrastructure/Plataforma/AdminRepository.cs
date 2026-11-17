@@ -52,6 +52,47 @@ public class AdminRepository(AppDbContext db) : IAdminRepository
     public Task<List<Pagamento>> ListarPagamentosDaLojaAsync(Guid lojaId) =>
         db.Pagamentos.Include(p => p.Loja).Where(p => p.LojaId == lojaId).OrderByDescending(p => p.Vencimento).ToListAsync();
 
+    public async Task<PaginaPagamentosAdmin> ListarPagamentosDeTodasAsLojasAsync(FiltroPagamentosAdmin f, DateTime agora)
+    {
+        var q = db.Pagamentos.AsNoTracking().AsQueryable();
+        if (!f.IncluirTeste) q = q.Where(p => !p.Loja!.EhTeste);
+        if (f.LojaId.HasValue) q = q.Where(p => p.LojaId == f.LojaId.Value);
+        if (!string.IsNullOrWhiteSpace(f.Busca))
+        {
+            var busca = f.Busca.Trim().ToLower();
+            q = q.Where(p => p.Loja!.Nome.ToLower().Contains(busca));
+        }
+        if (!string.IsNullOrWhiteSpace(f.Forma)) q = q.Where(p => p.FormaPagamento == f.Forma);
+        if (f.Ano.HasValue)
+        {
+            var inicio = new DateTime(f.Ano.Value, f.Mes ?? 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var fim = f.Mes.HasValue ? inicio.AddMonths(1) : inicio.AddYears(1);
+            q = q.Where(p => p.Vencimento >= inicio && p.Vencimento < fim);
+        }
+
+        // Os totais mostram o quadro do período inteiro, então ficam fora do filtro de status
+        var atrasadas = q.Where(p => p.Status == "atrasado" || (p.Status == "pendente" && p.Vencimento < agora));
+        var aReceber = q.Where(p => p.Status == "pendente" && p.Vencimento >= agora);
+        var recebido = await q.Where(p => p.Status == "pago").SumAsync(p => (decimal?)p.Valor) ?? 0m;
+        var emAtraso = await atrasadas.SumAsync(p => (decimal?)p.Valor) ?? 0m;
+        var aReceberTotal = await aReceber.SumAsync(p => (decimal?)p.Valor) ?? 0m;
+
+        q = f.Status switch
+        {
+            "pago" => q.Where(p => p.Status == "pago"),
+            "atrasado" => atrasadas,
+            "pendente" => aReceber,
+            _ => q,
+        };
+
+        var total = await q.CountAsync();
+        var itens = await q.Include(p => p.Loja)
+            .OrderByDescending(p => p.Vencimento).ThenByDescending(p => p.CriadoEm)
+            .Skip((f.Pagina - 1) * f.Tamanho).Take(f.Tamanho)
+            .ToListAsync();
+        return new PaginaPagamentosAdmin(itens, total, recebido, emAtraso, aReceberTotal);
+    }
+
     public Task<List<ComunicadoDto>> ListarComunicadosAsync() =>
         db.ComunicadosEnviados
             .OrderByDescending(c => c.EnviadoEm)

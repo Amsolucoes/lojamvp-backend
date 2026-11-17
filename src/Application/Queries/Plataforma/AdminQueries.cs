@@ -6,5 +6,6 @@ public record DashboardAdminQuery();
 public record ListarLojasAdminQuery(string? Status, string? Busca);
 public record BuscarLojaAdminQuery(Guid Id);
 public record ListarPagamentosDaLojaQuery(Guid Id);
+public record ListarPagamentosAdminQuery(string? Status, Guid? LojaId, string? Busca, int? Ano, int? Mes, string? Forma, bool IncluirTeste, int Pagina, int Tamanho);
 public record ListarComunicadosQuery();
 public record BackupDaLojaQuery(Guid Id);
