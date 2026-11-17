@@ -513,6 +513,104 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         Assert.Equal(30m, Num(Assert.Single(depois.Json.EnumerateArray()), "usado"));
     }
 
+    // ── Lacunas apontadas pelo revisor ───────────────────────────────────────
+
+    [FatoIntegracao]
+    public async Task Relatorios_usam_a_fatura_e_o_adiantamento_de_cada_cartao_sem_misturar_os_da_mesma_loja()
+    {
+        var (loja, conta, cartaoA) = await CenarioAsync("Cartão A");
+        var cartaoB = await loja.CartaoPelaApiAsync(conta, "Cartão B");
+        await CompraDiretaAsync(loja, cartaoA, 100m, Utc(2024, 2, 20));
+        await CompraDiretaAsync(loja, cartaoB, 200m, Utc(2024, 2, 20));
+        await FaturaNoBancoAsync(loja, cartaoA, 2024, 3, "pago", 100m);   // só a do cartão A está paga
+        await api.NoBancoAsync(async db =>
+        {
+            var faturaB = new FaturaCartao { LojaId = loja.Id, CartaoCreditoId = cartaoB, MesReferencia = Utc(2024, 3, 1, 0), Vencimento = Utc(2024, 3, 15), Total = 200m, Status = "pendente" };
+            db.FaturasCartao.Add(faturaB);
+            db.PagamentosAntecipadosFatura.Add(new PagamentoAntecipadoFatura { LojaId = loja.Id, FaturaCartaoId = faturaB.Id, ContaBancariaId = conta, Valor = 50m, Data = Utc(2024, 3, 1) });
+            await db.SaveChangesAsync();
+        });
+
+        var mensal = await loja.Painel.Get($"{Rota}/resumo-mensal?ano=2024&mes=3");
+        var balanco = await loja.Painel.Get($"{Rota}/balanco-por-categoria?ano=2024&mes=3");
+        var anual = await loja.Painel.Get($"{Rota}/resumo-anual?ano=2024");
+
+        // A: fatura paga (100 pago). B: pendente e vencida, com 50 já adiantados (150 vencido)
+        var pagar = mensal.Json.GetProperty("pagar");
+        Assert.Equal((100m, 150m), (Num(pagar, "totalPago"), Num(pagar, "totalVencido")));
+        Assert.Equal(250m, Num(Assert.Single(balanco.Json.GetProperty("despesas").EnumerateArray()), "valor"));
+        var marco = anual.Json.EnumerateArray().ElementAt(2);
+        Assert.Equal((250m, 100m), (Num(marco, "pagar"), Num(marco, "pagarPago")));
+    }
+
+    [FatoIntegracao]
+    public async Task Balanco_por_categoria_soma_o_cartao_e_o_plano_as_categorias_de_mesmo_nome()
+    {
+        var (loja, conta, cartao) = await CenarioAsync();
+        var cartaoCategoria = await CategoriaAsync(loja, "Cartão de Crédito");
+        var mensalidade = await CategoriaAsync(loja, "Mensalidade/Assinatura", "receber");
+        await loja.AvulsoPelaApiAsync(conta, "pagar", "Taxa", 50m, "2024-03-05", cartaoCategoria);
+        await loja.AvulsoPelaApiAsync(conta, "receber", "Avulsa", 40m, "2024-03-06", mensalidade);
+        await CompraDiretaAsync(loja, cartao, 300m, Utc(2024, 2, 20));
+        await PlanoNoBancoAsync(loja, 200m, (Utc(2024, 3, 1, 0), "pago", 120m));
+
+        var r = await loja.Painel.Get($"{Rota}/balanco-por-categoria?ano=2024&mes=3");
+
+        Assert.Equal([("Cartão de Crédito", 350m)], r.Json.GetProperty("despesas").EnumerateArray().Select(x => (Texto(x, "nome"), Num(x, "valor"))));
+        Assert.Equal([("Mensalidade/Assinatura", 160m)], r.Json.GetProperty("receitas").EnumerateArray().Select(x => (Texto(x, "nome"), Num(x, "valor"))));
+    }
+
+    [FatoIntegracao]
+    public async Task Comparativo_desmembrado_separa_os_anos_e_so_cria_financiamento_quando_ha_parcela()
+    {
+        var (loja, _, cartao) = await CenarioAsync();
+        var mercado = await CategoriaAsync(loja, "Mercado");
+        await CompraDiretaAsync(loja, cartao, 50m, Utc(2023, 12, 10), categoria: mercado);
+        await CompraDiretaAsync(loja, cartao, 20m, Utc(2024, 12, 10), categoria: mercado);
+
+        var r = await loja.Painel.Get($"{Rota}/balanco-comparativo?ano=2024&mes=1&desmembrar=true");
+
+        var linha = Assert.Single(r.Json.GetProperty("categorias").EnumerateArray());
+        Assert.Equal(("Mercado", 0m, 50m), (Texto(linha, "nome"), Num(linha, "atual"), Num(linha, "anterior")));
+        Assert.Equal(20m, linha.GetProperty("serie").EnumerateArray().Last().GetDecimal());
+    }
+
+    [FatoIntegracao]
+    public async Task Resumo_anual_projeta_a_receita_dos_planos_no_mes_atual_mas_nao_nos_anteriores()
+    {
+        var loja = await NovaAsync();
+        await PlanoNoBancoAsync(loja, 200m);
+        var hoje = DateTime.UtcNow;
+
+        var r = await loja.Painel.Get($"{Rota}/resumo-anual?ano={hoje.Year}");
+
+        var meses = r.Json.EnumerateArray().ToList();
+        Assert.Equal(200m, Num(meses[hoje.Month - 1], "receber"));
+        if (hoje.Month > 1) Assert.Equal(0m, Num(meses[hoje.Month - 2], "receber"));
+    }
+
+    [FatoIntegracao]
+    public async Task Cartoes_resumo_conta_compra_antiga_de_ciclo_ainda_nao_pago_dentro_da_janela()
+    {
+        var (loja, _, cartao) = await CenarioAsync("Cartão Antigo");
+        await CompraDiretaAsync(loja, cartao, 100m, DateTime.UtcNow.Date.AddMonths(-8).AddHours(12));
+
+        var r = await loja.Painel.Get($"{Rota}/cartoes-resumo");
+
+        Assert.Equal(100m, Num(Assert.Single(r.Json.EnumerateArray()), "usado"));
+    }
+
+    [FatoIntegracao]
+    public async Task Planejamento_com_meta_para_o_mes_atual_guarda_o_que_falta_de_uma_vez()
+    {
+        var loja = await NovaAsync();
+        await loja.Painel.Post($"{Rota}/planejamento/metas", new { nome = "Agora", valorAlvo = 900m, valorGuardado = 300m, dataAlvo = DateTime.UtcNow.ToString("yyyy-MM-dd") });
+
+        var r = await loja.Painel.Get($"{Rota}/planejamento?ano=2024&mes=3");
+
+        Assert.Equal(600m, Num(Assert.Single(r.Json.GetProperty("metas").EnumerateArray()), "porMes"));
+    }
+
     // ── Planejamento: GET ────────────────────────────────────────────────────
 
     [FatoIntegracao]
