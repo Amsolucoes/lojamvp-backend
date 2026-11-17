@@ -145,6 +145,22 @@ public class FinanceiroFaturasApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Pagar_total_atualiza_o_total_de_uma_fatura_que_ja_existia_com_compras_novas()
+    {
+        var (loja, conta, cartao) = await CenarioAsync();
+        await loja.CompraNoCartaoAsync(cartao, 100m, "2032-01-05");
+        await loja.Painel.Post(Fatura(cartao, "fatura/antecipado"), new { valor = 40m, data = "2025-01-10", contaBancariaId = conta });
+        Assert.Equal(100m, Assert.Single(await api.FaturasDoCartaoNoBancoAsync(cartao)).Total);
+        await loja.CompraNoCartaoAsync(cartao, 20m, "2032-01-08");
+
+        var r = await loja.Painel.Post(Fatura(cartao, "fatura/pagamento"), new { modo = "total" });
+
+        Assert.Equal((120m, 80m), (r.Json.GetProperty("total").GetDecimal(), r.Json.GetProperty("valorPago").GetDecimal()));
+        var fatura = Assert.Single(await api.FaturasDoCartaoNoBancoAsync(cartao));
+        Assert.Equal((120m, 80m), (fatura.Total, fatura.ValorPago));
+    }
+
+    [FatoIntegracao]
     public async Task Pagar_total_sem_data_usa_agora_e_sem_nao_afeta_saldo_a_parcela_continua_afetando()
     {
         var (loja, conta, cartao) = await CenarioAsync();
@@ -295,5 +311,103 @@ public class FinanceiroFaturasApiTests(ApiFixture api)
 
         Assert.Equal(404, (await outra.Painel.Get($"{Rota}/cartoes/{cartao}/faturas-referencia")).Codigo);
         Assert.Equal(404, (await loja.Painel.Get($"{Rota}/cartoes/{Guid.NewGuid()}/faturas-referencia")).Codigo);
+    }
+
+    // ── Autocorreção das parcelas de financiamento (roda ao ver a fatura) ────
+
+    [FatoIntegracao]
+    public async Task Ver_fatura_corrige_o_vencimento_das_parcelas_que_nasceram_no_ciclo_errado()
+    {
+        var (loja, conta, cartao) = await CenarioAsync();
+        var grupo = Guid.NewGuid();
+        var certa = await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2032, 1, 15), 10m);
+        await api.NoBancoAsync(async db =>
+        {
+            // as duas nasceram em 02/01/2032 (antes do fechamento de 10/01): a 1ª vence em jan, a 2ª em fev; ambas estão com a data errada
+            foreach (var (numero, vencimento) in new[] { (1, Utc(2032, 3, 15)), (2, Utc(2032, 4, 15)) })
+                db.LancamentosFinanceiros.Add(new LojaApi.Models.LancamentoFinanceiro
+                {
+                    LojaId = loja.Id, ContaBancariaId = conta, Tipo = "pagar", Modo = "parcelada", Descricao = $"Errada {numero}", Valor = 5m, Vencimento = vencimento, Status = "pendente",
+                    GrupoParcelamentoId = grupo, NumeroParcela = numero, TotalParcelas = 2, CartaoOrigemId = cartao, CriadoEm = Utc(2032, 1, 2),
+                });
+            await db.SaveChangesAsync();
+        });
+
+        await loja.Painel.Get(Fatura(cartao, ano: 2032, mes: 6));
+
+        var lista = (await api.LancamentosDaLojaNoBancoAsync(loja.Id)).ToDictionary(l => l.Descricao);
+        Assert.Equal((Utc(2032, 1, 15), Utc(2032, 2, 15)), (lista["Errada 1"].Vencimento, lista["Errada 2"].Vencimento));
+        Assert.Equal(Utc(2032, 1, 15), (await api.LancamentoNoBancoPorIdAsync(certa)).Vencimento);
+    }
+
+    [FatoIntegracao]
+    public async Task Ver_fatura_absorve_a_parcela_do_mes_de_uma_fatura_paga_parcialmente()
+    {
+        var (loja, conta, cartao) = await CenarioAsync();
+        await api.FaturaPagaDoMesNoBancoAsync(loja.Id, cartao, 2032, 1, "parcial");
+        var parcela = await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2032, 1, 15), 10m);
+        var outroMes = await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2032, 2, 15), 10m, numero: 2);
+
+        await loja.Painel.Get(Fatura(cartao, ano: 2032, mes: 6));
+
+        var fatura = Assert.Single(await api.FaturasDoCartaoNoBancoAsync(cartao));
+        var absorvida = await api.LancamentoNoBancoPorIdAsync(parcela);
+        Assert.Equal(("pago", true, fatura.PagoEm, $"Financiamento antigo (absorvida no pagamento parcial de {fatura.PagoEm!.Value:dd/MM/yyyy})"),
+            (absorvida.Status, absorvida.NaoAfetaSaldo, absorvida.PagoEm, absorvida.Descricao));
+        Assert.Equal(("pendente", false), ((await api.LancamentoNoBancoPorIdAsync(outroMes)).Status, (await api.LancamentoNoBancoPorIdAsync(outroMes)).NaoAfetaSaldo));
+    }
+
+    [FatoIntegracao]
+    public async Task Ver_fatura_financiada_mostra_a_entrada_e_de_qual_fatura_vieram_as_parcelas()
+    {
+        var (loja, _, cartao) = await CenarioAsync();
+        await loja.CompraNoCartaoAsync(cartao, 100m, "2032-01-05");
+        await loja.Painel.Post(Fatura(cartao, "fatura/pagamento"), new { modo = "parcelado", totalParcelas = 2, valorEntrada = 30m });
+        // simula que o financiamento foi feito na época (a autocorreção recalcula o vencimento pela data de criação da parcela)
+        await api.NoBancoAsync(db => db.LancamentosFinanceiros.Where(l => l.LojaId == loja.Id).ExecuteUpdateAsync(x => x.SetProperty(l => l.CriadoEm, Utc(2032, 1, 12))));
+
+        var janeiro = await loja.Painel.Get(Fatura(cartao));
+        var fevereiro = await loja.Painel.Get(Fatura(cartao, mes: 2));
+
+        Assert.Equal(("financiada", 30m), (janeiro.Json.GetProperty("status").GetString()!, janeiro.Json.GetProperty("valorEntrada").GetDecimal()));
+        var parcela = Assert.Single(fevereiro.Json.GetProperty("parcelasFinanciamento").EnumerateArray());
+        Assert.Equal((35m, 1, 2032), (parcela.GetProperty("valor").GetDecimal(), parcela.GetProperty("mesOrigemFatura").GetInt32(), parcela.GetProperty("anoOrigemFatura").GetInt32()));
+        Assert.Equal(35m, fevereiro.Json.GetProperty("total").GetDecimal());
+    }
+
+    [FatoIntegracao]
+    public async Task Parcelar_fatura_antiga_sem_data_joga_a_primeira_parcela_para_um_ciclo_que_ainda_nao_fechou()
+    {
+        var (loja, _, cartao) = await CenarioAsync();
+        var compra = DateTime.UtcNow.Date.AddDays(-150);
+        await loja.CompraNoCartaoAsync(cartao, 100m, compra.ToString("yyyy-MM-dd"));
+        var venc = CartaoRegras.VencimentoDaFaturaDaCompra(10, 15, compra.AddHours(12));
+
+        var r = await loja.Painel.Post(Fatura(cartao, "fatura/pagamento", ano: venc.Year, mes: venc.Month), new { modo = "parcelado", totalParcelas = 2 });
+
+        Assert.Equal(200, r.Codigo);
+        var parcelas = (await api.LancamentosDaLojaNoBancoAsync(loja.Id)).OrderBy(l => l.NumeroParcela).ToList();
+        Assert.Equal(2, parcelas.Count);
+        // o mês seguinte à fatura já passou: avança até um ciclo que ainda não fechou (a parcela vence depois do fechamento, que é depois de hoje)
+        Assert.True(parcelas[0].Vencimento.Date >= DateTime.UtcNow.Date, $"a 1ª parcela venceu no passado: {parcelas[0].Vencimento:yyyy-MM-dd}");
+        Assert.True(parcelas[0].Vencimento > venc.AddMonths(1));
+        Assert.Equal(parcelas[0].Vencimento.AddMonths(1).Month, parcelas[1].Vencimento.Month);
+    }
+
+    [FatoIntegracao]
+    public async Task Faturas_de_referencia_ignora_a_fatura_fechada_que_ja_foi_paga()
+    {
+        var (loja, _, cartao) = await CenarioAsync();
+        var compra = DateTime.UtcNow.Date.AddDays(-40);
+        await loja.CompraNoCartaoAsync(cartao, 80m, compra.ToString("yyyy-MM-dd"));
+        var venc = CartaoRegras.VencimentoDaFaturaDaCompra(10, 15, compra.AddHours(12));
+        await api.FaturaPagaDoMesNoBancoAsync(loja.Id, cartao, venc.Year, venc.Month);
+
+        var r = await loja.Painel.Get($"{Rota}/cartoes/{cartao}/faturas-referencia");
+
+        var aberta = r.Json.GetProperty("aberta");
+        var fechada = r.Json.GetProperty("fechada");
+        Assert.Equal((aberta.GetProperty("ano").GetInt32(), aberta.GetProperty("mes").GetInt32(), 0m, "pendente"),
+            (fechada.GetProperty("ano").GetInt32(), fechada.GetProperty("mes").GetInt32(), fechada.GetProperty("total").GetDecimal(), fechada.GetProperty("status").GetString()!));
     }
 }
