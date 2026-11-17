@@ -393,6 +393,58 @@ public class FinanceiroLancamentosApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Pagar_lote_dividido_em_duas_contas_cria_uma_parte_em_cada_e_o_juros_na_primeira()
+    {
+        var loja = await NovaAsync();
+        var origem = await loja.ContaPelaApiAsync("Origem");
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var id = await loja.AvulsoPelaApiAsync(origem, "pagar", "Fornecedor", 100m);
+
+        var r = await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new
+        {
+            ids = new[] { id }, forma = "conta", data = "2032-05-20", acrescimo = 5m,
+            divisoes = new object[] { new { contaBancariaId = c1, valor = 60m }, new { contaBancariaId = c2, valor = 40m } },
+        });
+
+        Assert.Equal(200, r.Codigo);
+        var lancs = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal(3, lancs.Count);
+        var primeira = lancs.Single(l => l.Id == id);
+        Assert.Equal(("Fornecedor (parte 1/2)", 60m, c1, "pago", Utc(2032, 5, 20)), (primeira.Descricao, primeira.Valor, primeira.ContaBancariaId, primeira.Status, primeira.PagoEm));
+        var segunda = Assert.Single(lancs, l => l.Descricao == "Fornecedor (parte 2/2)");
+        Assert.Equal((40m, c2, "pago"), (segunda.Valor, segunda.ContaBancariaId, segunda.Status));
+        var juros = Assert.Single(lancs, l => l.Descricao == "Juros/multa - Fornecedor");
+        Assert.Equal((5m, c1), (juros.Valor, juros.ContaBancariaId));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_dividido_valida_soma_contas_quantidade_forma_e_tipo_da_conta()
+    {
+        var loja = await NovaAsync();
+        var outra = await NovaAsync();
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var alheia = await outra.ContaPelaApiAsync();
+        var id = await loja.AvulsoPelaApiAsync(c1, "pagar", "Conta", 100m);
+        var outroId = await loja.AvulsoPelaApiAsync(c1, "pagar", "Outra", 10m);
+        var parcelado = await loja.ParceladoPelaApiAsync(c1);
+        var parcela = (await api.LancamentosDaLojaNoBancoAsync(loja.Id)).First(l => l.GrupoParcelamentoId == parcelado).Id;
+
+        object Div(params (Guid c, decimal v)[] p) => p.Select(x => (object)new { contaBancariaId = x.c, valor = x.v }).ToArray();
+        Task<Resposta> Pagar(Guid[] ids, string forma, object divisoes) => loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids, forma, divisoes });
+
+        Assert.Equal(400, (await Erro(Pagar([id], "conta", Div((c1, 50m), (c2, 40m))))).Item1);
+        Assert.Equal((400, "Para dividir, informe ao menos duas contas."), await Erro(Pagar([id], "conta", Div((c1, 100m)))));
+        Assert.Equal((400, "Escolha a conta de cada parte do pagamento."), await Erro(Pagar([id], "conta", Div((c1, 50m), (alheia, 50m)))));
+        Assert.Equal((400, "O valor de cada parte deve ser maior que zero."), await Erro(Pagar([id], "conta", Div((c1, 100m), (c2, 0m)))));
+        Assert.Equal((400, "A divisão do pagamento só vale para pagar pela conta."), await Erro(Pagar([id], "cartao", Div((c1, 50m), (c2, 50m)))));
+        Assert.Equal((400, "Só é possível dividir o pagamento de uma conta avulsa por vez."), await Erro(Pagar([id, outroId], "conta", Div((c1, 55m), (c2, 55m)))));
+        Assert.Equal((400, "Só é possível dividir o pagamento de uma conta avulsa por vez."), await Erro(Pagar([parcela], "conta", Div((c1, 25m), (c2, 25m)))));
+        Assert.Equal("pendente", (await api.LancamentoNoBancoPorIdAsync(id)).Status);
+    }
+
+    [FatoIntegracao]
     public async Task Pagar_lote_no_cartao_parcelado_divide_em_parcelas_e_a_ultima_absorve_os_centavos()
     {
         var loja = await NovaAsync();

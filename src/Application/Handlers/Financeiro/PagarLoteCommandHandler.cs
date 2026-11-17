@@ -8,6 +8,7 @@ namespace LojaApi.Application.Financeiro;
 // Forma "conta": paga no débito/dinheiro, saindo da conta bancária escolhida.
 // Forma "cartao": vira compra no cartão de crédito (à vista ou parcelada), mantendo descrição, categoria e observação;
 // a conta sai de Contas a Pagar e passa a compor a fatura do cartão.
+// Divisoes (só forma "conta", uma conta avulsa): o pagamento sai de mais de uma conta bancária; a soma tem de fechar com o valor da conta.
 // Acrescimo (juros/multa/taxa pagos a mais): vira um lançamento à parte na categoria "Juros" (conta) ou uma compra à vista no mesmo cartão.
 public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanceiroRepository financeiro) : ICommandHandler<PagarLoteCommand>
 {
@@ -30,7 +31,79 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
         var dataBase = LancamentosRegras.AoMeioDia(req.Data ?? agora);
         var total = lancs.Sum(l => l.Valor);
 
-        if (req.Forma == "conta")
+        var divisoes = req.Divisoes ?? [];
+        if (divisoes.Count > 0 && req.Forma != "conta") return Resultado.Invalido("A divisão do pagamento só vale para pagar pela conta.");
+
+        if (req.Forma == "conta" && divisoes.Count > 0)
+        {
+            if (divisoes.Count < 2) return Resultado.Invalido("Para dividir, informe ao menos duas contas.");
+            if (lancs.Count != 1 || lancs[0].Modo != "avulsa") return Resultado.Invalido("Só é possível dividir o pagamento de uma conta avulsa por vez.");
+            var original = lancs[0];
+
+            var partes = new List<(Guid ContaId, decimal Valor)>();
+            foreach (var d in divisoes)
+            {
+                var c = d.ContaBancariaId is { } id ? await financeiro.ObterContaAsync(id, lojaId) : null;
+                if (c is null) return Resultado.Invalido("Escolha a conta de cada parte do pagamento.");
+                var valor = Math.Round(d.Valor, 2);
+                if (valor <= 0) return Resultado.Invalido("O valor de cada parte deve ser maior que zero.");
+                partes.Add((c.Id, valor));
+            }
+            if (partes.Sum(x => x.Valor) != original.Valor)
+                return Resultado.Invalido($"A soma das partes deve ser igual ao valor da conta ({original.Valor:0.00}).");
+
+            var pagoEm = req.Data.HasValue ? dataBase : agora;
+            var n = partes.Count;
+            var descricaoBase = original.Descricao;
+            var descricaoJuros = DescricaoDoAcrescimo(lancs);
+            string Parte(int i)
+            {
+                var texto = $"{descricaoBase} (parte {i}/{n})";
+                return texto.Length <= 150 ? texto : texto[..150];
+            }
+
+            original.Descricao = Parte(1);
+            original.Valor = partes[0].Valor;
+            original.ContaBancariaId = partes[0].ContaId;
+            original.Status = "pago";
+            original.PagoEm = pagoEm;
+
+            for (int i = 1; i < n; i++)
+            {
+                repositorio.Adicionar(new LancamentoFinanceiro
+                {
+                    LojaId = lojaId,
+                    ContaBancariaId = partes[i].ContaId,
+                    Tipo = original.Tipo,
+                    Modo = "avulsa",
+                    Descricao = Parte(i + 1),
+                    CategoriaId = original.CategoriaId,
+                    Valor = partes[i].Valor,
+                    Vencimento = original.Vencimento,
+                    Status = "pago",
+                    PagoEm = pagoEm,
+                    Observacao = original.Observacao,
+                });
+            }
+
+            if (acrescimo > 0)
+            {
+                repositorio.Adicionar(new LancamentoFinanceiro
+                {
+                    LojaId = lojaId,
+                    ContaBancariaId = partes[0].ContaId,
+                    Tipo = "pagar",
+                    Modo = "avulsa",
+                    Descricao = descricaoJuros,
+                    CategoriaId = (await ObterOuCriarCategoriaJurosAsync(lojaId)).Id,
+                    Valor = acrescimo,
+                    Vencimento = dataBase,
+                    Status = "pago",
+                    PagoEm = pagoEm,
+                });
+            }
+        }
+        else if (req.Forma == "conta")
         {
             var conta = req.ContaBancariaId is { } contaId ? await financeiro.ObterContaAsync(contaId, lojaId) : null;
             if (conta is null) return Resultado.Invalido("Escolha a conta de onde sai o pagamento.");
