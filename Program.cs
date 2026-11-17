@@ -99,6 +99,13 @@ internal class Program
         builder.Services.AddSwaggerGen(c =>
         {
             c.SwaggerDoc("v1", new OpenApiInfo { Title = "Loja API", Version = "v1" });
+            // Nome completo (com namespace) como id do schema: tipos de módulos diferentes têm o mesmo nome
+            // (ex.: SalvarCategoriaRequest em Ajuda e em Plataforma) e o Swagger quebra com id repetido.
+            Func<Type, string> idDoSchema = null!;
+            idDoSchema = t => t.IsGenericType
+                ? t.Name[..t.Name.IndexOf('`')] + "Of" + string.Join("And", t.GetGenericArguments().Select(idDoSchema))
+                : t.FullName!.Replace('+', '.');
+            c.CustomSchemaIds(idDoSchema);
             c.OperationFilter<LojaApi.src.Utils.FileUploadOperationFilter>();
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
