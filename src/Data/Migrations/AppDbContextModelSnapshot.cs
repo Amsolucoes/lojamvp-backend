@@ -1600,6 +1600,11 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("fatura_cartao_id");
 
+                    b.Property<string>("FormaPagamento")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("forma_pagamento");
+
                     b.Property<Guid?>("GrupoParcelamentoId")
                         .HasColumnType("uuid")
                         .HasColumnName("grupo_parcelamento_id");

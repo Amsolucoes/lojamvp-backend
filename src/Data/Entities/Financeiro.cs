@@ -97,6 +97,10 @@ public class LancamentoFinanceiro
     // Origem, se veio de um lançamento fixo (aluguel, etc.)
     public Guid? LancamentoFixoId { get; set; }
 
+    // Como foi pago (informativo, não muda saldo): pix | boleto | debito | dinheiro | transferencia | outro
+    [MaxLength(20)]
+    public string? FormaPagamento { get; set; }
+
     // Se essa parcela veio do financiamento de uma fatura de cartão, aponta pra ela
     public Guid? FaturaCartaoId { get; set; }
 

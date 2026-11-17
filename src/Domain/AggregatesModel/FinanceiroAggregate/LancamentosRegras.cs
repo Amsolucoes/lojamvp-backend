@@ -3,6 +3,19 @@ namespace LojaApi.Domain.Financeiro;
 // Regras puras dos lançamentos financeiros (sem banco): vencimento, dia dos fixos, parcelamento e divisão em parcelas de cartão.
 public static class LancamentosRegras
 {
+    public static readonly string[] FormasDePagamento = ["pix", "boleto", "debito", "dinheiro", "transferencia", "outro"];
+
+    // Texto livre -> forma conhecida (sem maiúscula/acento); vazio vira null; desconhecida devolve false
+    public static bool TentarNormalizarFormaPagamento(string? texto, out string? forma)
+    {
+        forma = null;
+        if (string.IsNullOrWhiteSpace(texto)) return true;
+        var n = FinanceiroRegras.NormalizarNomeCategoria(texto);
+        if (!FormasDePagamento.Contains(n)) return false;
+        forma = n;
+        return true;
+    }
+
     public const int MinParcelasParcelamento = 2;
     public const int MaxParcelasParcelamento = 120;
     public const int MinTotalAlterado = 1;
