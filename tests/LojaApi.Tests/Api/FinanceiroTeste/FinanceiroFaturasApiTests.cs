@@ -410,4 +410,46 @@ public class FinanceiroFaturasApiTests(ApiFixture api)
         Assert.Equal((aberta.GetProperty("ano").GetInt32(), aberta.GetProperty("mes").GetInt32(), 0m, "pendente"),
             (fechada.GetProperty("ano").GetInt32(), fechada.GetProperty("mes").GetInt32(), fechada.GetProperty("total").GetDecimal(), fechada.GetProperty("status").GetString()!));
     }
+
+    [FatoIntegracao]
+    public async Task Autocorrecao_nao_mexe_nas_parcelas_nem_nas_faturas_parciais_de_outra_loja()
+    {
+        var (loja, _, cartao) = await CenarioAsync();
+        var (outra, contaAlheia, cartaoAlheio) = await CenarioAsync();
+        await api.FaturaPagaDoMesNoBancoAsync(outra.Id, cartaoAlheio, 2032, 1, "parcial");
+        var absorvivel = await api.ParcelaDeFinanciamentoNoBancoAsync(outra.Id, contaAlheia, cartaoAlheio, Utc(2032, 1, 15), 10m);
+        var grupo = Guid.NewGuid();
+        await api.NoBancoAsync(async db =>
+        {
+            // nasceu em 02/01/2032 (jan) mas está com a data errada: só a loja dona dela poderia corrigir
+            db.LancamentosFinanceiros.Add(new LojaApi.Models.LancamentoFinanceiro
+            {
+                LojaId = outra.Id, ContaBancariaId = contaAlheia, Tipo = "pagar", Modo = "parcelada", Descricao = "Errada alheia", Valor = 5m, Vencimento = Utc(2032, 6, 15), Status = "pendente",
+                GrupoParcelamentoId = grupo, NumeroParcela = 1, TotalParcelas = 1, CartaoOrigemId = cartaoAlheio, CriadoEm = Utc(2032, 1, 2),
+            });
+            await db.SaveChangesAsync();
+        });
+
+        await loja.Painel.Get(Fatura(cartao));
+        await loja.Painel.Get($"{Rota}/lancamentos?tipo=pagar");
+
+        var intacta = await api.LancamentoNoBancoPorIdAsync(absorvivel);
+        Assert.Equal(("pendente", false, Utc(2032, 1, 15)), (intacta.Status, intacta.NaoAfetaSaldo, intacta.Vencimento));
+        var errada = (await api.LancamentosDaLojaNoBancoAsync(outra.Id)).Single(l => l.Descricao == "Errada alheia");
+        Assert.Equal(Utc(2032, 6, 15), errada.Vencimento);
+    }
+
+    [FatoIntegracao]
+    public async Task Desfazer_fatura_nao_financiada_nao_apaga_as_parcelas_pendentes_ligadas_a_ela()
+    {
+        var (loja, conta, cartao) = await CenarioAsync();
+        await api.FaturaPagaDoMesNoBancoAsync(loja.Id, cartao, 2032, 1, "pendente");
+        var fatura = Assert.Single(await api.FaturasDoCartaoNoBancoAsync(cartao));
+        var parcela = await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2032, 3, 15), 25m, faturaId: fatura.Id);
+
+        var r = await loja.Painel.Post(Fatura(cartao, "fatura/pagamento"), new { modo = "desfazer" });
+
+        Assert.Equal(200, r.Codigo);
+        Assert.Equal("pendente", (await api.LancamentoNoBancoPorIdAsync(parcela)).Status);
+    }
 }

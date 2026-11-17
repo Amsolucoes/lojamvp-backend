@@ -9,6 +9,7 @@ public interface ILancamentosRepository
     // ── Leituras prontas para a API ──
     Task<List<LancamentoAReceberDto>> ListarAReceberAsync(Guid lojaId, DateTime? de, DateTime? ate);
     Task<List<MensalidadeDePlanoDto>> ListarMensalidadesDePlanosAsync(Guid lojaId, DateTime? de, DateTime? ate);
+    Task<List<LancamentoListadoDto>> ListarPorTipoAsync(Guid lojaId, string tipo, DateTime? inicio, DateTime? fim);   // por vencimento; [inicio, fim) se informado
     Task<List<string>> ListarDescricoesRecentesAsync(Guid lojaId, string tipo);                     // distintas, da mais nova, até 50
 
     // ── Lançamentos ──
