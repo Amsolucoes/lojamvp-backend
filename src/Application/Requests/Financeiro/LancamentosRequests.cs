@@ -11,4 +11,5 @@ public record ToggleAvisarRequest(bool Avisar);
 public record ParcelasIdsRequest(List<Guid> Ids);
 public record ParcelasPagamentoRequest(List<Guid> Ids, bool Pago);
 public record ParcelasTotalRequest(int Total);
-public record PagarLoteRequest(List<Guid> Ids, string Forma, Guid? ContaBancariaId, Guid? CartaoId, int Parcelas = 1, DateTime? Data = null, decimal Acrescimo = 0);
+public record PagarLoteRequest(List<Guid> Ids, string Forma, Guid? ContaBancariaId, Guid? CartaoId, int Parcelas = 1, DateTime? Data = null, decimal Acrescimo = 0, List<PagarDivisaoRequest>? Divisoes = null);
+public record PagarDivisaoRequest(Guid? ContaBancariaId, decimal Valor);
