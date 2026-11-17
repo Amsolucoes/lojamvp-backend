@@ -129,6 +129,37 @@ public static class CenariosFinanceiro
             await db.SaveChangesAsync();
         });
 
+    // ── Faturas (parte 3b) ───────────────────────────────────────────────────
+
+    public static async Task CompraNoCartaoAsync(this LojaTeste loja, Guid cartaoId, decimal valor, string dataCompra, string descricao = "Compra")
+    {
+        var r = await loja.Painel.Post($"{Rota}/cartoes/{cartaoId}/lancamentos", new { descricao, valor, dataCompra });
+        r.DeveSerSucesso();
+    }
+
+    public static Task<List<FaturaCartao>> FaturasDoCartaoNoBancoAsync(this ApiFixture api, Guid cartaoId) =>
+        api.NoBancoAsync(db => db.FaturasCartao.AsNoTracking().Where(f => f.CartaoCreditoId == cartaoId).OrderBy(f => f.MesReferencia).ToListAsync());
+
+    public static Task<List<PagamentoAntecipadoFatura>> AntecipadosDaFaturaNoBancoAsync(this ApiFixture api, Guid faturaId) =>
+        api.NoBancoAsync(db => db.PagamentosAntecipadosFatura.AsNoTracking().Where(p => p.FaturaCartaoId == faturaId).OrderBy(p => p.Data).ToListAsync());
+
+    // Parcela de financiamento de fatura antiga, ligada ao cartão, que vence na data informada
+    public static Task<Guid> ParcelaDeFinanciamentoNoBancoAsync(this ApiFixture api, Guid lojaId, Guid contaId, Guid cartaoId, DateTime vencimento, decimal valor, string status = "pendente", int numero = 1, int total = 2, Guid? faturaId = null) =>
+        api.NoBancoAsync(async db =>
+        {
+            var l = new LancamentoFinanceiro
+            {
+                LojaId = lojaId, ContaBancariaId = contaId, Tipo = "pagar", Modo = "parcelada", Descricao = "Financiamento antigo", Valor = valor, Vencimento = vencimento,
+                Status = status, PagoEm = status == "pago" ? DateTime.UtcNow : null, GrupoParcelamentoId = Guid.NewGuid(), NumeroParcela = numero, TotalParcelas = total,
+                CartaoOrigemId = cartaoId, FaturaCartaoId = faturaId,
+                // nascida antes do fechamento do ciclo, para a autocorreção de financiamentos não reposicionar a parcela
+                CriadoEm = vencimento.Date.AddDays(-13),
+            };
+            db.LancamentosFinanceiros.Add(l);
+            await db.SaveChangesAsync();
+            return l.Id;
+        });
+
     public static async Task SemVinculoAsync(this ApiFixture api, LojaTeste loja) =>
         await api.NoBancoAsync(db => db.UsuariosLoja.Where(ul => ul.LojaId == loja.Id).ExecuteUpdateAsync(s => s.SetProperty(ul => ul.Ativo, false)));
 }
