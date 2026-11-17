@@ -100,6 +100,13 @@ public class FinanceiroPlanejamentoApiTests(ApiFixture api)
         await loja.Painel.Put($"{Rota}/planejamento/categorias", new { itens = new object[] { new { categoriaId = aluguel, ativo = false, valor = 1200m, tipo = "qualquer" } } });
         var depois = await api.NoBancoAsync(db => db.PlanejamentoCategorias.AsNoTracking().Where(p => p.LojaId == loja.Id && p.CategoriaId == aluguel).ToListAsync());
         Assert.Equal((false, 1200m), (Assert.Single(depois).Ativo, depois[0].Valor));
+
+        // Atualizar o teto "receber" de uma categoria não mexe no teto "pagar" da mesma categoria
+        await loja.Painel.Put($"{Rota}/planejamento/categorias", new { itens = new object[] { new { categoriaId = ambos, ativo = true, valor = 70m, tipo = "receber" } } });
+        var doAmbos = await api.NoBancoAsync(db => db.PlanejamentoCategorias.AsNoTracking().Where(p => p.LojaId == loja.Id && p.CategoriaId == ambos).ToListAsync());
+        Assert.Equal(2, doAmbos.Count);
+        Assert.Equal((true, 70m), (doAmbos.Single(t => t.Tipo == "receber").Ativo, doAmbos.Single(t => t.Tipo == "receber").Valor));
+        Assert.Equal((true, 100m), (doAmbos.Single(t => t.Tipo == "pagar").Ativo, doAmbos.Single(t => t.Tipo == "pagar").Valor));
     }
 
     [FatoIntegracao]
