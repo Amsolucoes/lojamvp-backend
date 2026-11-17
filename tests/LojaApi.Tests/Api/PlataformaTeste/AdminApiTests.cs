@@ -57,7 +57,7 @@ public class AdminApiTests(ApiFixture api)
         var operador = await api.OperadorAsync(loja);
         var id = loja.Id;
 
-        foreach (var url in new[] { "dashboard", "lojas", $"lojas/{id}", $"lojas/{id}/pagamentos", "comunicados", $"lojas/{id}/backup" })
+        foreach (var url in new[] { "dashboard", "lojas", $"lojas/{id}", $"lojas/{id}/pagamentos", "pagamentos", "comunicados", $"lojas/{id}/backup" })
         {
             Assert.Equal(401, (await loja.Site.Get($"/api/admin/{url}")).Codigo);
             Assert.Equal(403, (await loja.Painel.Get($"/api/admin/{url}")).Codigo);                                      // admin da loja
@@ -205,6 +205,84 @@ public class AdminApiTests(ApiFixture api)
         var (comModulos, _, _) = await CriarLojaAsync(super, perfilId: perfilId, modulos: "financeiro");
         var b = await api.LojaNoBancoAsync(comModulos);
         Assert.Equal(("loja", "financeiro"), (b.TipoPlano, b.ModulosAtivos));                                           // o admin escolheu os módulos: o perfil não mexe
+    }
+
+    private Task InserirPagamentoAsync(Guid lojaId, decimal valor, string status, DateTime vencimento, string? forma = null) => api.NoBancoAsync(async db =>
+    {
+        db.Pagamentos.Add(new LojaApi.Models.Pagamento
+        {
+            LojaId = lojaId, Valor = valor, Status = status, Vencimento = vencimento,
+            PagoEm = status == "pago" ? vencimento : null, FormaPagamento = forma,
+        });
+        await db.SaveChangesAsync();
+    });
+
+    private static DateTime Dia(int ano, int mes, int dia) => new(ano, mes, dia, 12, 0, 0, DateTimeKind.Utc);
+
+    [FatoIntegracao]
+    public async Task Lista_de_pagamentos_filtra_por_loja_periodo_e_status_e_os_totais_ignoram_o_status()
+    {
+        var super = await SuperAsync();
+        var (loja, _, _) = await CriarLojaAsync(super);
+        await InserirPagamentoAsync(loja, 100m, "pago", Dia(2020, 3, 5), "pix");
+        await InserirPagamentoAsync(loja, 30m, "pendente", Dia(2020, 3, 20));          // venceu em 2020: atrasada
+        await InserirPagamentoAsync(loja, 20m, "atrasado", Dia(2020, 3, 25));
+        await InserirPagamentoAsync(loja, 50m, "pendente", Dia(2099, 1, 10));          // futura: a receber
+        await InserirPagamentoAsync(loja, 7m, "pago", Dia(2020, 4, 5), "boleto");      // outro mês
+
+        var todas = (await super.Get($"/api/admin/pagamentos?lojaId={loja}&ano=2020&mes=3")).Json;
+        Assert.Equal(["itens", "total", "pagina", "tamanho", "totais"], todas.EnumerateObject().Select(x => x.Name));
+        Assert.Equal(3, todas.GetProperty("total").GetInt32());
+        var t = todas.GetProperty("totais");
+        Assert.Equal((100m, 50m, 0m), (t.GetProperty("recebido").GetDecimal(), t.GetProperty("emAtraso").GetDecimal(), t.GetProperty("aReceber").GetDecimal()));
+        Assert.Equal([Dia(2020, 3, 25), Dia(2020, 3, 20), Dia(2020, 3, 5)], todas.GetProperty("itens").EnumerateArray().Select(i => i.GetProperty("vencimento").GetDateTime().ToUniversalTime()));
+
+        var atrasadas = (await super.Get($"/api/admin/pagamentos?lojaId={loja}&ano=2020&mes=3&status=atrasado")).Json;
+        Assert.Equal(2, atrasadas.GetProperty("total").GetInt32());
+        Assert.Equal(50m, atrasadas.GetProperty("totais").GetProperty("emAtraso").GetDecimal());   // total do período, não do filtro
+
+        var pagas = (await super.Get($"/api/admin/pagamentos?lojaId={loja}&ano=2020&status=pago")).Json;
+        Assert.Equal(2, pagas.GetProperty("total").GetInt32());
+
+        var futuras = (await super.Get($"/api/admin/pagamentos?lojaId={loja}&ano=2099&status=pendente")).Json;
+        Assert.Equal((1, 50m), (futuras.GetProperty("total").GetInt32(), futuras.GetProperty("totais").GetProperty("aReceber").GetDecimal()));
+
+        var boleto = (await super.Get($"/api/admin/pagamentos?lojaId={loja}&forma=BOLETO")).Json;
+        Assert.Equal(1, boleto.GetProperty("total").GetInt32());
+    }
+
+    [FatoIntegracao]
+    public async Task Lista_de_pagamentos_pagina_busca_por_nome_e_ignora_loja_de_teste_ate_pedir()
+    {
+        var super = await SuperAsync();
+        var (real, _, nomeReal) = await CriarLojaAsync(super);
+        var (teste, _, _) = await CriarLojaAsync(super, ehTeste: true);
+        foreach (var dia in new[] { 5, 10, 15 }) await InserirPagamentoAsync(real, 10m, "pago", Dia(2021, 6, dia));
+        await InserirPagamentoAsync(teste, 99m, "pago", Dia(2021, 6, 20));
+
+        var pag1 = (await super.Get($"/api/admin/pagamentos?lojaId={real}&ano=2021&mes=6&tamanho=2&pagina=1")).Json;
+        var pag2 = (await super.Get($"/api/admin/pagamentos?lojaId={real}&ano=2021&mes=6&tamanho=2&pagina=2")).Json;
+        Assert.Equal((3, 2, 1), (pag1.GetProperty("total").GetInt32(), pag1.GetProperty("itens").GetArrayLength(), pag2.GetProperty("itens").GetArrayLength()));
+        Assert.Equal((1, 2), (pag1.GetProperty("pagina").GetInt32(), pag1.GetProperty("tamanho").GetInt32()));
+
+        var porNome = (await super.Get($"/api/admin/pagamentos?busca={Uri.EscapeDataString(nomeReal.ToUpper())}&ano=2021&mes=6")).Json;
+        Assert.All(porNome.GetProperty("itens").EnumerateArray(), i => Assert.Equal(real, i.GetProperty("lojaId").GetGuid()));
+
+        var semTeste = (await super.Get("/api/admin/pagamentos?ano=2021&mes=6&tamanho=100")).Json;
+        Assert.DoesNotContain(semTeste.GetProperty("itens").EnumerateArray(), i => i.GetProperty("lojaId").GetGuid() == teste);
+        var comTeste = (await super.Get("/api/admin/pagamentos?ano=2021&mes=6&tamanho=100&incluirTeste=true")).Json;
+        Assert.Contains(comTeste.GetProperty("itens").EnumerateArray(), i => i.GetProperty("lojaId").GetGuid() == teste);
+    }
+
+    [FatoIntegracao]
+    public async Task Lista_de_pagamentos_valida_status_e_periodo()
+    {
+        var super = await SuperAsync();
+
+        Assert.Equal(400, (await super.Get("/api/admin/pagamentos?status=cancelado")).Codigo);
+        Assert.Equal(400, (await super.Get("/api/admin/pagamentos?mes=3")).Codigo);
+        Assert.Equal(400, (await super.Get("/api/admin/pagamentos?ano=2020&mes=13")).Codigo);
+        Assert.Equal(200, (await super.Get("/api/admin/pagamentos?pagina=0&tamanho=9999")).Codigo);
     }
 
     [FatoIntegracao]

@@ -8,6 +8,10 @@ public record DadosDeBackup(
     List<Produto> Produtos, List<Cliente> Clientes, List<Venda> Vendas, List<Troca> Trocas,
     List<MovimentoEstoque> Movimentos, List<CategoriaLoja> Categorias, List<Pagamento> Pagamentos);
 
+// Filtro e página das faturas de todas as lojas (status: pago | pendente | atrasado; atrasada = pendente vencida ou marcada atrasado)
+public record FiltroPagamentosAdmin(string? Status, Guid? LojaId, string? Busca, int? Ano, int? Mes, string? Forma, bool IncluirTeste, int Pagina, int Tamanho);
+public record PaginaPagamentosAdmin(List<Pagamento> Itens, int Total, decimal Recebido, decimal EmAtraso, decimal AReceber);
+
 // Acesso aos dados do painel do superadmin (EF Core em Infrastructure/Plataforma). Os handlers decidem as regras.
 public interface IAdminRepository
 {
@@ -23,6 +27,7 @@ public interface IAdminRepository
 
     // ── Faturas e comunicados ──
     Task<List<Pagamento>> ListarPagamentosDaLojaAsync(Guid lojaId);                                // com a loja, do vencimento mais novo
+    Task<PaginaPagamentosAdmin> ListarPagamentosDeTodasAsLojasAsync(FiltroPagamentosAdmin filtro, DateTime agora);  // com a loja, do vencimento mais novo; totais ignoram o filtro de status
     Task<List<ComunicadoDto>> ListarComunicadosAsync();                                            // do mais recente
 
     // ── Backup e exclusão ──

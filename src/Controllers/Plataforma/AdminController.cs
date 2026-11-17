@@ -75,6 +75,13 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> RegistrarPagamento([FromBody] RegistrarPagamentoManualRequest req, [FromServices] ICommandHandler<RegistrarPagamentoManualCommand> handler) =>
         (await handler.HandleAsync(new(AdminId, req))).ParaResposta(this);
 
+    // Faturas de todas as lojas, com filtros (status, loja, busca, ano/mês de vencimento, forma) e página
+    [HttpGet("pagamentos")]
+    public async Task<IActionResult> ListarPagamentos([FromServices] IQueryHandler<ListarPagamentosAdminQuery> handler,
+        [FromQuery] string? status, [FromQuery] Guid? lojaId, [FromQuery] string? busca, [FromQuery] int? ano, [FromQuery] int? mes,
+        [FromQuery] string? forma, [FromQuery] bool incluirTeste = false, [FromQuery] int pagina = 1, [FromQuery] int tamanho = 20) =>
+        (await handler.HandleAsync(new(status, lojaId, busca, ano, mes, forma, incluirTeste, pagina, tamanho))).ParaResposta(this);
+
     [HttpGet("lojas/{id:guid}/pagamentos")]
     public async Task<IActionResult> Pagamentos(Guid id, [FromServices] IQueryHandler<ListarPagamentosDaLojaQuery> handler) =>
         (await handler.HandleAsync(new(id))).ParaResposta(this);
