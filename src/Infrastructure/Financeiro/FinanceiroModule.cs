@@ -9,6 +9,8 @@ public static class FinanceiroModule
         services.AddScoped<IFinanceiroRepository, FinanceiroRepository>();
         services.AddScoped<ILancamentosRepository, LancamentosRepository>();
         services.AddScoped<IGeradorDeLancamentosFixos, GeradorDeLancamentosFixosAdapter>();
+        services.AddScoped<ICartoesRepository, CartoesRepository>();
+        services.AddScoped<IGeradorDeComprasFixas, GeradorDeComprasFixasAdapter>();
         services.AddHandlersDoModulo("Financeiro");   // todos os handlers de Application/Handlers/Financeiro
         return services;
     }

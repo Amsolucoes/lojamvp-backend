@@ -1,4 +1,5 @@
 using LojaApi.Data;
+using LojaApi.Domain.Financeiro;
 using LojaApi.Models;
 using LojaApi.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -258,23 +259,6 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
         return Ok(unificado);
     }
 
-    [HttpGet("cartoes/lancamentos/descricoes")]
-    public async Task<IActionResult> ListarDescricoesRecentesCartao()
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return Ok(Array.Empty<string>());
-
-        var descricoes = await db.LancamentosCartao
-            .Where(l => l.LojaId == lojaId)
-            .OrderByDescending(l => l.CriadoEm)
-            .Select(l => l.Descricao)
-            .Distinct()
-            .Take(50)
-            .ToListAsync();
-
-        return Ok(descricoes);
-    }
-
     // ── Resumo mensal — Pagar e Receber lado a lado ────────────────
     [HttpGet("resumo-mensal")]
     public async Task<IActionResult> ResumoMensal([FromQuery] int ano, [FromQuery] int mes)
@@ -457,184 +441,6 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
 
     // ══════════════════ CARTÕES DE CRÉDITO ══════════════════
 
-    [HttpGet("cartoes")]
-    public async Task<IActionResult> ListarCartoes()
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return Ok(Array.Empty<object>());
-
-        var cartoes = await db.CartoesCredito.Where(c => c.LojaId == lojaId)
-            .Select(c => new { c.Id, c.Nome, c.Limite, c.DiaFechamento, c.DiaVencimento, c.ContaBancariaId, c.Ativo, c.TaxaJurosMensal, c.Bandeira })
-            .ToListAsync();
-
-        return Ok(cartoes);
-    }
-
-    [HttpPost("cartoes")]
-    public async Task<IActionResult> CriarCartao([FromBody] SalvarCartaoRequest req)
-    {
-        var lojaId = await GetLojaId();
-        if (lojaId is null) return BadRequest(new { erro = "Loja não encontrada." });
-
-        var cartao = new CartaoCredito
-        {
-            LojaId = lojaId.Value,
-            Nome = req.Nome.Trim(),
-            Limite = req.Limite,
-            DiaFechamento = req.DiaFechamento,
-            DiaVencimento = req.DiaVencimento,
-            ContaBancariaId = req.ContaBancariaId,
-            TaxaJurosMensal = req.TaxaJurosMensal,
-            Bandeira = NormalizarBandeira(req.Bandeira),
-        };
-        db.CartoesCredito.Add(cartao);
-        await db.SaveChangesAsync();
-        return Ok(new { cartao.Id });
-    }
-
-    [HttpPut("cartoes/{id:guid}")]
-    public async Task<IActionResult> AtualizarCartao(Guid id, [FromBody] SalvarCartaoRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
-        if (cartao is null) return NotFound();
-
-        cartao.Nome = req.Nome.Trim();
-        cartao.Limite = req.Limite;
-        cartao.DiaFechamento = req.DiaFechamento;
-        cartao.DiaVencimento = req.DiaVencimento;
-        cartao.ContaBancariaId = req.ContaBancariaId;
-        cartao.TaxaJurosMensal = req.TaxaJurosMensal;
-        cartao.Bandeira = NormalizarBandeira(req.Bandeira);
-        await db.SaveChangesAsync();
-        return Ok(new { cartao.Id });
-    }
-
-    private static readonly HashSet<string> BandeirasValidas = ["visa", "mastercard", "elo", "amex", "hipercard", "diners"];
-
-    private static string? NormalizarBandeira(string? valor)
-    {
-        var b = valor?.Trim().ToLowerInvariant();
-        return b is not null && BandeirasValidas.Contains(b) ? b : null;
-    }
-
-    // ── Lançar uma compra no cartão ────────────────────────────────
-    [HttpPost("cartoes/{id:guid}/lancamentos")]
-    public async Task<IActionResult> LancarCompra(Guid id, [FromBody] SalvarLancamentoCartaoRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
-        if (cartao is null) return NotFound();
-
-        db.LancamentosCartao.Add(new LancamentoCartao
-        {
-            LojaId = lojaId!.Value,
-            CartaoCreditoId = id,
-            Descricao = req.Descricao.Trim(),
-            Valor = req.Valor,
-            DataCompra = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12),
-            Modo = "avulsa",
-            CategoriaId = req.CategoriaId,
-            Observacao = req.Observacao,
-        });
-        await db.SaveChangesAsync();
-        return Ok(new { mensagem = "Lançamento adicionado." });
-    }
-
-    // ── Compra parcelada no cartão (ex: TV em 10x) ──────────────────
-    public record CompraParceladaCartaoRequest(string Descricao, decimal ValorParcela, int TotalParcelas, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);
-
-    [HttpPost("cartoes/{id:guid}/lancamentos/parcelado")]
-    public async Task<IActionResult> LancarCompraParcelada(Guid id, [FromBody] CompraParceladaCartaoRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
-        if (cartao is null) return NotFound();
-
-        if (req.TotalParcelas < 2 || req.TotalParcelas > 24)
-            return BadRequest(new { erro = "Escolha entre 2 e 24 parcelas." });
-
-        var grupoId = Guid.NewGuid();
-        var dataBase = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12);
-
-        for (int i = 0; i < req.TotalParcelas; i++)
-        {
-            db.LancamentosCartao.Add(new LancamentoCartao
-            {
-                LojaId = lojaId!.Value,
-                CartaoCreditoId = id,
-                Descricao = $"{req.Descricao.Trim()} ({i + 1}/{req.TotalParcelas})",
-                Valor = req.ValorParcela,
-                DataCompra = dataBase.AddMonths(i),
-                Modo = "parcelada",
-                GrupoParcelamentoId = grupoId,
-                NumeroParcela = i + 1,
-                TotalParcelas = req.TotalParcelas,
-                CategoriaId = req.CategoriaId,
-                Observacao = req.Observacao,
-            });
-        }
-
-        await db.SaveChangesAsync();
-        return Ok(new { grupoParcelamentoId = grupoId, totalGerado = req.TotalParcelas });
-    }
-
-    // ── Lançamento fixo/recorrente no cartão (ex: Netflix) ──────────
-    public record CartaoFixoRequest(string Descricao, decimal Valor, Guid? CategoriaId, string? Observacao = null, int DiaCompra = 1);
-
-    [HttpPost("cartoes/{id:guid}/fixos")]
-    public async Task<IActionResult> CriarCartaoFixo(Guid id, [FromBody] CartaoFixoRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var cartao = await db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
-        if (cartao is null) return NotFound();
-
-        var fixo = new CartaoLancamentoFixo
-        {
-            LojaId = lojaId!.Value,
-            CartaoCreditoId = id,
-            Descricao = req.Descricao.Trim(),
-            Valor = req.Valor,
-            CategoriaId = req.CategoriaId,
-            Observacao = req.Observacao,
-            DiaCompra = req.DiaCompra is >= 1 and <= 28 ? req.DiaCompra : 1,
-        };
-        db.CartaoLancamentosFixos.Add(fixo);
-        await db.SaveChangesAsync();
-
-        var agora = DateTime.UtcNow;
-        var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        await financeiroService.GerarLoteFixoCartaoAsync(fixo, cartao, mesAtual);
-        await db.SaveChangesAsync();
-
-        return Ok(new { fixo.Id, geradoAte = fixo.GeradoAte });
-    }
-
-    [HttpGet("cartoes/{id:guid}/fixos")]
-    public async Task<IActionResult> ListarCartaoFixos(Guid id)
-    {
-        var lojaId = await GetLojaId();
-        var lista = await db.CartaoLancamentosFixos
-            .Where(f => f.CartaoCreditoId == id && f.CartaoCredito!.LojaId == lojaId)
-            .Select(f => new { f.Id, f.Descricao, f.Valor, f.Ativo })
-            .ToListAsync();
-        return Ok(lista);
-    }
-
-    [HttpPatch("cartoes/fixos/{id:guid}/ativo")]
-    public async Task<IActionResult> AlternarCartaoFixo(Guid id)
-    {
-        var lojaId = await GetLojaId();
-        var fixo = await db.CartaoLancamentosFixos.Include(f => f.CartaoCredito)
-            .FirstOrDefaultAsync(f => f.Id == id && f.CartaoCredito!.LojaId == lojaId);
-        if (fixo is null) return NotFound();
-
-        fixo.Ativo = !fixo.Ativo;
-        if (!fixo.Ativo) await financeiroService.LimparFuturosCartaoAsync(id);
-        await db.SaveChangesAsync();
-        return Ok(new { fixo.Id, fixo.Ativo });
-    }
-
     // ── Autocorreção: se uma parcela de financiamento nasceu com vencimento num ciclo
     // que já tinha fechado ANTES dela ser criada (bug corrigido em novos parcelamentos,
     // mas que já deixou registros antigos errados), empurra ela — e as parcelas pendentes
@@ -750,17 +556,10 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
 
     // ── Calcula a fatura de um mês (sob demanda, sem precisar de job) ──
     private DateTime CalcularVencimentoFatura(CartaoCredito cartao, int ano, int mes)
-        => new DateTime(ano, mes, Math.Min(cartao.DiaVencimento, DateTime.DaysInMonth(ano, mes)), 12, 0, 0, DateTimeKind.Utc);
+        => CartaoRegras.VencimentoDaFatura(cartao.DiaVencimento, ano, mes);
 
     private (DateTime Inicio, DateTime Fim) CicloDaFatura(CartaoCredito cartao, DateTime vencimento)
-    {
-        // Fechamento do ciclo = 1 mês antes do vencimento, no dia de fechamento.
-        // O DIA DE FECHAMENTO em si pertence à fatura que está fechando (inclusive),
-        // então o ciclo vai do dia seguinte ao fechamento anterior até o fechamento atual, inclusive.
-        var fechamentoAtual = new DateTime(vencimento.Year, vencimento.Month, Math.Min(cartao.DiaFechamento, DateTime.DaysInMonth(vencimento.Year, vencimento.Month)), 0, 0, 0, DateTimeKind.Utc);
-        var fechamentoAnterior = fechamentoAtual.AddMonths(-1);
-        return (fechamentoAnterior.AddDays(1), fechamentoAtual);
-    }
+        => CartaoRegras.CicloDaFatura(cartao.DiaFechamento, vencimento);
 
     // ── Fonte única de verdade pra "quanto de cartão conta nesse mês" (regime de caixa) ──
     // Usada por ResumoMensal, BalancoPorCategoria e ResumoAnual, pra garantir que os três
@@ -2018,134 +1817,6 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
         return Ok(resultado);
     }
 
-    // ── Editar item de compra do cartão ─────────────────────────────
-    public record EditarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);
-
-    [HttpPut("cartoes/lancamentos/{id:guid}")]
-    public async Task<IActionResult> EditarLancamentoCartao(Guid id, [FromQuery] string modo, [FromBody] EditarLancamentoCartaoRequest req)
-    {
-        var lojaId = await GetLojaId();
-        var item = await db.LancamentosCartao.Include(l => l.CartaoCredito)
-            .FirstOrDefaultAsync(l => l.Id == id && l.CartaoCredito!.LojaId == lojaId);
-        if (item is null) return NotFound();
-
-        var novaData = DateTime.SpecifyKind(req.DataCompra.Date, DateTimeKind.Utc).AddHours(12);
-
-        if (modo == "todas" && item.Modo == "fixa" && item.CartaoFixoId.HasValue)
-        {
-            var fixo = await db.CartaoLancamentosFixos.FindAsync(item.CartaoFixoId.Value);
-            if (fixo is null) return NotFound();
-
-            fixo.Descricao = req.Descricao.Trim();
-            fixo.Valor = req.Valor;
-            fixo.CategoriaId = req.CategoriaId;
-            fixo.Observacao = req.Observacao;
-            fixo.DiaCompra = novaData.Day;
-
-            await financeiroService.LimparFuturosCartaoAsync(fixo.Id);
-            await db.SaveChangesAsync();
-
-            var agora = DateTime.UtcNow;
-            var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            await financeiroService.GerarLoteFixoCartaoAsync(fixo, item.CartaoCredito!, mesAtual);
-        }
-        else if (modo == "todas" && item.Modo == "parcelada" && item.GrupoParcelamentoId.HasValue)
-        {
-            var cartao = item.CartaoCredito!;
-            var todasDoGrupo = await db.LancamentosCartao
-                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value)
-                .ToListAsync();
-
-            var mesesPagos = (await db.FaturasCartao
-                .Where(f => f.CartaoCreditoId == cartao.Id && f.Status == "pago")
-                .ToListAsync())
-                .Select(f => (f.MesReferencia.Year, f.MesReferencia.Month))
-                .ToHashSet();
-
-            foreach (var p in todasDoGrupo)
-            {
-                // Descobre o mês de vencimento da fatura à qual essa compra pertence
-                var vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.Year, p.DataCompra.Month);
-                var (ini, fim) = CicloDaFatura(cartao, vencTeste);
-                if (p.DataCompra.Date < ini.Date || p.DataCompra.Date > fim.Date)
-                    vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.AddMonths(1).Year, p.DataCompra.AddMonths(1).Month);
-
-                if (mesesPagos.Contains((vencTeste.Year, vencTeste.Month))) continue; // já foi paga — não mexe
-
-                var baseDescricao = req.Descricao.Trim();
-                p.Descricao = p.TotalParcelas.HasValue ? $"{baseDescricao} ({p.NumeroParcela}/{p.TotalParcelas})" : baseDescricao;
-                p.Valor = req.Valor;
-                p.CategoriaId = req.CategoriaId;
-            }
-        }
-        else
-        {
-            item.Descricao = req.Descricao.Trim();
-            item.Valor = req.Valor;
-            item.DataCompra = novaData;
-            item.CategoriaId = req.CategoriaId;
-        }
-
-        await db.SaveChangesAsync();
-        return Ok(new { mensagem = "Lançamento atualizado." });
-    }
-
-    // ── Excluir item de compra do cartão ────────────────────────────
-    [HttpDelete("cartoes/lancamentos/{id:guid}")]
-    public async Task<IActionResult> ExcluirLancamentoCartao(Guid id, [FromQuery] string modo = "unica")
-    {
-        var lojaId = await GetLojaId();
-        var item = await db.LancamentosCartao.Include(l => l.CartaoCredito)
-            .FirstOrDefaultAsync(l => l.Id == id && l.CartaoCredito!.LojaId == lojaId);
-        if (item is null) return NotFound();
-
-        if (modo == "todas" && item.Modo == "fixa" && item.CartaoFixoId.HasValue)
-        {
-            var fixo = await db.CartaoLancamentosFixos.FindAsync(item.CartaoFixoId.Value);
-            if (fixo != null) fixo.Ativo = false;
-
-            var agora = DateTime.UtcNow;
-            var mesAtual = new DateTime(agora.Year, agora.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-            var futuros = await db.LancamentosCartao
-                .Where(l => l.CartaoFixoId == item.CartaoFixoId.Value && l.DataCompra >= mesAtual)
-                .ToListAsync();
-            db.LancamentosCartao.RemoveRange(futuros);
-        }
-        else if (modo == "todas" && item.Modo == "parcelada" && item.GrupoParcelamentoId.HasValue)
-        {
-            var cartao = item.CartaoCredito!;
-            var todasDoGrupo = await db.LancamentosCartao
-                .Where(l => l.GrupoParcelamentoId == item.GrupoParcelamentoId.Value)
-                .ToListAsync();
-
-            var mesesPagos = (await db.FaturasCartao
-                .Where(f => f.CartaoCreditoId == cartao.Id && f.Status == "pago")
-                .ToListAsync())
-                .Select(f => (f.MesReferencia.Year, f.MesReferencia.Month))
-                .ToHashSet();
-
-            var removiveis = new List<LancamentoCartao>();
-            foreach (var p in todasDoGrupo)
-            {
-                var vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.Year, p.DataCompra.Month);
-                var (ini, fim) = CicloDaFatura(cartao, vencTeste);
-                if (p.DataCompra.Date < ini.Date || p.DataCompra.Date > fim.Date)
-                    vencTeste = CalcularVencimentoFatura(cartao, p.DataCompra.AddMonths(1).Year, p.DataCompra.AddMonths(1).Month);
-
-                if (!mesesPagos.Contains((vencTeste.Year, vencTeste.Month)))
-                    removiveis.Add(p);
-            }
-            db.LancamentosCartao.RemoveRange(removiveis);
-        }
-        else
-        {
-            db.LancamentosCartao.Remove(item);
-        }
-
-        await db.SaveChangesAsync();
-        return Ok(new { mensagem = "Lançamento excluído." });
-    }
-
     // Retorna a fatura "a pagar agora": a mais antiga já FECHADA e ainda não paga
     // (bate com o que aparece em Contas a Pagar). Se não houver nenhuma pendente
     // já fechada, cai no ciclo que ainda está acumulando (informativo).
@@ -2230,6 +1901,3 @@ public partial class FinanceiroController(AppDbContext db, FinanceiroService fin
         });
     }
 }
-
-public record SalvarCartaoRequest(string Nome, decimal Limite, int DiaFechamento, int DiaVencimento, Guid ContaBancariaId, decimal TaxaJurosMensal = 0, string? Bandeira = null);
-public record SalvarLancamentoCartaoRequest(string Descricao, decimal Valor, DateTime DataCompra, Guid? CategoriaId, string? Observacao = null);

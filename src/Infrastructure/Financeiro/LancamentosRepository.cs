@@ -53,15 +53,15 @@ public class LancamentosRepository(AppDbContext db) : ILancamentosRepository
             .Where(l => ids.Contains(l.Id) && l.LojaId == lojaId && l.Tipo == "pagar" && l.Status == "pendente" && l.CartaoOrigemId == null)
             .ToListAsync();
 
-    public Task<List<LancamentoFinanceiro>> ListarPendentesDoGrupoAsync(Guid grupoId, DateTime? aPartirDe)
+    public Task<List<LancamentoFinanceiro>> ListarPendentesDoGrupoAsync(Guid grupoId, Guid lojaId, DateTime? aPartirDe)
     {
-        var q = db.LancamentosFinanceiros.Where(l => l.GrupoParcelamentoId == grupoId && l.Status == "pendente");
+        var q = db.LancamentosFinanceiros.Where(l => l.GrupoParcelamentoId == grupoId && l.LojaId == lojaId && l.Status == "pendente");
         if (aPartirDe.HasValue) q = q.Where(l => l.Vencimento >= aPartirDe.Value);
         return q.ToListAsync();
     }
 
-    public Task<List<LancamentoFinanceiro>> ListarPendentesDoFixoAsync(Guid fixoId, DateTime aPartirDe) =>
-        db.LancamentosFinanceiros.Where(l => l.LancamentoFixoId == fixoId && l.Status == "pendente" && l.Vencimento >= aPartirDe).ToListAsync();
+    public Task<List<LancamentoFinanceiro>> ListarPendentesDoFixoAsync(Guid fixoId, Guid lojaId, DateTime aPartirDe) =>
+        db.LancamentosFinanceiros.Where(l => l.LancamentoFixoId == fixoId && l.LojaId == lojaId && l.Status == "pendente" && l.Vencimento >= aPartirDe).ToListAsync();
 
     public Task<LancamentoFinanceiro?> ObterPrimeiraOcorrenciaDoFixoAsync(Guid fixoId) =>
         db.LancamentosFinanceiros.Where(l => l.LancamentoFixoId == fixoId).OrderBy(l => l.Vencimento).FirstOrDefaultAsync();
@@ -72,7 +72,6 @@ public class LancamentosRepository(AppDbContext db) : ILancamentosRepository
     public void Remover(IEnumerable<LancamentoFinanceiro> lancamentos) => db.LancamentosFinanceiros.RemoveRange(lancamentos);
 
     public Task<LancamentoFixo?> ObterFixoAsync(Guid id, Guid lojaId) => db.LancamentosFixos.FirstOrDefaultAsync(f => f.Id == id && f.LojaId == lojaId);
-    public async Task<LancamentoFixo?> ObterFixoPorIdAsync(Guid id) => await db.LancamentosFixos.FindAsync(id);
     public void Adicionar(LancamentoFixo fixo) => db.LancamentosFixos.Add(fixo);
 
     public Task<CartaoCredito?> ObterCartaoAsync(Guid id, Guid lojaId) => db.CartoesCredito.FirstOrDefaultAsync(c => c.Id == id && c.LojaId == lojaId);
