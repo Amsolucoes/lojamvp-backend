@@ -38,19 +38,6 @@ public class CicloAtualDoCartao(IFaturasRepository faturas)
     }
 
     // Vencimento e ciclo da fatura em que "hoje" cai (procura até 3 meses à frente)
-    public static (DateTime Vencimento, (DateTime Inicio, DateTime Fim) Ciclo) CicloEmAberto(CartaoCredito cartao, DateTime hoje)
-    {
-        int ano = hoje.Year, mes = hoje.Month;
-        DateTime vencimento = default;
-        (DateTime Inicio, DateTime Fim) ciclo = default;
-        for (int i = 0; i < 3; i++)
-        {
-            vencimento = CartaoRegras.VencimentoDaFatura(cartao.DiaVencimento, ano, mes);
-            ciclo = CartaoRegras.CicloDaFatura(cartao.DiaFechamento, vencimento);
-            if (hoje.Date >= ciclo.Inicio.Date && hoje.Date <= ciclo.Fim.Date) break;
-            mes++;
-            if (mes > 12) { mes = 1; ano++; }
-        }
-        return (vencimento, ciclo);
-    }
+    public static (DateTime Vencimento, (DateTime Inicio, DateTime Fim) Ciclo) CicloEmAberto(CartaoCredito cartao, DateTime hoje) =>
+        CartaoRegras.CicloEmAberto(cartao.DiaFechamento, cartao.DiaVencimento, hoje);
 }

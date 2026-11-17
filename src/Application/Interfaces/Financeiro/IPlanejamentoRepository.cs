@@ -11,6 +11,8 @@ public interface IPlanejamentoRepository
 
     Task<List<Guid>> ListarIdsDeCategoriasDaLojaAsync(Guid lojaId);                // ativas ou não
     Task<List<PlanejamentoCategoria>> ListarTetosAsync(Guid lojaId);
+    Task<List<CategoriaFinanceira>> ListarCategoriasAtivasAsync(Guid lojaId);                    // por nome, sem rastrear
+    Task<List<MetaPlanejamento>> ListarMetasAsync(Guid lojaId);                                  // por criação, sem rastrear
     void Adicionar(PlanejamentoCategoria teto);
 
     Task<MetaPlanejamento?> ObterMetaAsync(Guid id, Guid lojaId);

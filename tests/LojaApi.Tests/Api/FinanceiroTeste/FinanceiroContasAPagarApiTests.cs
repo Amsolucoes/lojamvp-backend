@@ -253,6 +253,26 @@ public class FinanceiroContasAPagarApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Faturas_do_mes_ordena_o_cronograma_pelo_numero_da_parcela_mesmo_inserido_fora_de_ordem()
+    {
+        var (loja, conta, cartao) = await CenarioAsync();
+        await loja.CompraNoCartaoAsync(cartao, 90m, "2032-01-05");
+        var fatura = await api.NoBancoAsync(async db =>
+        {
+            var f = new LojaApi.Models.FaturaCartao { LojaId = loja.Id, CartaoCreditoId = cartao, MesReferencia = Utc(2032, 1, 1, 0), Vencimento = Utc(2032, 1, 15), Total = 90m, ValorPago = 0m, Status = "financiada" };
+            db.FaturasCartao.Add(f);
+            await db.SaveChangesAsync();
+            return f.Id;
+        });
+        foreach (var numero in new[] { 3, 1, 2 })
+            await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2032, 1 + numero, 15), 30m, numero: numero, total: 3, faturaId: fatura);
+
+        var f = Assert.Single(Linhas(await loja.Painel.Get(Faturas())));
+
+        Assert.Equal([1, 2, 3], f.GetProperty("parcelas").EnumerateArray().Select(p => p.GetProperty("numeroParcela").GetInt32()));
+    }
+
+    [FatoIntegracao]
     public async Task Faturas_do_mes_mostra_o_cronograma_das_parcelas_da_fatura_financiada()
     {
         var (loja, _, cartao) = await CenarioAsync();

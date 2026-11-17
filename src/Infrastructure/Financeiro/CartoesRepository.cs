@@ -34,6 +34,9 @@ public class CartoesRepository(AppDbContext db) : ICartoesRepository
     public Task<LancamentoCartao?> ObterCompraAsync(Guid id, Guid lojaId) =>
         db.LancamentosCartao.Include(l => l.CartaoCredito).FirstOrDefaultAsync(l => l.Id == id && l.CartaoCredito!.LojaId == lojaId);
 
+    public Task<List<CartaoCredito>> ListarAtivosAsync(Guid lojaId) =>
+        db.CartoesCredito.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativo).ToListAsync();
+
     public Task<LancamentoCartao?> ObterCompraDaLojaAsync(Guid id, Guid lojaId) =>
         db.LancamentosCartao.FirstOrDefaultAsync(l => l.Id == id && l.LojaId == lojaId);
 
