@@ -401,6 +401,23 @@ public class AdminApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Atualizar_valor_leva_a_fatura_em_aberto_junto_exceto_se_ja_tem_cobranca_gerada()
+    {
+        var super = await SuperAsync();
+        var (id, _, _) = await CriarLojaAsync(super);
+        var fatura = Assert.Single(await api.PagamentosDaLojaNoBancoAsync(id));
+        Assert.Equal("pendente", fatura.Status);
+
+        (await super.Patch($"/api/admin/lojas/{id}/valor", new { novoValor = 149.70m, sincronizarAssinatura = false })).DeveSerSucesso();
+        Assert.Equal(149.70m, Assert.Single(await api.PagamentosDaLojaNoBancoAsync(id)).Valor);
+
+        await api.NoBancoAsync(db => db.Pagamentos.Where(p => p.Id == fatura.Id).ExecuteUpdateAsync(s => s.SetProperty(p => p.MpPaymentId, "mp-123")));
+        (await super.Patch($"/api/admin/lojas/{id}/valor", new { novoValor = 200m, sincronizarAssinatura = false })).DeveSerSucesso();
+        Assert.Equal(149.70m, Assert.Single(await api.PagamentosDaLojaNoBancoAsync(id)).Valor);      // Pix/boleto já gerado com o valor antigo: não muda
+        Assert.Equal(200m, (await api.LojaNoBancoAsync(id)).MensalidadeValor);
+    }
+
+    [FatoIntegracao]
     public async Task Atualizar_valor_valida_e_sincroniza_com_o_mercado_pago_so_quando_ha_assinatura_ativa()
     {
         var super = await SuperAsync();

@@ -54,6 +54,7 @@ public class AlternarModuloCommandHandler(IPlataformaRepository repositorio) : I
         }
 
         loja.AtualizadoEm = DateTime.UtcNow;
+        await PlataformaApoio.SincronizarFaturaEmAbertoAsync(repositorio, loja);
         await repositorio.SalvarAsync();
 
         return Resultado.Ok(new ModulosDaLojaDto(loja.ModulosAtivos, loja.MensalidadeValor));

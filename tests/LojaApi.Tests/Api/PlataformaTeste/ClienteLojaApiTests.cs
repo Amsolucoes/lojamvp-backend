@@ -234,6 +234,28 @@ public class ClienteLojaApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Alternar_modulo_atualiza_o_valor_da_fatura_em_aberto()
+    {
+        var loja = await NovaAsync();
+        var modulo = await api.NoBancoAsync(db => db.ModulosPreco.AsNoTracking().FirstAsync(m => m.Chave == "financeiro"));
+        await api.NoBancoAsync(db => db.ModulosPreco.Where(m => m.Id == modulo.Id).ExecuteUpdateAsync(s => s.SetProperty(m => m.DisponivelParaAtivar, true).SetProperty(m => m.Valor, 20m)));
+        try
+        {
+            await AlterarLojaAsync(loja.Id, l => { l.ModulosAtivos = ""; l.MensalidadeValor = 100m; l.ModulosAlteradoEm = new(); });
+            await api.NoBancoAsync(db => db.Pagamentos.Where(p => p.LojaId == loja.Id).ExecuteDeleteAsync());
+            await api.NoBancoAsync(async db => { db.Pagamentos.Add(new LojaApi.Models.Pagamento { LojaId = loja.Id, Valor = 100m, Status = "pendente", Vencimento = DateTime.UtcNow.AddDays(5) }); await db.SaveChangesAsync(); });
+
+            (await loja.Painel.Patch("/api/loja/modulos", new { chave = "financeiro", ativar = true })).DeveSerSucesso();
+
+            Assert.Equal(120m, Assert.Single(await api.PagamentosDaLojaNoBancoAsync(loja.Id)).Valor);
+        }
+        finally
+        {
+            await api.NoBancoAsync(db => db.ModulosPreco.Where(m => m.Id == modulo.Id).ExecuteUpdateAsync(s => s.SetProperty(m => m.DisponivelParaAtivar, modulo.DisponivelParaAtivar).SetProperty(m => m.Valor, modulo.Valor)));
+        }
+    }
+
+    [FatoIntegracao]
     public async Task Alternar_modulo_valida_disponibilidade_soma_e_subtrai_a_mensalidade_e_aplica_o_cooldown_de_30_dias()
     {
         var loja = await NovaAsync();

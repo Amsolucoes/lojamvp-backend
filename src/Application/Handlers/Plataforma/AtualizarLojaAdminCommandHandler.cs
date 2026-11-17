@@ -11,6 +11,7 @@ public class AtualizarLojaAdminCommandHandler(IPlataformaRepository repositorio)
         var loja = await repositorio.ObterLojaAsync(id);
         if (loja is null) return Resultado.NaoEncontrado();
 
+        var valorAnterior = loja.MensalidadeValor;
         loja.Nome = req.Nome;
         loja.Email = req.Email;
         loja.Cnpj = req.Cnpj;
@@ -25,6 +26,7 @@ public class AtualizarLojaAdminCommandHandler(IPlataformaRepository repositorio)
         if (req.ModulosAtivos is not null) loja.ModulosAtivos = req.ModulosAtivos;
         if (req.EhTeste is not null) loja.EhTeste = req.EhTeste.Value;
         loja.AtualizadoEm = DateTime.UtcNow;
+        if (loja.MensalidadeValor != valorAnterior) await PlataformaApoio.SincronizarFaturaEmAbertoAsync(repositorio, loja);
 
         await repositorio.SalvarAsync();
         return Resultado.Ok(PlataformaApoio.ParaLojaDto(loja, DateTime.UtcNow));
