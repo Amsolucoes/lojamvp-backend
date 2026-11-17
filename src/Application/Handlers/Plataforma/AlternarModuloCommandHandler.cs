@@ -1,11 +1,13 @@
 using LojaApi.Domain.Plataforma;
 using LojaApi.Shared.Application;
+using Microsoft.Extensions.Logging;
 
 namespace LojaApi.Application.Plataforma;
 
 // O assinante liga/desliga um módulo sozinho: ligar soma o valor na mensalidade, desligar tira (sem ficar negativa).
-// Depois de desligar, só dá para religar passados 30 dias.
-public class AlternarModuloCommandHandler(IPlataformaRepository repositorio) : ICommandHandler<AlternarModuloCommand>
+// Depois de desligar, só dá para religar passados 30 dias. Ligar um módulo que já está ligado não cobra de novo.
+// Se a loja tem assinatura recorrente ativa, o novo valor também vai para o Mercado Pago (se falhar, o módulo muda e fica o aviso no log).
+public class AlternarModuloCommandHandler(IPlataformaRepository repositorio, IGatewayDePagamentoPlataforma gateway, ILogger<AlternarModuloCommandHandler> logger) : ICommandHandler<AlternarModuloCommand>
 {
     public async Task<Resultado<object>> HandleAsync(AlternarModuloCommand command)
     {
@@ -32,10 +34,14 @@ public class AlternarModuloCommandHandler(IPlataformaRepository repositorio) : I
 
         var lista = PlataformaRegras.SepararModulos(loja.ModulosAtivos).ToList();
 
+        var valorAnterior = loja.MensalidadeValor;
         if (req.Ativar)
         {
-            if (!lista.Contains(req.Chave)) lista.Add(req.Chave);
-            loja.MensalidadeValor += moduloPreco.Valor;
+            if (!lista.Contains(req.Chave))
+            {
+                lista.Add(req.Chave);
+                loja.MensalidadeValor += moduloPreco.Valor;
+            }
         }
         else if (lista.Contains(req.Chave))
         {
@@ -56,6 +62,19 @@ public class AlternarModuloCommandHandler(IPlataformaRepository repositorio) : I
         loja.AtualizadoEm = DateTime.UtcNow;
         await PlataformaApoio.SincronizarFaturaEmAbertoAsync(repositorio, loja);
         await repositorio.SalvarAsync();
+
+        if (loja.MensalidadeValor != valorAnterior && !string.IsNullOrEmpty(loja.MpPreapprovalId) && loja.AssinaturaStatus == "authorized")
+        {
+            try
+            {
+                if (!await gateway.AtualizarValorAssinaturaAsync(loja.MpPreapprovalId, loja.MensalidadeValor))
+                    logger.LogWarning("Módulo {Chave} da loja {LojaId} alterado, mas a assinatura {Assinatura} não foi atualizada para {Valor} no Mercado Pago.", req.Chave, loja.Id, loja.MpPreapprovalId, loja.MensalidadeValor);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Erro ao atualizar a assinatura {Assinatura} da loja {LojaId} no Mercado Pago após alterar o módulo {Chave}.", loja.MpPreapprovalId, loja.Id, req.Chave);
+            }
+        }
 
         return Resultado.Ok(new ModulosDaLojaDto(loja.ModulosAtivos, loja.MensalidadeValor));
     }
