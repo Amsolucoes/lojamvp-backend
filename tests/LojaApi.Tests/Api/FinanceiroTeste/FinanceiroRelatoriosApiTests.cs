@@ -29,14 +29,17 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         (await loja.Painel.Post($"{Rota}/categorias", new { nome, tipo })).Json.GetProperty("id").GetGuid();
 
     // Plano de R$ 200 com uma assinatura ativa e pagamentos nos meses informados
-    private async Task PlanoNoBancoAsync(LojaTeste loja, decimal valorPlano, params (DateTime Mes, string Status, decimal Valor)[] pagamentos)
+    private Task PlanoNoBancoAsync(LojaTeste loja, decimal valorPlano, params (DateTime Mes, string Status, decimal Valor)[] pagamentos) =>
+        AssinaturaNoBancoAsync(loja, valorPlano, "ativa", pagamentos);
+
+    private async Task AssinaturaNoBancoAsync(LojaTeste loja, decimal valorPlano, string statusDaAssinatura, params (DateTime Mes, string Status, decimal Valor)[] pagamentos)
     {
         var cliente = await loja.ClienteIdAsync($"Assinante {Guid.NewGuid():N}"[..14], "67999990001");
         await api.NoBancoAsync(async db =>
         {
             var plano = new Plano { LojaId = loja.Id, Nome = "Plano Rel", Valor = valorPlano };
             db.Planos.Add(plano);
-            var assinatura = new AssinaturaCliente { LojaId = loja.Id, ClienteId = cliente, PlanoId = plano.Id };
+            var assinatura = new AssinaturaCliente { LojaId = loja.Id, ClienteId = cliente, PlanoId = plano.Id, Status = statusDaAssinatura };
             db.AssinaturasCliente.Add(assinatura);
             await db.SaveChangesAsync();
             foreach (var p in pagamentos)
@@ -111,7 +114,10 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         await PlanoNoBancoAsync(loja, 200m, (Utc(2024, 3, 1, 0), "pago", 150m), (Utc(2024, 3, 1, 0), "pendente", 50m));
         // fatura de mar/2024 (compras de 11/02 a 10/03), vencida; e uma parcela de financiamento do mesmo cartão em aberto
         await loja.CompraNoCartaoAsync(cartao, 300m, "2024-02-20");
-        await loja.CompraNoCartaoAsync(cartao, 10m, "2024-03-11");
+        await loja.CompraNoCartaoAsync(cartao, 11m, "2024-02-11");    // primeiro dia do ciclo: entra
+        await loja.CompraNoCartaoAsync(cartao, 5m, "2024-03-10");     // dia do fechamento: entra
+        await loja.CompraNoCartaoAsync(cartao, 7m, "2024-02-10");     // ciclo anterior: não entra
+        await loja.CompraNoCartaoAsync(cartao, 10m, "2024-03-11");    // próximo ciclo: não entra
         await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2024, 3, 15), 40m);
 
         var r = await loja.Painel.Get($"{Rota}/resumo-mensal?ano=2024&mes=3");
@@ -120,19 +126,19 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         Assert.Equal(["pagar", "receber", "previsao", "detalhePagar"], r.Json.EnumerateObject().Select(x => x.Name));
         var pagar = r.Json.GetProperty("pagar");
         Assert.Equal(["totalPago", "qtdPago", "totalPendente", "qtdPendente", "totalVencido", "qtdVencido"], pagar.EnumerateObject().Select(x => x.Name));
-        // vencido = avulso 60 + fatura 300 + parcela de financiamento 40 (a fatura e a parcela contam como uma linha cada)
-        Assert.Equal((100m, 1, 0m, 0, 400m, 2), (Num(pagar, "totalPago"), pagar.GetProperty("qtdPago").GetInt32(), Num(pagar, "totalPendente"), pagar.GetProperty("qtdPendente").GetInt32(),
+        // vencido = avulso 60 + fatura 316 (300 + 11 + 5) + parcela de financiamento 40 (a fatura e a parcela contam como uma linha cada)
+        Assert.Equal((100m, 1, 0m, 0, 416m, 2), (Num(pagar, "totalPago"), pagar.GetProperty("qtdPago").GetInt32(), Num(pagar, "totalPendente"), pagar.GetProperty("qtdPendente").GetInt32(),
             Num(pagar, "totalVencido"), pagar.GetProperty("qtdVencido").GetInt32()));
         var receber = r.Json.GetProperty("receber");
         Assert.Equal((180m, 2, 0m, 0, 70m, 2), (Num(receber, "totalPago"), receber.GetProperty("qtdPago").GetInt32(), Num(receber, "totalPendente"), receber.GetProperty("qtdPendente").GetInt32(),
             Num(receber, "totalVencido"), receber.GetProperty("qtdVencido").GetInt32()));
         var previsao = r.Json.GetProperty("previsao");
-        Assert.Equal((250m, 500m, -250m), (Num(previsao, "receitaPrevista"), Num(previsao, "despesaPrevista"), Num(previsao, "saldoPrevisto")));
+        Assert.Equal((250m, 516m, -266m), (Num(previsao, "receitaPrevista"), Num(previsao, "despesaPrevista"), Num(previsao, "saldoPrevisto")));
         var detalhe = r.Json.GetProperty("detalhePagar");
         Assert.Equal(60m, Num(detalhe, "lancamentos"));
         var cartoes = detalhe.GetProperty("cartoes").EnumerateArray().ToList();
         var linhaCartao = Assert.Single(cartoes);
-        Assert.Equal(("Cartão Azul", 340m), (Texto(linhaCartao, "nome"), Num(linhaCartao, "valor")));
+        Assert.Equal(("Cartão Azul", 356m), (Texto(linhaCartao, "nome"), Num(linhaCartao, "valor")));
     }
 
     [FatoIntegracao]
@@ -155,6 +161,26 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         Assert.Equal(80m, Num(r.Json.GetProperty("detalhePagar"), "lancamentos"));
     }
 
+    [FatoIntegracao]
+    public async Task Resumo_mensal_conta_o_que_vence_hoje_como_pendente_e_considera_mensalidades_de_assinaturas_canceladas()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var hoje = DateTime.UtcNow;
+        await loja.AvulsoPelaApiAsync(conta, "pagar", "Vence hoje", 33m, hoje.ToString("yyyy-MM-dd"));
+        await PlanoNoBancoAsync(loja, 200m, (Utc(2024, 3, 1, 0), "pago", 150m));
+        await AssinaturaNoBancoAsync(loja, 200m, "cancelada", (Utc(2024, 3, 1, 0), "pendente", 80m));
+
+        var atual = await loja.Painel.Get($"{Rota}/resumo-mensal?ano={hoje.Year}&mes={hoje.Month}");
+        var marco = await loja.Painel.Get($"{Rota}/resumo-mensal?ano=2024&mes=3");
+
+        var pagar = atual.Json.GetProperty("pagar");
+        Assert.Equal((33m, 1, 0m, 0), (Num(pagar, "totalPendente"), pagar.GetProperty("qtdPendente").GetInt32(), Num(pagar, "totalVencido"), pagar.GetProperty("qtdVencido").GetInt32()));
+        // o resumo mensal soma as mensalidades de todas as assinaturas da loja (a cancelada em atraso também)
+        var receber = marco.Json.GetProperty("receber");
+        Assert.Equal((150m, 1, 80m, 1), (Num(receber, "totalPago"), receber.GetProperty("qtdPago").GetInt32(), Num(receber, "totalVencido"), receber.GetProperty("qtdVencido").GetInt32()));
+    }
+
     // ── Balanço por categoria ────────────────────────────────────────────────
 
     [FatoIntegracao]
@@ -164,10 +190,12 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         var casa = await CategoriaAsync(loja, "Casa");
         var venda = await CategoriaAsync(loja, "Vendas", "receber");
         var mercado = await CategoriaAsync(loja, "Mercado");
+        var extra = await CategoriaAsync(loja, "Extras", "receber");
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Aluguel", 500m, "2024-03-05", casa);
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Luz", 70m, "2024-03-08", casa);
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Sem cat", 15m, "2024-03-09");
         await loja.AvulsoPelaApiAsync(conta, "receber", "Venda", 900m, "2024-03-12", venda);
+        await loja.AvulsoPelaApiAsync(conta, "receber", "Extra", 50m, "2024-03-13", extra);
         await PlanoNoBancoAsync(loja, 200m, (Utc(2024, 3, 1, 0), "pago", 120m), (Utc(2024, 3, 1, 0), "pendente", 80m));
         // cartão: 300 de mercado na fatura de mar/2024; financiamento de 40 não entra como categoria própria no modo agrupado
         await CompraDiretaAsync(loja, cartao, 300m, Utc(2024, 2, 20), categoria: mercado);
@@ -178,11 +206,26 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         Assert.Equal(200, r.Codigo);
         Assert.Equal(["receitas", "despesas", "despesasDesmembradas", "totalReceitas", "totalDespesas", "saldo"], r.Json.EnumerateObject().Select(x => x.Name));
         var receitas = r.Json.GetProperty("receitas").EnumerateArray().ToList();
-        Assert.Equal([("Vendas", 900m), ("Mensalidade/Assinatura", 200m)], receitas.Select(x => (Texto(x, "nome"), Num(x, "valor"))));
+        // a mensalidade entra no fim e, como as receitas vêm da maior para a menor, ocupa o meio
+        Assert.Equal([("Vendas", 900m), ("Mensalidade/Assinatura", 200m), ("Extras", 50m)], receitas.Select(x => (Texto(x, "nome"), Num(x, "valor"))));
         Assert.Equal("💳", Texto(receitas[1], "icone"));
         var despesas = r.Json.GetProperty("despesas").EnumerateArray().ToList();
         Assert.Equal([("Casa", 570m), ("Cartão de Crédito", 340m), ("Sem categoria", 15m)], despesas.Select(x => (Texto(x, "nome"), Num(x, "valor"))));
-        Assert.Equal((1100m, 925m, 175m), (Num(r.Json, "totalReceitas"), Num(r.Json, "totalDespesas"), Num(r.Json, "saldo")));
+        Assert.Equal((1150m, 925m, 225m), (Num(r.Json, "totalReceitas"), Num(r.Json, "totalDespesas"), Num(r.Json, "saldo")));
+    }
+
+    [FatoIntegracao]
+    public async Task Balanco_por_categoria_sem_plano_e_sem_cartao_nao_cria_as_linhas_extras()
+    {
+        var (loja, conta, _) = await CenarioAsync();
+        await loja.AvulsoPelaApiAsync(conta, "pagar", "Aluguel", 500m, "2024-03-05");
+        await loja.AvulsoPelaApiAsync(conta, "receber", "Venda", 900m, "2024-03-12");
+
+        var r = await loja.Painel.Get($"{Rota}/balanco-por-categoria?ano=2024&mes=3");
+
+        Assert.Equal(["Sem categoria"], r.Json.GetProperty("receitas").EnumerateArray().Select(x => Texto(x, "nome")));
+        Assert.Equal(["Sem categoria"], r.Json.GetProperty("despesas").EnumerateArray().Select(x => Texto(x, "nome")));
+        Assert.Equal((900m, 500m, 400m), (Num(r.Json, "totalReceitas"), Num(r.Json, "totalDespesas"), Num(r.Json, "saldo")));
     }
 
     [FatoIntegracao]
@@ -214,10 +257,15 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
     {
         var (loja, conta, cartao) = await CenarioAsync("Cartão Detalhe");
         var casa = await CategoriaAsync(loja, "Casa");
-        var aluguel = await loja.AvulsoPelaApiAsync(conta, "pagar", "Aluguel", 500m, "2024-03-05", casa, jaPago: true);
+        var mercado = await CategoriaAsync(loja, "Mercado");
+        // criados fora da ordem de data, para provar que o detalhe sai ordenado por data
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Luz", 70m, "2024-03-08", casa);
+        var aluguel = await loja.AvulsoPelaApiAsync(conta, "pagar", "Aluguel", 500m, "2024-03-05", casa, jaPago: true);
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Sem cat", 15m, "2024-03-09");
         await CompraDiretaAsync(loja, cartao, 30m, Utc(2024, 3, 20), categoria: casa, descricao: "Tinta");
+        await CompraDiretaAsync(loja, cartao, 120m, Utc(2024, 3, 3), categoria: mercado, descricao: "Feira");
+        await CompraDiretaAsync(loja, cartao, 5m, Utc(2024, 3, 4), descricao: "Chiclete");
+        await CompraDiretaAsync(loja, cartao, 9m, new DateTime(2024, 4, 1, 0, 0, 0, DateTimeKind.Utc), categoria: casa, descricao: "Abril");
         await CompraDiretaAsync(loja, cartao, 300m, Utc(2024, 2, 20), descricao: "Geladeira");
         await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2024, 3, 15), 40m);
 
@@ -231,13 +279,16 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
 
         var semCategoria = await loja.Painel.Get($"{Rota}/balanco-detalhe?ano=2024&mes=3&categoria=Sem%20categoria");
         Assert.Equal(["Sem cat"], semCategoria.Json.GetProperty("itens").EnumerateArray().Select(x => Texto(x, "descricao")));
+        var semCategoriaDesmembrado = await loja.Painel.Get($"{Rota}/balanco-detalhe?ano=2024&mes=3&categoria=Sem%20categoria&desmembrar=true");
+        Assert.Equal(["Chiclete", "Sem cat"], semCategoriaDesmembrado.Json.GetProperty("itens").EnumerateArray().Select(x => Texto(x, "descricao")));
 
         var cartaoFatura = await loja.Painel.Get($"{Rota}/balanco-detalhe?ano=2024&mes=3&categoria=Cart%C3%A3o%20de%20Cr%C3%A9dito");
         var fatura = Assert.Single(cartaoFatura.Json.GetProperty("itens").EnumerateArray());
-        Assert.Equal(("cartao_fatura", "Fatura Cartão Detalhe", 340m, "pendente", "Cartão Detalhe"), (Texto(fatura, "origem"), Texto(fatura, "descricao"), Num(fatura, "valor"), Texto(fatura, "status"), Texto(fatura, "cartaoNome")));
-        Assert.Equal(340m, Num(cartaoFatura.Json, "valorBalanco"));
+        Assert.Equal(("cartao_fatura", "Fatura Cartão Detalhe", 465m, "pendente", "Cartão Detalhe"), (Texto(fatura, "origem"), Texto(fatura, "descricao"), Num(fatura, "valor"), Texto(fatura, "status"), Texto(fatura, "cartaoNome")));
+        Assert.Equal(465m, Num(cartaoFatura.Json, "valorBalanco"));
 
         var desmembrado = await loja.Painel.Get($"{Rota}/balanco-detalhe?ano=2024&mes=3&categoria=Casa&desmembrar=true");
+        // só as compras da categoria feitas dentro do mês (a de 01/04 às 00:00 já é de abril)
         Assert.Equal(["Aluguel", "Luz", "Tinta"], desmembrado.Json.GetProperty("itens").EnumerateArray().Select(x => Texto(x, "descricao")));
         var tinta = desmembrado.Json.GetProperty("itens").EnumerateArray().Last();
         Assert.Equal(("cartao_item", "cartao", "Cartão Detalhe"), (Texto(tinta, "origem"), Texto(tinta, "status"), Texto(tinta, "cartaoNome")));
@@ -247,6 +298,11 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         var parcela = Assert.Single(financiamento.Json.GetProperty("itens").EnumerateArray());
         Assert.Equal(("cartao_parcela", 40m, "pendente"), (Texto(parcela, "origem"), Num(parcela, "valor"), Texto(parcela, "status")));
         Assert.Equal(40m, Num(financiamento.Json, "valorBalanco"));
+
+        // fatura resolvida (paga) aparece como paga
+        await FaturaNoBancoAsync(loja, cartao, 2024, 3, "pago", 300m);
+        var paga = await loja.Painel.Get($"{Rota}/balanco-detalhe?ano=2024&mes=3&categoria=Cart%C3%A3o%20de%20Cr%C3%A9dito");
+        Assert.Equal("pago", Texto(Assert.Single(paga.Json.GetProperty("itens").EnumerateArray()), "status"));
 
         // categoria desconhecida: lista vazia e valor zero
         var vazio = await loja.Painel.Get($"{Rota}/balanco-detalhe?ano=2024&mes=3&categoria=Nada");
@@ -267,6 +323,12 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Casa jun", 80m, "2024-06-10", casa);
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Lazer mar", 10m, "2024-03-12", lazer);
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Ano passado", 7m, "2023-12-10", casa);
+        var zerada = await CategoriaAsync(loja, "Zerada");
+        await api.NoBancoAsync(async db =>
+        {
+            db.LancamentosFinanceiros.Add(new LancamentoFinanceiro { LojaId = loja.Id, ContaBancariaId = conta, Tipo = "pagar", Descricao = "Zero", Valor = 0m, Vencimento = Utc(2024, 3, 10), Status = "pendente", CategoriaId = zerada });
+            await db.SaveChangesAsync();
+        });
 
         var r = await loja.Painel.Get($"{Rota}/balanco-comparativo?ano=2024&mes=3");
 
@@ -318,8 +380,10 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         await loja.AvulsoPelaApiAsync(conta, "pagar", "Dezembro", 9m, "2024-12-12");
         await PlanoNoBancoAsync(loja, 200m, (Utc(2024, 3, 1, 0), "pago", 150m));
         await CompraDiretaAsync(loja, cartao, 300m, Utc(2024, 2, 20));
+        await CompraDiretaAsync(loja, cartao, 70m, Utc(2023, 12, 20));   // ciclo da fatura de jan/2024 (começa em dezembro do ano anterior)
         await FaturaNoBancoAsync(loja, cartao, 2024, 3, "pago", 300m);
         await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2024, 3, 15), 40m);
+        await AssinaturaNoBancoAsync(loja, 999m, "cancelada", (Utc(2024, 3, 1, 0), "pago", 500m));   // assinatura cancelada não entra no resumo anual
 
         var r = await loja.Painel.Get($"{Rota}/resumo-anual?ano=2024");
 
@@ -331,6 +395,7 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         // pagar = 100 + 60 + fatura paga 300 + parcela de financiamento pendente (vencida) 40; receber = 500 + mensalidade paga 150
         Assert.Equal((500m, 650m, 150m, 400m, 100m), (Num(marco, "pagar"), Num(marco, "receber"), Num(marco, "saldo"), Num(marco, "pagarPago"), Num(marco, "pagarAberto")));
         Assert.Equal((9m, 0m), (Num(meses[11], "pagar"), Num(meses[11], "receber")));
+        Assert.Equal(70m, Num(meses[0], "pagar"));
         // ano passado: meses sem pagamento de plano não projetam receita
         Assert.Equal(0m, Num(meses[3], "receber"));
     }
@@ -409,6 +474,8 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         var (loja, conta, cartao) = await CenarioAsync("Cartão Limite");
         var outra = await NovaAsync();
         await outra.CartaoPelaApiAsync(await outra.ContaPelaApiAsync(), "Cartão Alheio");
+        var inativo = await loja.CartaoPelaApiAsync(conta, "Cartão Inativo");
+        await api.NoBancoAsync(db => db.CartoesCredito.Where(c => c.Id == inativo).ExecuteUpdateAsync(s => s.SetProperty(c => c.Ativo, false)));
         var hoje = DateTime.UtcNow;
         await CompraDiretaAsync(loja, cartao, 100m, hoje);
         await CompraDiretaAsync(loja, cartao, 60m, Utc(2032, 5, 20), "parcelada");
@@ -523,6 +590,28 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         Assert.Equal((1200m, 200m, 200m), (Num(metas[0], "valorAlvo"), Num(metas[0], "valorGuardado"), Num(metas[0], "porMes")));
         Assert.Equal(JsonValueKind.Null, metas[1].GetProperty("porMes").ValueKind);
         Assert.Equal("🎯", Texto(metas[1], "icone"));
+    }
+
+    [FatoIntegracao]
+    public async Task Planejamento_com_categoria_ambos_usa_o_teto_de_cada_tipo_na_sua_lista()
+    {
+        var loja = await NovaAsync();
+        var extras = await CategoriaAsync(loja, "Extras", "ambos");
+        await loja.Painel.Put($"{Rota}/planejamento/categorias", new
+        {
+            itens = new object[]
+            {
+                new { categoriaId = extras, ativo = true, valor = 100m, tipo = "pagar" },
+                new { categoriaId = extras, ativo = false, valor = 300m, tipo = "receber" },
+            },
+        });
+
+        var r = await loja.Painel.Get($"{Rota}/planejamento?ano=2024&mes=3");
+
+        var pagar = r.Json.GetProperty("categorias").EnumerateArray().Single(c => Texto(c, "nome") == "Extras");
+        var receber = r.Json.GetProperty("categoriasReceita").EnumerateArray().Single(c => Texto(c, "nome") == "Extras");
+        Assert.Equal((true, 100m), (pagar.GetProperty("ativo").GetBoolean(), Num(pagar, "valor")));
+        Assert.Equal((false, 300m), (receber.GetProperty("ativo").GetBoolean(), Num(receber, "valor")));
     }
 
     [FatoIntegracao]

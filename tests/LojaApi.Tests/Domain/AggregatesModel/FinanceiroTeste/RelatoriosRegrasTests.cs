@@ -82,6 +82,17 @@ public class RelatoriosRegrasTests
         Assert.Equal((new DateTime(2030, 5, 11), new DateTime(2030, 6, 10)), (pedido.Inicio.Date, pedido.Fim.Date));
     }
 
+    [Fact]
+    public void Parcela_que_vence_hoje_ainda_e_pendente_e_so_a_de_ontem_e_vencida()
+    {
+        var hoje = new DateTime(2030, 6, 20);
+        RelatoriosRegras.ParcelaDoMes[] parcelas = [new("pendente", Utc(2030, 6, 20), 7m), new("pendente", Utc(2030, 6, 19), 3m)];
+
+        var c = RelatoriosRegras.ContribuicaoDoCartaoNoMes(10, 15, 2030, 6, hoje, SemCompras, null, parcelas);
+
+        Assert.Equal((0m, 7m, 3m), (c.Pago, c.Pendente, c.Vencido));
+    }
+
     // ── Fatura "a pagar agora" ───────────────────────────────────────────────
 
     [Fact]
@@ -109,6 +120,28 @@ public class RelatoriosRegrasTests
         var (_, _, status) = RelatoriosRegras.CicloAtualDoCartao(10, 15, new DateTime(2030, 6, 20), (i, _) => i.Month == 5 ? 100m : 0m, (_, _) => "parcial");
 
         Assert.Equal("parcial", status);
+    }
+
+    [Fact]
+    public void Ciclo_atual_nao_considera_fechado_o_ciclo_que_fecha_hoje()
+    {
+        // hoje = 10/06, dia do fechamento: a fatura de jun ainda está acumulando (o ciclo só fecha no dia seguinte)
+        var (vencimento, total, _) = RelatoriosRegras.CicloAtualDoCartao(10, 15, new DateTime(2030, 6, 10), (i, _) => i.Month == 5 ? 100m : 0m, (_, _) => null);
+
+        Assert.Equal((new DateTime(2030, 6, 15), 100m), (vencimento.Date, total));
+        // ...mas já fechou na manhã seguinte e continua sendo a "a pagar agora" até ser paga
+        var (vencimentoDepois, _, _) = RelatoriosRegras.CicloAtualDoCartao(10, 15, new DateTime(2030, 6, 11), (i, _) => i.Month == 5 ? 100m : 0m, (_, _) => null);
+        Assert.Equal(new DateTime(2030, 6, 15), vencimentoDepois.Date);
+    }
+
+    [Fact]
+    public void Ciclo_atual_procura_fatura_fechada_pendente_ate_3_meses_para_tras()
+    {
+        // hoje = 20/06: a fatura de mar (vence 15/03, ciclo 11/02 a 10/03) é a mais antiga ainda pendente; as de abr e mai estão pagas
+        var (vencimento, total, status) = RelatoriosRegras.CicloAtualDoCartao(10, 15, new DateTime(2030, 6, 20), (i, _) => i.Month is 2 or 3 or 4 ? 80m : 0m,
+            (ano, mes) => mes is 4 or 5 ? "pago" : null);
+
+        Assert.Equal((new DateTime(2030, 3, 15), 80m, "pendente"), (vencimento.Date, total, status));
     }
 
     // ── Limite usado ─────────────────────────────────────────────────────────
@@ -161,6 +194,35 @@ public class RelatoriosRegrasTests
         var usado = Limite(hoje, SemCompras, (ano, mes) => mes == 10 && ano == 2030 ? new("financiada", 1m, 0m) : null, compras, financiamento: 40m);
 
         Assert.Equal(60m + 25m + 40m, usado);
+    }
+
+    [Fact]
+    public void Limite_usado_olha_os_12_ciclos_ate_o_em_aberto_inclusive_o_mais_antigo()
+    {
+        // hoje = 20/06/2030: o ciclo em aberto é o da fatura de jul/2030; o mais antigo somado é o de ago/2029 (compras de 11/07/2029 a 10/08/2029)
+        var maisAntigo = Limite(new DateTime(2030, 6, 20), (i, _) => i.Year == 2029 && i.Month == 7 ? 100m : 0m);
+        var antesDaJanela = Limite(new DateTime(2030, 6, 20), (i, _) => i.Year == 2029 && i.Month == 6 ? 100m : 0m);
+
+        Assert.Equal(100m, maisAntigo);
+        Assert.Equal(0m, antesDaJanela);
+    }
+
+    [Fact]
+    public void Limite_usado_nao_conta_de_novo_ciclo_de_fatura_quitada_com_total_registrado_zero()
+    {
+        var usado = Limite(new DateTime(2030, 6, 20), (i, _) => i.Month == 5 ? 100m : 0m, (ano, mes) => mes == 6 && ano == 2030 ? new("pago", 0m, 0m) : null);
+
+        Assert.Equal(0m, usado);
+    }
+
+    [Fact]
+    public void Limite_usado_nao_trata_como_futura_a_compra_do_dia_do_fechamento_do_ciclo_em_aberto()
+    {
+        // 10/07/2030 é o último dia do ciclo em aberto (já somado pelo ciclo): não é compra futura
+        (string, DateTime, decimal)[] compras = [("parcelada", Utc(2030, 7, 10), 60m)];
+
+        Assert.Equal(0m, Limite(new DateTime(2030, 6, 20), SemCompras, null, compras));
+        Assert.Equal(60m, Limite(new DateTime(2030, 6, 20), SemCompras, null, [("parcelada", Utc(2030, 7, 11), 60m)]));
     }
 
     [Fact]
