@@ -8,6 +8,7 @@ namespace LojaApi.Application.Financeiro;
 // Forma "conta": paga no débito/dinheiro, saindo da conta bancária escolhida.
 // Forma "cartao": vira compra no cartão de crédito (à vista ou parcelada), mantendo descrição, categoria e observação;
 // a conta sai de Contas a Pagar e passa a compor a fatura do cartão.
+// Acrescimo (juros/multa/taxa pagos a mais): vira um lançamento à parte na categoria "Juros" (conta) ou uma compra à vista no mesmo cartão.
 public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanceiroRepository financeiro) : ICommandHandler<PagarLoteCommand>
 {
     public async Task<Resultado<object>> HandleAsync(PagarLoteCommand command)
@@ -21,6 +22,9 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
         var lancs = await repositorio.ListarPendentesParaPagarEmLoteAsync(ids, lojaId);
         if (lancs.Count != ids.Count)
             return Resultado.Invalido("Alguma conta selecionada não está mais pendente. Atualize a lista e tente de novo.");
+
+        if (req.Acrescimo < 0) return Resultado.Invalido("O juros/multa não pode ser negativo.");
+        var acrescimo = Math.Round(req.Acrescimo, 2);
 
         var agora = DateTime.UtcNow;
         var dataBase = LancamentosRegras.AoMeioDia(req.Data ?? agora);
@@ -36,6 +40,23 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                 l.ContaBancariaId = conta.Id;
                 l.Status = "pago";
                 l.PagoEm = req.Data.HasValue ? dataBase : agora;
+            }
+
+            if (acrescimo > 0)
+            {
+                repositorio.Adicionar(new LancamentoFinanceiro
+                {
+                    LojaId = lojaId,
+                    ContaBancariaId = conta.Id,
+                    Tipo = "pagar",
+                    Modo = "avulsa",
+                    Descricao = DescricaoDoAcrescimo(lancs),
+                    CategoriaId = (await ObterOuCriarCategoriaJurosAsync(lojaId)).Id,
+                    Valor = acrescimo,
+                    Vencimento = dataBase,
+                    Status = "pago",
+                    PagoEm = req.Data.HasValue ? dataBase : agora,
+                });
             }
         }
         else if (req.Forma == "cartao")
@@ -86,6 +107,20 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                 }
                 repositorio.Remover(l);
             }
+
+            if (acrescimo > 0)
+            {
+                repositorio.Adicionar(new LancamentoCartao
+                {
+                    LojaId = lojaId,
+                    CartaoCreditoId = cartao.Id,
+                    Descricao = DescricaoDoAcrescimo(lancs),
+                    Valor = acrescimo,
+                    DataCompra = dataBase,
+                    Modo = "avulsa",
+                    CategoriaId = (await ObterOuCriarCategoriaJurosAsync(lojaId)).Id,
+                });
+            }
         }
         else
         {
@@ -95,4 +130,34 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
         await repositorio.SalvarAsync();
         return Resultado.Ok(new { pagos = lancs.Count, total, forma = req.Forma });
     }
+
+    private static string DescricaoDoAcrescimo(List<LancamentoFinanceiro> lancs)
+    {
+        var texto = lancs.Count == 1 ? $"Juros/multa - {lancs[0].Descricao}" : $"Juros/multa - {lancs.Count} contas";
+        return texto.Length <= 150 ? texto : texto[..150];
+    }
+
+    // Usa a categoria "Juros" que a loja já tenha (de despesa, ou "ambos"); se não houver, cria
+    private async Task<CategoriaFinanceira> ObterOuCriarCategoriaJurosAsync(Guid lojaId)
+    {
+        var nome = FinanceiroRegras.NormalizarNomeCategoria(NomeCategoriaJuros);
+        var existente = (await financeiro.ListarCategoriasDaLojaAsync(lojaId))
+            .FirstOrDefault(c => FinanceiroRegras.CategoriaEquivalente(c.Nome, c.Tipo, nome, "pagar"));
+        if (existente is not null)
+        {
+            if (existente.Ativa) return existente;
+            var reativada = await financeiro.ObterCategoriaAsync(existente.Id, lojaId);
+            if (reativada is not null)
+            {
+                reativada.Ativa = true;
+                return reativada;
+            }
+        }
+
+        var nova = new CategoriaFinanceira { LojaId = lojaId, Nome = NomeCategoriaJuros, Tipo = "pagar", Icone = "💸" };
+        financeiro.Adicionar(nova);
+        return nova;
+    }
+
+    private const string NomeCategoriaJuros = "Juros";
 }

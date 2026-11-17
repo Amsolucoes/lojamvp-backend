@@ -339,6 +339,60 @@ public class FinanceiroLancamentosApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Pagar_lote_na_conta_com_acrescimo_cria_lancamento_pago_na_categoria_Juros_criando_a_categoria_se_nao_existir()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Energia", 100m);
+
+        var r = await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "conta", contaBancariaId = conta, data = "2032-05-20", acrescimo = 7.5m });
+
+        Assert.Equal(200, r.Codigo);
+        Assert.Equal(100m, r.Json.GetProperty("total").GetDecimal());
+        var juros = Assert.Single(await api.CategoriasFinanceirasNoBancoAsync(loja.Id), c => c.Nome == "Juros");
+        var lancs = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal(2, lancs.Count);
+        var extra = Assert.Single(lancs, l => l.Id != id);
+        Assert.Equal(("Juros/multa - Energia", 7.5m, "pagar", "pago", juros.Id, conta, Utc(2032, 5, 20)), (extra.Descricao, extra.Valor, extra.Tipo, extra.Status, extra.CategoriaId, extra.ContaBancariaId, extra.PagoEm));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_com_acrescimo_reaproveita_a_categoria_Juros_que_a_loja_ja_tem()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var existente = (await loja.Painel.Post($"{Rota}/categorias", new { nome = "juros", tipo = "pagar" })).Json.GetProperty("id").GetGuid();
+        var a = await loja.AvulsoPelaApiAsync(conta, "pagar", "A", 10m);
+        var b = await loja.AvulsoPelaApiAsync(conta, "pagar", "B", 20m);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { a, b }, forma = "conta", contaBancariaId = conta, acrescimo = 3m })).DeveSerSucesso();
+
+        Assert.Single(await api.CategoriasFinanceirasNoBancoAsync(loja.Id), c => c.Nome.Equals("juros", StringComparison.OrdinalIgnoreCase));
+        var extra = Assert.Single(await api.LancamentosDaLojaNoBancoAsync(loja.Id), l => l.Id != a && l.Id != b);
+        Assert.Equal(("Juros/multa - 2 contas", 3m, existente), (extra.Descricao, extra.Valor, extra.CategoriaId));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_no_cartao_com_acrescimo_gera_compra_a_vista_separada_e_rejeita_acrescimo_negativo()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var cartao = await api.CartaoNoBancoAsync(loja.Id, conta);
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Compra grande", 90m);
+
+        Assert.Equal((400, "O juros/multa não pode ser negativo."), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "cartao", cartaoId = cartao, acrescimo = -1m })));
+        Assert.Equal("pendente", (await api.LancamentoNoBancoPorIdAsync(id)).Status);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "cartao", cartaoId = cartao, parcelas = 3, data = "2032-05-20", acrescimo = 12m })).DeveSerSucesso();
+
+        var compras = await api.LancamentosDeCartaoNoBancoAsync(loja.Id);
+        Assert.Equal(4, compras.Count);
+        var juros = Assert.Single(compras, c => c.Descricao.StartsWith("Juros/multa"));
+        Assert.Equal((12m, "avulsa", Utc(2032, 5, 20), cartao), (juros.Valor, juros.Modo, juros.DataCompra, juros.CartaoCreditoId));
+        Assert.NotNull(juros.CategoriaId);
+    }
+
+    [FatoIntegracao]
     public async Task Pagar_lote_no_cartao_parcelado_divide_em_parcelas_e_a_ultima_absorve_os_centavos()
     {
         var loja = await NovaAsync();
