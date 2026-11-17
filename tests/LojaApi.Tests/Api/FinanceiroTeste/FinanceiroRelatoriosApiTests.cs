@@ -226,6 +226,8 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
         Assert.Equal(["Sem categoria"], r.Json.GetProperty("receitas").EnumerateArray().Select(x => Texto(x, "nome")));
         Assert.Equal(["Sem categoria"], r.Json.GetProperty("despesas").EnumerateArray().Select(x => Texto(x, "nome")));
         Assert.Equal((900m, 500m, 400m), (Num(r.Json, "totalReceitas"), Num(r.Json, "totalDespesas"), Num(r.Json, "saldo")));
+        // sem parcela de financiamento no mês (mesmo com cartão cadastrado), a visão desmembrada não cria a linha "Financiamento de fatura"
+        Assert.Equal(["Sem categoria"], r.Json.GetProperty("despesasDesmembradas").EnumerateArray().Select(x => Texto(x, "nome")));
     }
 
     [FatoIntegracao]
