@@ -597,21 +597,18 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
     {
         var loja = await NovaAsync();
         var extras = await CategoriaAsync(loja, "Extras", "ambos");
-        await loja.Painel.Put($"{Rota}/planejamento/categorias", new
-        {
-            itens = new object[]
-            {
-                new { categoriaId = extras, ativo = true, valor = 100m, tipo = "pagar" },
-                new { categoriaId = extras, ativo = false, valor = 300m, tipo = "receber" },
-            },
-        });
+        var bonus = await CategoriaAsync(loja, "Bônus", "ambos");
+        // gravados em chamadas separadas e em ordens opostas, para nenhuma busca depender de qual teto foi criado primeiro
+        await loja.Painel.Put($"{Rota}/planejamento/categorias", new { itens = new object[] { new { categoriaId = extras, ativo = true, valor = 100m, tipo = "pagar" }, new { categoriaId = bonus, ativo = false, valor = 400m, tipo = "receber" } } });
+        await loja.Painel.Put($"{Rota}/planejamento/categorias", new { itens = new object[] { new { categoriaId = extras, ativo = false, valor = 300m, tipo = "receber" }, new { categoriaId = bonus, ativo = true, valor = 200m, tipo = "pagar" } } });
 
         var r = await loja.Painel.Get($"{Rota}/planejamento?ano=2024&mes=3");
 
-        var pagar = r.Json.GetProperty("categorias").EnumerateArray().Single(c => Texto(c, "nome") == "Extras");
-        var receber = r.Json.GetProperty("categoriasReceita").EnumerateArray().Single(c => Texto(c, "nome") == "Extras");
-        Assert.Equal((true, 100m), (pagar.GetProperty("ativo").GetBoolean(), Num(pagar, "valor")));
-        Assert.Equal((false, 300m), (receber.GetProperty("ativo").GetBoolean(), Num(receber, "valor")));
+        JsonElement Linha(string lista, string nome) => r.Json.GetProperty(lista).EnumerateArray().Single(c => Texto(c, "nome") == nome);
+        Assert.Equal((true, 100m), (Linha("categorias", "Extras").GetProperty("ativo").GetBoolean(), Num(Linha("categorias", "Extras"), "valor")));
+        Assert.Equal((false, 300m), (Linha("categoriasReceita", "Extras").GetProperty("ativo").GetBoolean(), Num(Linha("categoriasReceita", "Extras"), "valor")));
+        Assert.Equal((true, 200m), (Linha("categorias", "Bônus").GetProperty("ativo").GetBoolean(), Num(Linha("categorias", "Bônus"), "valor")));
+        Assert.Equal((false, 400m), (Linha("categoriasReceita", "Bônus").GetProperty("ativo").GetBoolean(), Num(Linha("categoriasReceita", "Bônus"), "valor")));
     }
 
     [FatoIntegracao]
