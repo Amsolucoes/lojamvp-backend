@@ -13,13 +13,13 @@ próprios** (cada uma com o seu `.csproj`), então o compilador **impede** depen
 src/
   Domain/            projeto LojaApi.Domain       <- só depende do .NET. AggregatesModel/<Modulo>Aggregate (uma pasta por agregado/módulo, como no modelo de domínio da Microsoft).
   Data/              projeto LojaApi.Data         <- AppDbContext, Entities (tabelas do banco) e Migrations. Depende do Domain.
-  Application/       projeto LojaApi.Application  <- casos de uso (Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora, Equipe)
+  Application/       projeto LojaApi.Application  <- casos de uso de todos os módulos (veja a tabela em "Estado atual")
                                                      + Resultado<T> e ILojaAtual (Shared).
                                                      Depende do Domain e do Data. Nunca da API.
                                                      Organizada por TIPO e, dentro dele, por módulo (veja abaixo).
   Controllers/<Modulo>/    (projeto da API: LojaApi.csproj, na raiz)  <- SÓ controllers (HTTP)
   Infrastructure/<Modulo>/ (projeto da API)  <- PDF, rotinas em segundo plano, registro do módulo e os adaptadores das portas
-  Shared/Api/ , Services/ , DTOs/ , Middleware/ , Utils/   (projeto da API; Services/DTOs ainda atendem os módulos não migrados)
+  Shared/Api/ , Services/ , DTOs/ , Middleware/ , Utils/   (projeto da API; Services/DTOs são serviços de apoio e DTOs antigos ainda usados: e-mail, Mercado Pago, token, tenant, push, planos e o FinanceiroService, que gera os fixos e roda nas rotinas em segundo plano)
 ```
 
 Quem depende de quem (seta = "referencia"):
@@ -51,7 +51,7 @@ Application/
   (quem usa um módulo importa um namespace só). A pasta só organiza os arquivos.
 - Ao criar um módulo novo, crie o arquivo dele em cada pasta de tipo (só as que ele precisar).
 
-### Command e Handler (padrão novo: Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao e Plataforma)
+### Command e Handler (padrão novo: Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao, Plataforma e Financeiro)
 Em vez de um service com vários métodos, **cada caso de uso é um Command (ou Query) e um Handler**, sem biblioteca de mediador:
 
 - `Commands/<Modulo>`: records que **mudam** dados (`CriarFuncionarioCommand(LojaId, Req)`); `Queries/<Modulo>`: records que só **leem** (`ResumoComissoesQuery`).
@@ -100,8 +100,7 @@ No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaA
 Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
-Hoje **Chacara**, **Carteira**, **Servicos**, **Ajuda**, **Clientes**, **Fiscal**, **Turmas**, **Corretora**, **Equipe**, **Acessorios**, **Vendas**, **OrdemServico**, **Produtos**, **NfImportacao** e **Plataforma** têm as quatro camadas. Os demais módulos têm só `Controllers/<Modulo>` (a lógica ainda está
-dentro do controller) e, ao serem migrados, ganham `Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `Domain/AggregatesModel/<Modulo>Aggregate`.
+**Todos os módulos** têm as quatro camadas (Domain, Application, Infrastructure e Controllers): Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora, Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao, Plataforma e Financeiro. Nenhum controller usa o `AppDbContext` diretamente. Um módulo novo ganha `Application/{Commands,Queries,Handlers,Interfaces,Dtos,Requests}/<Modulo>` (ou `Services`, no padrão antigo) e `Domain/AggregatesModel/<Modulo>Aggregate`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
 > estrangeiras depende disso. Por isso o `AppDbContext` fixa, para toda entidade em `LojaApi.Domain.*`, o nome da FK como
@@ -175,8 +174,9 @@ um relatório. Ele não altera código de produção.
 
 ## Estado atual
 
-Todo controller mora em `src/Controllers/<Modulo>`. Só alguns módulos já estão **de verdade** em camadas (Domain/Application);
-nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo).
+Todo controller mora em `src/Controllers/<Modulo>` e é fino: lê a requisição, descobre a loja e chama um caso de uso (service ou handler).
+Todos os módulos já estão em camadas (Domain/Application/Infrastructure). Só **Chacara, Carteira e Servicos** (migrados antes) ainda
+consultam o banco direto no service; os demais usam repository (e, nas consultas pesadas, Dapper).
 
 | Módulo | Controllers | Camadas |
 |---|---|---|
@@ -199,11 +199,11 @@ nos demais, o controller ainda tem a lógica dentro (migrar é o próximo passo)
 
 ## Próximos passos sugeridos
 
-1. Migrar os módulos um a um (um PR por módulo), do menor para o maior, terminando pelo Financeiro.
-2. Quando todos estiverem migrados, separar em projetos (`Domain`, `Application`, `Infrastructure`, `Api`),
-   o que passa a ser mecânico e faz o compilador **impedir** dependências no sentido errado.
-3. Os módulos novos já usam repository (veja "Service x Repository"). Falta, se for desejado, levar o mesmo padrão a Chacara, Carteira e
-   Servicos, que ainda consultam o banco direto no service.
+A migração para camadas (um PR por módulo, terminando pelo Financeiro) e a separação em projetos (`Domain`, `Data`, `Application` e a API) estão **concluídas**. O que sobra:
+
+1. Levar o padrão repository a Chacara, Carteira e Servicos, que ainda consultam o banco direto no service (e acrescentar os nomes deles na lista
+   `ModulosComRepositorio` do teste de arquitetura).
+2. Trazer o `FinanceiroService` (fixos e rotinas em segundo plano) e os demais serviços de apoio de `src/Services` para o Application/Infrastructure, quando valer a pena.
 
 ## Observação sobre as migrations
 
