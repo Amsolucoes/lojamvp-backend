@@ -34,6 +34,23 @@ public static class CartaoRegras
         return (fechamentoAnterior.AddDays(1), fechamentoAtual);
     }
 
+    // Vencimento e ciclo da fatura em que "hoje" cai (procura até 3 meses à frente)
+    public static (DateTime Vencimento, (DateTime Inicio, DateTime Fim) Ciclo) CicloEmAberto(int diaFechamento, int diaVencimento, DateTime hoje)
+    {
+        int ano = hoje.Year, mes = hoje.Month;
+        DateTime vencimento = default;
+        (DateTime Inicio, DateTime Fim) ciclo = default;
+        for (int i = 0; i < 3; i++)
+        {
+            vencimento = VencimentoDaFatura(diaVencimento, ano, mes);
+            ciclo = CicloDaFatura(diaFechamento, vencimento);
+            if (hoje.Date >= ciclo.Inicio.Date && hoje.Date <= ciclo.Fim.Date) break;
+            mes++;
+            if (mes > 12) { mes = 1; ano++; }
+        }
+        return (vencimento, ciclo);
+    }
+
     // Vencimento da fatura em que a compra cai: a do mês da compra, ou a do mês seguinte se a compra ficou depois do fechamento
     public static DateTime VencimentoDaFaturaDaCompra(int diaFechamento, int diaVencimento, DateTime dataCompra)
     {

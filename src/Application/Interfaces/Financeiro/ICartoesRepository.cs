@@ -13,6 +13,7 @@ public interface ICartoesRepository
 
     // ── Cartão ──
     Task<CartaoCredito?> ObterCartaoAsync(Guid id, Guid lojaId);
+    Task<List<CartaoCredito>> ListarAtivosAsync(Guid lojaId);                                        // sem rastrear
     void Adicionar(CartaoCredito cartao);
 
     // ── Compras ──

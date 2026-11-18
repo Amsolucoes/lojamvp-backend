@@ -13,6 +13,9 @@ public class PlanejamentoRepository(AppDbContext db) : IPlanejamentoRepository
 
     public Task<List<Guid>> ListarIdsDeCategoriasDaLojaAsync(Guid lojaId) => db.CategoriasFinanceiras.Where(c => c.LojaId == lojaId).Select(c => c.Id).ToListAsync();
     public Task<List<PlanejamentoCategoria>> ListarTetosAsync(Guid lojaId) => db.PlanejamentoCategorias.Where(p => p.LojaId == lojaId).ToListAsync();
+    public Task<List<CategoriaFinanceira>> ListarCategoriasAtivasAsync(Guid lojaId) =>
+        db.CategoriasFinanceiras.AsNoTracking().Where(c => c.LojaId == lojaId && c.Ativa).OrderBy(c => c.Nome).ToListAsync();
+    public Task<List<MetaPlanejamento>> ListarMetasAsync(Guid lojaId) => db.MetasPlanejamento.AsNoTracking().Where(m => m.LojaId == lojaId).OrderBy(m => m.CriadoEm).ToListAsync();
     public void Adicionar(PlanejamentoCategoria teto) => db.PlanejamentoCategorias.Add(teto);
 
     public Task<MetaPlanejamento?> ObterMetaAsync(Guid id, Guid lojaId) => db.MetasPlanejamento.FirstOrDefaultAsync(m => m.Id == id && m.LojaId == lojaId);
