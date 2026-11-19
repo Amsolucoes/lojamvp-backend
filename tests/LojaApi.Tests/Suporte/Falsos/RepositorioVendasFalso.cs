@@ -1,4 +1,5 @@
 using LojaApi.Application.Vendas;
+using LojaApi.Domain.Bonificacoes;
 using LojaApi.Models;
 using LojaApi.src.Models.Funcionarios;
 
@@ -40,6 +41,8 @@ public sealed class RepositorioVendasFalso : IVendasRepository
     public void Adicionar(ItemVenda item) => ItensVenda.Add(item);
     public void Adicionar(ConsumoPlano consumo) { }
     public void Adicionar(MovimentoEstoque movimento) => MovimentosEstoque.Add(movimento);
+    public List<Bonificacao> Bonificacoes { get; } = [];
+    public void Adicionar(Bonificacao bonificacao) => Bonificacoes.Add(bonificacao);
     public void Adicionar(ComissaoFuncionario comissao) => Comissoes.Add(comissao);
     public void Remover(Venda venda) => Vendas.Remove(venda);
     public void Remover(ComissaoFuncionario comissao) => Comissoes.Remove(comissao);

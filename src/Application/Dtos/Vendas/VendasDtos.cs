@@ -5,7 +5,8 @@ namespace LojaApi.Application.Vendas;
 public record ItemVendaDto(
     Guid Id, Guid? ProdutoId, string NomeProduto,
     decimal Quantidade, decimal PrecoUnitario, decimal Subtotal,
-    Guid? ServicoId = null
+    Guid? ServicoId = null,
+    bool Bonificacao = false
 );
 
 public record VendaDto(

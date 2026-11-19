@@ -3,7 +3,7 @@ namespace LojaApi.Application.Vendas;
 // Comandos de Vendas: o que muda dados (cada um tem o seu handler em Application/Handlers/Vendas).
 
 // Vendas
-public record RegistrarVendaCommand(Guid? LojaId, CriarVendaRequest Req);
+public record RegistrarVendaCommand(Guid? LojaId, CriarVendaRequest Req, bool PodeBonificar = false, Guid? UsuarioId = null);
 public record ExcluirVendaCommand(Guid? LojaId, Guid Id);
 
 // Trocas

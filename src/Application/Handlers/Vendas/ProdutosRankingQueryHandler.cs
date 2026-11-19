@@ -10,7 +10,7 @@ public class ProdutosRankingQueryHandler(IVendasRepository repositorio) : IQuery
         var itens = await repositorio.ListarItensVendidosAsync(query.LojaId, query.De, query.Ate);
 
         var ranking = itens
-            .Where(i => i.ProdutoId.HasValue)
+            .Where(i => i.ProdutoId.HasValue && !i.Bonificacao)   // brinde não conta como venda
             .GroupBy(i => i.ProdutoId!.Value)
             .Select(g => new ProdutoRankingDto(
                 Id:             g.Key,

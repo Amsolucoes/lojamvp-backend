@@ -1,5 +1,6 @@
 using LojaApi.Application.Vendas;
 using LojaApi.Data;
+using LojaApi.Domain.Bonificacoes;
 using LojaApi.Models;
 using LojaApi.src.Models.Funcionarios;
 using Microsoft.EntityFrameworkCore;
@@ -50,6 +51,7 @@ public class VendasRepository(AppDbContext db) : IVendasRepository
 
     public void Adicionar(Venda venda) => db.Vendas.Add(venda);
     public void Adicionar(ItemVenda item) => db.ItensVenda.Add(item);
+    public void Adicionar(Bonificacao bonificacao) => db.Bonificacoes.Add(bonificacao);
     public void Adicionar(ConsumoPlano consumo) => db.ConsumosPlano.Add(consumo);
     public void Adicionar(MovimentoEstoque movimento) => db.Movimentos.Add(movimento);
     public void Adicionar(ComissaoFuncionario comissao) => db.ComissoesFuncionario.Add(comissao);

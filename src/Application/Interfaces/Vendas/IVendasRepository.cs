@@ -1,3 +1,4 @@
+using LojaApi.Domain.Bonificacoes;
 using LojaApi.Models;
 using LojaApi.src.Models.Funcionarios;
 
@@ -20,6 +21,7 @@ public interface IVendasRepository
     void Adicionar(ItemVenda item);
     void Adicionar(ConsumoPlano consumo);
     void Adicionar(MovimentoEstoque movimento);
+    void Adicionar(Bonificacao bonificacao);
     void Adicionar(ComissaoFuncionario comissao);
     void Remover(Venda venda);
     void Remover(ComissaoFuncionario comissao);

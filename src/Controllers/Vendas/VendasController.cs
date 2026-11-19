@@ -3,6 +3,7 @@ using LojaApi.Shared.Api;
 using LojaApi.Shared.Application;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace LojaApi.Controllers.Vendas;
 
@@ -24,7 +25,9 @@ public class VendasController(ILojaAtual lojaAtual) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Registrar([FromBody] CriarVendaRequest req, [FromServices] ICommandHandler<RegistrarVendaCommand> handler)
     {
-        var resultado = await handler.HandleAsync(new(await lojaAtual.ObterIdAsync(User), req));
+        var podeBonificar = User.IsInRole("admin") || User.IsInRole("superadmin");
+        var usuarioId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var uid) ? uid : (Guid?)null;
+        var resultado = await handler.HandleAsync(new(await lojaAtual.ObterIdAsync(User), req, podeBonificar, usuarioId));
         return resultado.Sucesso
             ? CreatedAtAction(nameof(Buscar), new { id = ((VendaDto)resultado.Valor!).Id }, resultado.Valor)
             : resultado.ParaResposta(this);

@@ -13,7 +13,7 @@ public class ResumoVendasQueryHandler(IVendasRepository repositorio) : IQueryHan
             TotalVendido:       vendas.Sum(v => v.TotalFinal),
             TotalDescontos:     vendas.Sum(v => v.Desconto),
             TicketMedio:        vendas.Count > 0 ? vendas.Sum(v => v.TotalFinal) / vendas.Count : 0,
-            TotalItensVendidos: vendas.Sum(v => v.Itens.Sum(i => i.Quantidade)),
+            TotalItensVendidos: vendas.Sum(v => v.Itens.Where(i => !i.Bonificacao).Sum(i => i.Quantidade)),   // brinde não é item vendido
             TotalVendas:        vendas.Count
         ));
     }
