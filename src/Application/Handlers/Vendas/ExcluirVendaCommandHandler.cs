@@ -1,4 +1,5 @@
 using LojaApi.Application.Carteira;
+using LojaApi.Domain.Bonificacoes;
 using LojaApi.Domain.Vendas;
 using LojaApi.Models;
 using LojaApi.Shared.Application;
@@ -40,13 +41,24 @@ public class ExcluirVendaCommandHandler(IVendasRepository repositorio, CarteiraS
         // (tamanho/cor) foi vendida quando o produto tem grade — só o produto
         // pai. Por isso, pra produtos com grade, o estorno soma no total do
         // produto, mas não sabe em qual variação específica devolver.
+        // Exceção: o brinde dado dentro da venda guarda a variação (a bonificação sabe o tamanho/cor), então o estoque volta para a variação certa.
+        var brindesPendentes = await repositorio.ListarBonificacoesDaVendaAsync(venda.Id);
         foreach (var item in venda.Itens.Where(i => i.ProdutoId.HasValue))
         {
             var produto = await repositorio.ObterProdutoAsync(item.ProdutoId!.Value, null);
             if (produto is null) continue;
 
-            produto.Estoque += item.Quantidade;
-            produto.AtualizadoEm = DateTime.UtcNow;
+            var variacaoDoBrinde = item.Bonificacao ? await TirarVariacaoDoBrindeAsync(item, brindesPendentes) : null;
+            if (variacaoDoBrinde is not null)
+            {
+                variacaoDoBrinde.Estoque += (int)item.Quantidade;
+                variacaoDoBrinde.AtualizadoEm = DateTime.UtcNow;
+            }
+            else
+            {
+                produto.Estoque += item.Quantidade;
+                produto.AtualizadoEm = DateTime.UtcNow;
+            }
 
             repositorio.Adicionar(new MovimentoEstoque
             {
@@ -81,5 +93,14 @@ public class ExcluirVendaCommandHandler(IVendasRepository repositorio, CarteiraS
 
         await repositorio.SalvarAsync();
         return Resultado.Ok(new { mensagem = "Venda excluída. Estoque, agendamento e crédito foram estornados." });
+
+        // Variação (ainda existente) do brinde que corresponde ao item (mesmo produto e quantidade); cada brinde é usado uma vez
+        async Task<ProdutoVariacao?> TirarVariacaoDoBrindeAsync(ItemVenda item, List<Bonificacao> pendentes)
+        {
+            var brinde = pendentes.FirstOrDefault(b => b.ProdutoId == item.ProdutoId && b.Quantidade == item.Quantidade);
+            if (brinde is null) return null;
+            pendentes.Remove(brinde);
+            return brinde.VariacaoId.HasValue ? await repositorio.ObterVariacaoAsync(brinde.VariacaoId.Value, null) : null;
+        }
     }
 }

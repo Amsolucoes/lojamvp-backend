@@ -102,6 +102,46 @@ public class VendasBonificacaoApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Brinde_na_venda_valida_a_quantidade_como_no_brinde_avulso()
+    {
+        var loja = await NovaAsync();
+        var cliente = await loja.ClienteIdAsync();
+        var pulseira = await api.ProdutoAsync(loja.Id, "Pulseira", estoque: 5);
+        var anel = await api.ProdutoAsync(loja.Id, "Anel", estoque: 0);
+        var variacao = await api.VariacaoAsync(anel, "M", "Azul", estoque: 4);
+
+        var zero = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(pulseira, 0)], cliente));
+        var negativa = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(pulseira, -2)], cliente));
+        var fracionadaDeVariacao = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(anel, 0.5m, variacao: variacao)], cliente));
+
+        Assert.Equal((400, "Informe uma quantidade maior que zero."), (zero.Codigo, zero.Erro));
+        Assert.Equal((400, "Informe uma quantidade maior que zero."), (negativa.Codigo, negativa.Erro));
+        Assert.Equal((400, "Para produto com variação, a quantidade deve ser um número inteiro."), (fracionadaDeVariacao.Codigo, fracionadaDeVariacao.Erro));
+        Assert.Equal((5m, 4), ((await api.ProdutoDaLojaNoBancoAsync(pulseira)).Estoque, (await api.VariacaoNoBancoAsync(variacao)).Estoque));
+        Assert.Empty(await BonificacoesAsync(loja.Id));
+        Assert.Equal(0, await api.NoBancoAsync(db => db.Vendas.CountAsync(v => v.LojaId == loja.Id)));
+    }
+
+    [FatoIntegracao]
+    public async Task Excluir_a_venda_devolve_o_brinde_de_variacao_para_a_variacao_e_nao_para_o_produto()
+    {
+        var loja = await NovaAsync();
+        var cliente = await loja.ClienteIdAsync();
+        var anel = await api.ProdutoAsync(loja.Id, "Anel", estoque: 7);
+        var variacao = await api.VariacaoAsync(anel, "M", "Azul", estoque: 4);
+        var venda = (await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(anel, 3, variacao: variacao)], cliente))).Json.GetProperty("id").GetGuid();
+        Assert.Equal((7m, 1), ((await api.ProdutoDaLojaNoBancoAsync(anel)).Estoque, (await api.VariacaoNoBancoAsync(variacao)).Estoque));
+
+        var excluir = await loja.Painel.Delete($"/api/vendas/{venda}");
+
+        Assert.Equal(200, excluir.Codigo);
+        Assert.Equal((7m, 4), ((await api.ProdutoDaLojaNoBancoAsync(anel)).Estoque, (await api.VariacaoNoBancoAsync(variacao)).Estoque));
+        var entrada = (await api.MovimentosDoProdutoAsync(anel)).Last();
+        Assert.Equal(("entrada", 3m), (entrada.Tipo, entrada.Quantidade));
+        Assert.Empty(await BonificacoesAsync(loja.Id));
+    }
+
+    [FatoIntegracao]
     public async Task Brinde_de_variacao_baixa_so_a_variacao_e_leva_o_tamanho_e_a_cor()
     {
         var loja = await NovaAsync();

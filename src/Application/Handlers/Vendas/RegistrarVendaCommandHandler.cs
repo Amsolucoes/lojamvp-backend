@@ -29,6 +29,11 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
             if (!req.ClienteId.HasValue) return Resultado.Invalido("Informe o cliente para registrar a bonificação.");
             if (req.Itens.Any(i => i.Bonificacao && (i.ServicoId.HasValue || !i.ProdutoId.HasValue)))
                 return Resultado.Invalido("Bonificação só vale para produtos.");
+            foreach (var brinde in req.Itens.Where(i => i.Bonificacao))
+            {
+                var erroQuantidade = BonificacoesRegras.ValidarQuantidade(brinde.Quantidade, brinde.VariacaoId.HasValue);
+                if (erroQuantidade is not null) return Resultado.Invalido(erroQuantidade);
+            }
         }
 
         var (dataVendaFinal, erroData) = VendasRegras.DataDaVenda(req.DataVenda, DateTime.UtcNow);

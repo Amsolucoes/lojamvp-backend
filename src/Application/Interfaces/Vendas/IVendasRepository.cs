@@ -22,6 +22,7 @@ public interface IVendasRepository
     void Adicionar(ConsumoPlano consumo);
     void Adicionar(MovimentoEstoque movimento);
     void Adicionar(Bonificacao bonificacao);
+    Task<List<Bonificacao>> ListarBonificacoesDaVendaAsync(Guid vendaId);
     void Adicionar(ComissaoFuncionario comissao);
     void Remover(Venda venda);
     void Remover(ComissaoFuncionario comissao);

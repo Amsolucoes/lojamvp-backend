@@ -52,6 +52,7 @@ public class VendasRepository(AppDbContext db) : IVendasRepository
     public void Adicionar(Venda venda) => db.Vendas.Add(venda);
     public void Adicionar(ItemVenda item) => db.ItensVenda.Add(item);
     public void Adicionar(Bonificacao bonificacao) => db.Bonificacoes.Add(bonificacao);
+    public Task<List<Bonificacao>> ListarBonificacoesDaVendaAsync(Guid vendaId) => db.Bonificacoes.Where(b => b.VendaId == vendaId).ToListAsync();
     public void Adicionar(ConsumoPlano consumo) => db.ConsumosPlano.Add(consumo);
     public void Adicionar(MovimentoEstoque movimento) => db.Movimentos.Add(movimento);
     public void Adicionar(ComissaoFuncionario comissao) => db.ComissoesFuncionario.Add(comissao);

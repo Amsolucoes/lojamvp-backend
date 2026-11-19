@@ -324,6 +324,45 @@ public class BonificacoesApiTests(ApiFixture api)
         Assert.False((await NoBancoAsync(loja.Id)).Single().Estornada());
     }
 
+    // ── Exclusão da loja e dos produtos e vendas pelo painel do superadmin ───
+
+    private async Task<(LojaTeste Loja, Guid Cliente, Guid Produto)> LojaComBrindesAsync()
+    {
+        var loja = await NovaAsync();
+        var cliente = await loja.ClienteIdAsync();
+        var produto = await api.ProdutoAsync(loja.Id, "Pulseira", estoque: 10);
+        Assert.Equal(201, (await loja.Painel.Post(Rota, Corpo(cliente, produto))).Codigo);                                 // avulso
+        Assert.Equal(201, (await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(produto)], cliente))).Codigo);   // dentro de uma venda
+        Assert.Equal(2, (await NoBancoAsync(loja.Id)).Count);
+        return (loja, cliente, produto);
+    }
+
+    [FatoIntegracao]
+    public async Task Deletar_a_loja_remove_tambem_as_bonificacoes()
+    {
+        var (loja, _, _) = await LojaComBrindesAsync();
+        var super = await api.SuperadminAsync(await NovaAsync());
+
+        var r = await super.Delete($"/api/admin/lojas/{loja.Id}");
+
+        Assert.Equal(200, r.Codigo);
+        Assert.Empty(await NoBancoAsync(loja.Id));
+        Assert.Null(await api.NoBancoAsync(db => db.Lojas.FirstOrDefaultAsync(l => l.Id == loja.Id)));
+    }
+
+    [FatoIntegracao]
+    public async Task Apagar_produtos_e_vendas_leva_o_brinde_da_venda_e_mantem_o_avulso_sem_o_produto()
+    {
+        var (loja, cliente, _) = await LojaComBrindesAsync();
+        var super = await api.SuperadminAsync(await NovaAsync());
+
+        var r = await super.Delete($"/api/admin/lojas/{loja.Id}/produtos-e-vendas");
+
+        Assert.Equal(200, r.Codigo);
+        var restante = Assert.Single(await NoBancoAsync(loja.Id));
+        Assert.Equal((cliente, (Guid?)null, (Guid?)null), (restante.ClienteId, restante.ProdutoId, restante.VendaId));   // o avulso fica, com os nomes e o custo
+    }
+
     // ── O histórico sobrevive à exclusão do cliente e do produto ─────────────
 
     [FatoIntegracao]
