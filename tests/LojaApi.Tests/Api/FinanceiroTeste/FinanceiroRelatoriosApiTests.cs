@@ -517,6 +517,31 @@ public class FinanceiroRelatoriosApiTests(ApiFixture api)
 
     // ── Lacunas apontadas pelo revisor ───────────────────────────────────────
 
+    // As consultas de financiamento (parcelas do mês e pendente por cartão) não filtram a loja no SQL: dependem de receber só ids de cartões da loja.
+    // Este teste fixa essa dependência: parcelas de financiamento de outra loja nunca entram nos relatórios.
+    [FatoIntegracao]
+    public async Task Parcelas_de_financiamento_de_outra_loja_nao_entram_nos_relatorios_da_loja()
+    {
+        var (loja, conta, cartao) = await CenarioAsync("Cartão Meu");
+        var (outra, contaOutra, cartaoOutra) = await CenarioAsync("Cartão Alheio");
+        await api.ParcelaDeFinanciamentoNoBancoAsync(loja.Id, conta, cartao, Utc(2024, 3, 15), 40m);
+        await api.ParcelaDeFinanciamentoNoBancoAsync(outra.Id, contaOutra, cartaoOutra, Utc(2024, 3, 15), 900m);
+        await api.ParcelaDeFinanciamentoNoBancoAsync(outra.Id, contaOutra, cartaoOutra, Utc(2024, 4, 15), 700m);
+
+        var mensal = await loja.Painel.Get($"{Rota}/resumo-mensal?ano=2024&mes=3");
+        var balanco = await loja.Painel.Get($"{Rota}/balanco-por-categoria?ano=2024&mes=3");
+        var anual = await loja.Painel.Get($"{Rota}/resumo-anual?ano=2024");
+        var cartoes = await loja.Painel.Get($"{Rota}/cartoes-resumo");
+
+        Assert.Equal((40m, 1), (Num(mensal.Json.GetProperty("pagar"), "totalVencido"), mensal.Json.GetProperty("pagar").GetProperty("qtdVencido").GetInt32()));
+        var financiamento = Assert.Single(balanco.Json.GetProperty("despesasDesmembradas").EnumerateArray());
+        Assert.Equal(("Financiamento de fatura", 40m), (Texto(financiamento, "nome"), Num(financiamento, "valor")));
+        var meses = anual.Json.EnumerateArray().ToList();
+        Assert.Equal((40m, 0m), (Num(meses[2], "pagar"), Num(meses[3], "pagar")));
+        var meuCartao = Assert.Single(cartoes.Json.EnumerateArray());
+        Assert.Equal((cartao, 40m), (meuCartao.GetProperty("id").GetGuid(), Num(meuCartao, "usado")));
+    }
+
     [FatoIntegracao]
     public async Task Relatorios_usam_a_fatura_e_o_adiantamento_de_cada_cartao_sem_misturar_os_da_mesma_loja()
     {
