@@ -51,7 +51,7 @@ Application/
   (quem usa um módulo importa um namespace só). A pasta só organiza os arquivos.
 - Ao criar um módulo novo, crie o arquivo dele em cada pasta de tipo (só as que ele precisar).
 
-### Command e Handler (padrão novo: Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao, Plataforma e Financeiro)
+### Command e Handler (padrão novo: Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao, Plataforma, Financeiro e Bonificacoes)
 Em vez de um service com vários métodos, **cada caso de uso é um Command (ou Query) e um Handler**, sem biblioteca de mediador:
 
 - `Commands/<Modulo>`: records que **mudam** dados (`CriarFuncionarioCommand(LojaId, Req)`); `Queries/<Modulo>`: records que só **leem** (`ResumoComissoesQuery`).
@@ -100,7 +100,7 @@ No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaA
 Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
 às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
 
-**Todos os módulos** têm as quatro camadas (Domain, Application, Infrastructure e Controllers): Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora, Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao, Plataforma e Financeiro. Nenhum controller usa o `AppDbContext` diretamente. Um módulo novo ganha `Application/{Commands,Queries,Handlers,Interfaces,Dtos,Requests}/<Modulo>` (ou `Services`, no padrão antigo) e `Domain/AggregatesModel/<Modulo>Aggregate`.
+**Todos os módulos** têm as quatro camadas (Domain, Application, Infrastructure e Controllers): Bonificacoes, Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora, Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao, Plataforma e Financeiro. Nenhum controller usa o `AppDbContext` diretamente. Um módulo novo ganha `Application/{Commands,Queries,Handlers,Interfaces,Dtos,Requests}/<Modulo>` (ou `Services`, no padrão antigo) e `Domain/AggregatesModel/<Modulo>Aggregate`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
 > estrangeiras depende disso. Por isso o `AppDbContext` fixa, para toda entidade em `LojaApi.Domain.*`, o nome da FK como
@@ -195,6 +195,7 @@ consultam o banco direto no service; os demais usam repository (e, nas consultas
 | **OrdemServico** | OrdemServico, Patrimonio | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes (e-mail e PDFs pelas portas `IOrcamentoNotificacao` e `IRelatorioPatrimonioPdf`) |
 | **Acessorios** | PedidosAcessorio, ProdutosAcessorio (venda de acessórios da plataforma; Mercado Pago pela porta `IPagamentoOnlineAcessorio`) | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes |
 | **Plataforma** | Auth, Cliente (área do assinante), Loja, Perfis, ModulosPreco, Push, Admin (painel do superadmin) e Pagamentos (mensalidade pelo Mercado Pago) | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes |
+| **Bonificacoes** | Bonificações (brinde que a loja dá a um cliente: fica registrado no cliente, baixa o estoque com a observação "Bonificação" e entra no relatório de custo; avulso pela tela do cliente ou como item de brinde dentro da venda; só o administrador registra e estorna) | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes (a venda cria o brinde pelo `IVendasRepository`) |
 | **Ajuda** | VideoAjuda, CategoriasVideoAjuda | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 
 ## Próximos passos sugeridos

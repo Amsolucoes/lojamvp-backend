@@ -1,5 +1,6 @@
 using LojaApi.Data;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using LojaApi.Infrastructure.Bonificacoes;
 using LojaApi.Infrastructure.Carteira;
 using LojaApi.Infrastructure.Acessorios;
 using LojaApi.Infrastructure.Vendas;
@@ -74,6 +75,7 @@ internal class Program
         // Módulo Chácara (reservas, preços, site público): serviços e rotina horária
         builder.Services.AddChacaraModule();
         builder.Services.AddCarteiraModule();
+        builder.Services.AddBonificacoesModule();
         builder.Services.AddServicosModule();
         builder.Services.AddAcessoriosModule();
         builder.Services.AddVendasModule();

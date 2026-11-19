@@ -13,7 +13,7 @@ public static class VendasApoio
         v.Itens.Select(i => new ItemVendaDto(
             i.Id, i.ProdutoId, i.NomeProduto,
             i.Quantidade, i.PrecoUnitario, i.Subtotal,
-            i.ServicoId
+            i.ServicoId, i.Bonificacao
         )).ToList(),
         v.OrigemNome,
         v.CreditoUsado,

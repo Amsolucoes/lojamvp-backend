@@ -1438,6 +1438,10 @@ namespace LojaApi.src.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("Bonificacao")
+                        .HasColumnType("boolean")
+                        .HasColumnName("bonificacao");
+
                     b.Property<string>("NomeProduto")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1940,6 +1944,91 @@ namespace LojaApi.src.Data.Migrations
                         .HasDatabaseName("i_x_lojas_slug");
 
                     b.ToTable("lojas");
+                });
+
+            modelBuilder.Entity("LojaApi.Domain.Bonificacoes.Bonificacao", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTime>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<decimal>("CustoUnitario")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("custo_unitario");
+
+                    b.Property<DateTime?>("EstornadaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("estornada_em");
+
+                    b.Property<Guid>("LojaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("loja_id");
+
+                    b.Property<string>("NomeCliente")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("nome_cliente");
+
+                    b.Property<string>("NomeProduto")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nome_produto");
+
+                    b.Property<string>("Observacao")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("observacao");
+
+                    b.Property<Guid?>("ProdutoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("produto_id");
+
+                    b.Property<decimal>("Quantidade")
+                        .HasColumnType("numeric(10,3)")
+                        .HasColumnName("quantidade");
+
+                    b.Property<Guid?>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<Guid?>("VariacaoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("variacao_id");
+
+                    b.Property<Guid?>("VendaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("venda_id");
+
+                    b.HasKey("Id")
+                        .HasName("p_k_bonificacoes");
+
+                    b.HasIndex("ClienteId")
+                        .HasDatabaseName("i_x_bonificacoes_cliente_id");
+
+                    b.HasIndex("ProdutoId")
+                        .HasDatabaseName("i_x_bonificacoes_produto_id");
+
+                    b.HasIndex("VendaId")
+                        .HasDatabaseName("i_x_bonificacoes_venda_id");
+
+                    b.HasIndex("LojaId", "ClienteId")
+                        .HasDatabaseName("i_x_bonificacoes_loja_id_cliente_id");
+
+                    b.HasIndex("LojaId", "CriadoEm")
+                        .HasDatabaseName("i_x_bonificacoes_loja_id_criado_em");
+
+                    b.ToTable("bonificacoes", (string)null);
                 });
 
             modelBuilder.Entity("LojaApi.Domain.Carteira.MovimentoCarteira", b =>
@@ -6254,7 +6343,35 @@ namespace LojaApi.src.Data.Migrations
                     b.Navigation("ContaBancaria");
                 });
 
-            modelBuilder.Entity("LojaApi.Domain.Carteira.MovimentoCarteira", b =>
+                        modelBuilder.Entity("LojaApi.Domain.Bonificacoes.Bonificacao", b =>
+                {
+                    b.HasOne("LojaApi.Models.Cliente", null)
+                        .WithMany()
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("f_k_bonificacoes_clientes_cliente_id");
+
+                    b.HasOne("LojaApi.Models.Loja", null)
+                        .WithMany()
+                        .HasForeignKey("LojaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("f_k_bonificacoes_lojas_loja_id");
+
+                    b.HasOne("LojaApi.Models.Produto", null)
+                        .WithMany()
+                        .HasForeignKey("ProdutoId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("f_k_bonificacoes_produtos_produto_id");
+
+                    b.HasOne("LojaApi.Models.Venda", null)
+                        .WithMany()
+                        .HasForeignKey("VendaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("f_k_bonificacoes_vendas_venda_id");
+                });
+
+modelBuilder.Entity("LojaApi.Domain.Carteira.MovimentoCarteira", b =>
                 {
                     b.HasOne("LojaApi.Models.Cliente", null)
                         .WithMany()

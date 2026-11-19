@@ -28,6 +28,10 @@ public static class CenariosVendas
     public static object ItemProduto(Guid produto, decimal quantidade = 1m, decimal preco = 50m, Guid? variacao = null) =>
         new { produtoId = produto, quantidade, precoUnitario = preco, variacaoId = variacao, servicoId = (Guid?)null, agendamentoId = (Guid?)null, assinaturaId = (Guid?)null };
 
+    // Brinde dentro da venda: o preço enviado deve ser ignorado pelo servidor (vale zero)
+    public static object ItemBrinde(Guid produto, decimal quantidade = 1m, decimal preco = 0m, Guid? variacao = null) =>
+        new { produtoId = produto, quantidade, precoUnitario = preco, variacaoId = variacao, servicoId = (Guid?)null, agendamentoId = (Guid?)null, assinaturaId = (Guid?)null, bonificacao = true };
+
     public static object ItemSemProdutoNemServico(decimal quantidade = 1m, decimal preco = 50m) =>
         new { produtoId = (Guid?)null, quantidade, precoUnitario = preco, variacaoId = (Guid?)null, servicoId = (Guid?)null, agendamentoId = (Guid?)null, assinaturaId = (Guid?)null };
 

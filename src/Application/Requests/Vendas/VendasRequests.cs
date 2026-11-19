@@ -9,7 +9,8 @@ public record ItemVendaRequest(
     Guid? VariacaoId = null,
     Guid? ServicoId = null,
     Guid? AgendamentoId = null,
-    Guid? AssinaturaId = null
+    Guid? AssinaturaId = null,
+    bool Bonificacao = false     // brinde dado dentro da venda: preço zerado, estoque baixado, registrado no cliente (só admin; exige cliente na venda)
 );
 
 public record CriarVendaRequest(

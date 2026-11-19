@@ -258,6 +258,9 @@ public class ItemVenda
 
     [Column(TypeName = "decimal(10,2)")]
     public decimal Subtotal { get; set; }
+
+    // Brinde dado dentro da venda: preço e subtotal zerados, estoque baixado, e não conta como venda nos relatórios de vendas
+    public bool Bonificacao { get; set; }
 }
 
 // ── MovimentoEstoque ──────────────────────────────────────────────

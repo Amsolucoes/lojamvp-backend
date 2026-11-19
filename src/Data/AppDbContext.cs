@@ -6,6 +6,7 @@ using LojaApi.src.Models.Funcionarios;
 using LojaApi.src.Models.OrdemServico;
 using Microsoft.EntityFrameworkCore;
 using LojaApi.Domain.Chacara;
+using LojaApi.Domain.Bonificacoes;
 using LojaApi.Domain.Carteira;
 
 namespace LojaApi.Data;
@@ -65,6 +66,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<VideoAjuda> VideosAjuda => Set<VideoAjuda>();
     public DbSet<CategoriaVideoAjuda> CategoriasVideoAjuda => Set<CategoriaVideoAjuda>();
     public DbSet<MovimentoCarteira> MovimentosCarteira => Set<MovimentoCarteira>();
+    public DbSet<Bonificacao> Bonificacoes => Set<Bonificacao>();
     public DbSet<Reserva> Reservas => Set<Reserva>();
     public DbSet<ConfiguracaoPrecoChacara> ConfiguracoesPrecoChacara => Set<ConfiguracaoPrecoChacara>();
     public DbSet<FaixaPrecoChacara> FaixasPrecoChacara => Set<FaixaPrecoChacara>();
@@ -168,6 +170,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<MovimentoCarteira>().HasOne<Venda>().WithMany()
             .HasForeignKey(m => m.VendaId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<MovimentoCarteira>().HasIndex(m => new { m.LojaId, m.ClienteId });
+
+        // ── Bonificação (brinde dado ao cliente) ────────────────────
+        // O histórico e o custo sobrevivem à exclusão do cliente e do produto (a chave vira nula); sai junto só com a loja ou com a venda
+        mb.Entity<Bonificacao>().HasOne<Loja>().WithMany()
+            .HasForeignKey(b => b.LojaId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<Bonificacao>().HasOne<Cliente>().WithMany()
+            .HasForeignKey(b => b.ClienteId).OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<Bonificacao>().HasOne<Produto>().WithMany()
+            .HasForeignKey(b => b.ProdutoId).OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<Bonificacao>().HasOne<Venda>().WithMany()
+            .HasForeignKey(b => b.VendaId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<Bonificacao>().HasIndex(b => new { b.LojaId, b.ClienteId });
+        mb.Entity<Bonificacao>().HasIndex(b => new { b.LojaId, b.CriadoEm });
 
         mb.Entity<Loja>().HasIndex(l => l.Email).IsUnique();
         mb.Entity<Loja>().HasIndex(l => l.SchemaNome).IsUnique();

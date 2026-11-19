@@ -1,4 +1,5 @@
 using LojaApi.Application.Carteira;
+using LojaApi.Domain.Bonificacoes;
 using LojaApi.Domain.Carteira;
 using LojaApi.Domain.Servicos;
 using LojaApi.Domain.Vendas;
@@ -10,14 +11,30 @@ using static LojaApi.Application.Vendas.VendasApoio;
 namespace LojaApi.Application.Vendas;
 
 // Registra uma venda do caixa: valida os itens, baixa o estoque, usa plano/crédito/carteira, marca o agendamento como pago e gera a comissão.
+// Item marcado como bonificação é um brinde dentro da venda (só o administrador): preço zero, estoque baixado e registro no cliente.
 public class RegistrarVendaCommandHandler(IVendasRepository repositorio, CarteiraService carteira) : ICommandHandler<RegistrarVendaCommand>
 {
     public async Task<Resultado<object>> HandleAsync(RegistrarVendaCommand command)
     {
-        var (lojaId, req) = command;
+        var (lojaId, req, podeBonificar, usuarioId) = command;
 
         if (!req.Itens.Any())
             return Resultado.Invalido("A venda deve ter ao menos um item.");
+
+        // Brinde dentro da venda: só o administrador, só produto, e o cliente (dono do brinde) precisa estar na venda
+        if (req.Itens.Any(i => i.Bonificacao))
+        {
+            if (!podeBonificar) return Resultado.Proibido("Somente o administrador pode dar bonificação.");
+            if (!lojaId.HasValue) return Resultado.Invalido("Loja não encontrada.");
+            if (!req.ClienteId.HasValue) return Resultado.Invalido("Informe o cliente para registrar a bonificação.");
+            if (req.Itens.Any(i => i.Bonificacao && (i.ServicoId.HasValue || !i.ProdutoId.HasValue)))
+                return Resultado.Invalido("Bonificação só vale para produtos.");
+            foreach (var brinde in req.Itens.Where(i => i.Bonificacao))
+            {
+                var erroQuantidade = BonificacoesRegras.ValidarQuantidade(brinde.Quantidade, brinde.VariacaoId.HasValue);
+                if (erroQuantidade is not null) return Resultado.Invalido(erroQuantidade);
+            }
+        }
 
         var (dataVendaFinal, erroData) = VendasRegras.DataDaVenda(req.DataVenda, DateTime.UtcNow);
         if (erroData is not null) return Resultado.Invalido(erroData);
@@ -78,11 +95,17 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
         }
 
         // O cliente da venda tem que ser desta loja
-        if (req.ClienteId.HasValue && lojaId.HasValue && await repositorio.ObterClienteAsync(req.ClienteId.Value, lojaId) is null)
-            return Resultado.Invalido("Cliente não encontrado.");
+        Cliente? clienteDaVenda = null;
+        if (req.ClienteId.HasValue && lojaId.HasValue)
+        {
+            clienteDaVenda = await repositorio.ObterClienteAsync(req.ClienteId.Value, lojaId);
+            if (clienteDaVenda is null) return Resultado.Invalido("Cliente não encontrado.");
+        }
 
         // ── Cria venda ────────────────────────────────────────────────
-        decimal total = req.Itens.Sum(i => i.Quantidade * i.PrecoUnitario);
+        // O brinde não custa nada ao cliente: o preço enviado é ignorado
+        static decimal PrecoDoItem(ItemVendaRequest i) => i.Bonificacao ? 0m : i.PrecoUnitario;
+        decimal total = req.Itens.Sum(i => i.Quantidade * PrecoDoItem(i));
         string? origemNome = null;
         if (req.OrigemVendaId.HasValue)
         {
@@ -145,8 +168,8 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
                     ServicoId = servico!.Id,
                     NomeProduto = servico.Nome,
                     Quantidade = item.Quantidade,
-                    PrecoUnitario = item.PrecoUnitario,
-                    Subtotal = item.Quantidade * item.PrecoUnitario,
+                    PrecoUnitario = PrecoDoItem(item),
+                    Subtotal = item.Quantidade * PrecoDoItem(item),
                 });
 
                 if (item.AgendamentoId.HasValue)
@@ -201,8 +224,9 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
                 ProdutoId = item.ProdutoId,
                 NomeProduto = nomeProduto,
                 Quantidade = item.Quantidade,
-                PrecoUnitario = item.PrecoUnitario,
-                Subtotal = item.Quantidade * item.PrecoUnitario,
+                PrecoUnitario = PrecoDoItem(item),
+                Subtotal = item.Quantidade * PrecoDoItem(item),
+                Bonificacao = item.Bonificacao,
             });
 
             repositorio.Adicionar(new MovimentoEstoque
@@ -210,9 +234,23 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
                 ProdutoId = item.ProdutoId!.Value,
                 Tipo = "saida",
                 Quantidade = item.Quantidade,
-                Observacao = $"Venda #{venda.Id.ToString()[..8]} - {nomeProduto}",
+                Observacao = item.Bonificacao
+                    ? BonificacoesRegras.ObservacaoDoMovimentoNaVenda(venda.Id, nomeProduto)
+                    : $"Venda #{venda.Id.ToString()[..8]} - {nomeProduto}",
                 LojaId = lojaId,
             });
+
+            // Brinde: fica registrado no cliente, com o custo do produto
+            if (item.Bonificacao)
+            {
+                repositorio.Adicionar(new Bonificacao
+                {
+                    LojaId = lojaId!.Value, ClienteId = req.ClienteId, NomeCliente = clienteDaVenda!.Nome,
+                    ProdutoId = item.ProdutoId, VariacaoId = item.VariacaoId, NomeProduto = nomeProduto,
+                    Quantidade = item.Quantidade, CustoUnitario = produto.PrecoCusto,
+                    VendaId = venda.Id, UsuarioId = usuarioId,
+                });
+            }
         }
 
         // Desconta crédito usado do cliente
@@ -232,7 +270,7 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
         {
             decimal baseComissao = req.Itens
                 .Where(i => !i.AgendamentoId.HasValue)
-                .Sum(i => i.Quantidade * i.PrecoUnitario);
+                .Sum(i => i.Quantidade * PrecoDoItem(i));
 
             if (baseComissao > 0)
             {
