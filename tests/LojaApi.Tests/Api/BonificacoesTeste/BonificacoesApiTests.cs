@@ -148,6 +148,22 @@ public class BonificacoesApiTests(ApiFixture api)
         Assert.Equal("saida", Assert.Single(await api.MovimentosDoProdutoAsync(produto)).Tipo);
     }
 
+    [FatoIntegracao]
+    public async Task Registrar_pode_dar_todo_o_estoque_da_variacao_mas_nao_mais_que_isso()
+    {
+        var loja = await NovaAsync();
+        var cliente = await loja.ClienteIdAsync();
+        var produto = await api.ProdutoAsync(loja.Id, "Anel", estoque: 0);
+        var variacao = await api.VariacaoAsync(produto, "M", "Azul", estoque: 2);
+
+        var tudo = await loja.Painel.Post(Rota, Corpo(cliente, produto, 2m, variacao));
+        var maisUma = await loja.Painel.Post(Rota, Corpo(cliente, produto, 1m, variacao));
+
+        Assert.Equal(201, tudo.Codigo);
+        Assert.Equal((400, "A quantidade (1) é maior que o estoque atual desta variação (0)."), (maisUma.Codigo, maisUma.Erro));
+        Assert.Equal(0, (await api.VariacaoNoBancoAsync(variacao)).Estoque);
+    }
+
     // ── Listar e relatório ───────────────────────────────────────────────────
 
     [FatoIntegracao]
