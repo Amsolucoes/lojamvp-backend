@@ -5,6 +5,9 @@ public static class BonificacoesRegras
 {
     public const int TamanhoMaximoDaObservacao = 300;
 
+    // Brinde dado no caixa a quem não quis se cadastrar
+    public const string NomeSemCadastro = "Sem cadastro";
+
     // Quantidade do brinde: maior que zero; em produto com variação (tamanho/cor) o estoque é inteiro, então a quantidade também
     public static string? ValidarQuantidade(decimal quantidade, bool ehVariacao)
     {

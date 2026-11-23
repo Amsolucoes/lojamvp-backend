@@ -48,6 +48,32 @@ public class VendasBonificacaoApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
+    public async Task Brinde_na_venda_sem_cliente_cadastrado_fica_registrado_como_sem_cadastro_e_aparece_no_resumo()
+    {
+        var loja = await NovaAsync();
+        var maria = await loja.ClienteIdAsync("Maria Souza");
+        var camiseta = await api.ProdutoAsync(loja.Id, "Camiseta", estoque: 10, preco: 50m, custo: 20m);
+        var pulseira = await api.ProdutoAsync(loja.Id, "Pulseira", estoque: 10, preco: 30m, custo: 8m);
+
+        var semCliente = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemProduto(camiseta, 1, 50m), CenariosVendas.ItemBrinde(pulseira, 2)]));
+        var comCliente = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(pulseira, 1)], maria));
+
+        Assert.Equal((201, 201), (semCliente.Codigo, comCliente.Codigo));
+        Assert.Equal(50m, Num(semCliente.Json, "totalFinal"));
+        Assert.Equal(7m, (await api.ProdutoDaLojaNoBancoAsync(pulseira)).Estoque);
+        var vendaSemCliente = semCliente.Json.GetProperty("id").GetGuid();
+        var registro = Assert.Single(await BonificacoesAsync(loja.Id), b => b.VendaId == vendaSemCliente);
+        Assert.Equal((null, "Sem cadastro", 2m, 8m), (registro.ClienteId, registro.NomeCliente, registro.Quantidade, registro.CustoUnitario));
+        Assert.Equal($"Bonificação na venda #{vendaSemCliente.ToString()[..8]} - Pulseira", (await api.MovimentosDoProdutoAsync(pulseira)).First(m => m.Quantidade == 2m).Observacao);
+
+        var resumo = (await loja.Painel.Get("/api/bonificacoes/resumo")).Json;
+        var porCliente = resumo.GetProperty("porCliente").EnumerateArray().ToList();
+        Assert.Equal(2, porCliente.Count);
+        var avulso = porCliente.Single(c => c.GetProperty("nomeCliente").GetString() == "Sem cadastro");
+        Assert.Equal((JsonValueKind.Null, 1, 16m), (avulso.GetProperty("clienteId").ValueKind, avulso.GetProperty("bonificacoes").GetInt32(), Num(avulso, "custo")));
+    }
+
+    [FatoIntegracao]
     public async Task Venda_so_de_brinde_fecha_com_total_zero()
     {
         var loja = await NovaAsync();
@@ -81,19 +107,17 @@ public class VendasBonificacaoApiTests(ApiFixture api)
     }
 
     [FatoIntegracao]
-    public async Task Brinde_exige_cliente_na_venda_e_so_vale_para_produto_com_estoque()
+    public async Task Brinde_so_vale_para_produto_com_estoque()
     {
         var loja = await NovaAsync();
         var cliente = await loja.ClienteIdAsync();
         var pulseira = await api.ProdutoAsync(loja.Id, "Pulseira", estoque: 1);
         var servico = await loja.ServicoIdAsync("Banho", 80);
 
-        var semCliente = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(pulseira)]));
         var brindeDeServico = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([new { produtoId = (Guid?)null, quantidade = 1m, precoUnitario = 0m, variacaoId = (Guid?)null, servicoId = (Guid?)servico, agendamentoId = (Guid?)null, assinaturaId = (Guid?)null, bonificacao = true }], cliente));
         var semProduto = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([new { produtoId = (Guid?)null, quantidade = 1m, precoUnitario = 0m, variacaoId = (Guid?)null, servicoId = (Guid?)null, agendamentoId = (Guid?)null, assinaturaId = (Guid?)null, bonificacao = true }], cliente));
         var semEstoque = await loja.Painel.Post("/api/vendas", CenariosVendas.CorpoVenda([CenariosVendas.ItemBrinde(pulseira, 2)], cliente));
 
-        Assert.Equal((400, "Informe o cliente para registrar a bonificação."), (semCliente.Codigo, semCliente.Erro));
         Assert.Equal((400, "Bonificação só vale para produtos."), (brindeDeServico.Codigo, brindeDeServico.Erro));
         Assert.Equal((400, "Bonificação só vale para produtos."), (semProduto.Codigo, semProduto.Erro));
         Assert.Equal((400, "Estoque insuficiente para 'Pulseira'."), (semEstoque.Codigo, semEstoque.Erro));
