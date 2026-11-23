@@ -21,12 +21,11 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
         if (!req.Itens.Any())
             return Resultado.Invalido("A venda deve ter ao menos um item.");
 
-        // Brinde dentro da venda: só o administrador, só produto, e o cliente (dono do brinde) precisa estar na venda
+        // Brinde dentro da venda: só o administrador e só produto; o cliente é opcional (sem cadastro, o brinde fica registrado como "Sem cadastro")
         if (req.Itens.Any(i => i.Bonificacao))
         {
             if (!podeBonificar) return Resultado.Proibido("Somente o administrador pode dar bonificação.");
             if (!lojaId.HasValue) return Resultado.Invalido("Loja não encontrada.");
-            if (!req.ClienteId.HasValue) return Resultado.Invalido("Informe o cliente para registrar a bonificação.");
             if (req.Itens.Any(i => i.Bonificacao && (i.ServicoId.HasValue || !i.ProdutoId.HasValue)))
                 return Resultado.Invalido("Bonificação só vale para produtos.");
             foreach (var brinde in req.Itens.Where(i => i.Bonificacao))
@@ -245,7 +244,7 @@ public class RegistrarVendaCommandHandler(IVendasRepository repositorio, Carteir
             {
                 repositorio.Adicionar(new Bonificacao
                 {
-                    LojaId = lojaId!.Value, ClienteId = req.ClienteId, NomeCliente = clienteDaVenda!.Nome,
+                    LojaId = lojaId!.Value, ClienteId = req.ClienteId, NomeCliente = clienteDaVenda?.Nome ?? BonificacoesRegras.NomeSemCadastro,
                     ProdutoId = item.ProdutoId, VariacaoId = item.VariacaoId, NomeProduto = nomeProduto,
                     Quantidade = item.Quantidade, CustoUnitario = produto.PrecoCusto,
                     VendaId = venda.Id, UsuarioId = usuarioId,
