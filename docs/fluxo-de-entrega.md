@@ -10,7 +10,7 @@
    $env:LOJA_TESTES_DB = "Host=localhost;Port=5432;Username=postgres;Password=SUA_SENHA"
    dotnet test tests\LojaApi.Tests
    ```
-   Depois abra a API (`tests\LojaApi.Tests.sln`, projeto de inicialização `LojaApi`) e o frontend, e teste a tela.
+   Depois abra a API (`LojaApi.sln`, projeto de inicialização `LojaApi`) e o frontend, e teste a tela.
    Use `checkout -B ... origin/...` (e não `pull`): o branch é reescrito a cada entrega e o `pull` pode reclamar.
 5. **Você diz "pode mesclar"** (ou pede ajuste). Só então o Claude mescla (squash) e acompanha o deploy.
 6. **Ordem de deploy:** quando a mudança altera a API que o frontend usa, mescla-se o **backend primeiro**, espera o deploy

@@ -6,12 +6,12 @@ preços, cria reservas, passa por todo o ciclo, usa o site público) e grava sta
 Rodando o roteiro no build de **antes** e no de **depois** e comparando, qualquer diferença aparece.
 
 ```bash
-dotnet build LojaApi.csproj -c Release
-cp -r bin/Release/net10.0 /tmp/build-antes          # guarde o build ANTES de refatorar
+dotnet build src/Api/LojaApi.csproj -c Release
+cp -r src/Api/bin/Release/net10.0 /tmp/build-antes          # guarde o build ANTES de refatorar
 # ... refatora ...
-dotnet build LojaApi.csproj -c Release
+dotnet build src/Api/LojaApi.csproj -c Release
 tools/regressao/comparar.sh /tmp/build-antes base   # grava resultado-base.json
-tools/regressao/comparar.sh bin/Release/net10.0 novo # grava resultado-novo.json
+tools/regressao/comparar.sh src/Api/bin/Release/net10.0 novo # grava resultado-novo.json
 tools/regressao/diff.py                             # precisa terminar em "DIFERENÇAS: 0"
 ```
 
