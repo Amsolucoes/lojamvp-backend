@@ -5,9 +5,9 @@ sua pasta `<Modulo>Teste` em cada camada (veja "Como as pastas são organizadas"
 
 ## No Visual Studio
 
-Abra **`tests/LojaApi.Tests.sln`** (API + testes juntos): os testes aparecem no *Gerenciador de Testes* e dá para rodar
-e depurar um por um. A solução da raiz (`LojaApi.sln`) continua só com a API, de propósito: é ela que o Dockerfile
-compila no deploy, e assim o deploy não puxa pacotes de teste. Para os testes de integração, defina a variável
+Abra **`LojaApi.sln`** (na raiz): ela traz os projetos da pasta `src` (API, Application, Data, Domain) e o projeto de
+testes da pasta `tests`. Os testes aparecem no *Gerenciador de Testes* e dá para rodar e depurar um por um. O Dockerfile
+compila só `src/Api/LojaApi.csproj` (não a solução), então o deploy não puxa pacotes de teste. Para os testes de integração, defina a variável
 `LOJA_TESTES_DB` (veja abaixo) antes de abrir o Visual Studio (Configurações do sistema → Variáveis de ambiente).
 
 ## Como rodar

@@ -11,15 +11,16 @@ próprios** (cada uma com o seu `.csproj`), então o compilador **impede** depen
 
 ```
 src/
+  Api/               projeto LojaApi (a API)      <- LojaApi.csproj, Program.cs, appsettings, Controllers/, Infrastructure/, Services/, DTOs/, Middleware/, Utils/, Shared/
   Domain/            projeto LojaApi.Domain       <- só depende do .NET. AggregatesModel/<Modulo>Aggregate (uma pasta por agregado/módulo, como no modelo de domínio da Microsoft).
   Data/              projeto LojaApi.Data         <- AppDbContext, Entities (tabelas do banco) e Migrations. Depende do Domain.
   Application/       projeto LojaApi.Application  <- casos de uso de todos os módulos (veja a tabela em "Estado atual")
                                                      + Resultado<T> e ILojaAtual (Shared).
                                                      Depende do Domain e do Data. Nunca da API.
                                                      Organizada por TIPO e, dentro dele, por módulo (veja abaixo).
-  Controllers/<Modulo>/    (projeto da API: LojaApi.csproj, na raiz)  <- SÓ controllers (HTTP)
-  Infrastructure/<Modulo>/ (projeto da API)  <- PDF, rotinas em segundo plano, registro do módulo e os adaptadores das portas
-  Shared/Api/ , Services/ , DTOs/ , Middleware/ , Utils/   (projeto da API; Services/DTOs são serviços de apoio e DTOs antigos ainda usados: e-mail, Mercado Pago, token, tenant, push, planos e o FinanceiroService, que gera os fixos e roda nas rotinas em segundo plano)
+  Api/Controllers/<Modulo>/    (projeto da API)  <- SÓ controllers (HTTP)
+  Api/Infrastructure/<Modulo>/ (projeto da API)  <- PDF, rotinas em segundo plano, registro do módulo e os adaptadores das portas
+  Api/Shared/ , Api/Services/ , Api/DTOs/ , Api/Middleware/ , Api/Utils/   (projeto da API; Services/DTOs são serviços de apoio e DTOs antigos ainda usados: e-mail, Mercado Pago, token, tenant, push, planos e o FinanceiroService, que gera os fixos e roda nas rotinas em segundo plano)
 ```
 
 Quem depende de quem (seta = "referencia"):
@@ -91,21 +92,20 @@ passar a depender de EF/ASP.NET ou se o Application passar a depender da API. Ao
 ### Migrations (mudou de lugar)
 As migrations moram no projeto **Data**. Comandos do EF Core agora precisam dos dois projetos:
 ```powershell
-dotnet ef migrations add NomeDaMigration --project src\Data --startup-project .
-dotnet ef database update --project src\Data --startup-project .
+dotnet ef migrations add NomeDaMigration --project src\Data --startup-project src\Api
+dotnet ef database update --project src\Data --startup-project src\Api
 ```
 No Visual Studio (Console do Gerenciador de Pacotes): **Projeto padrão = `LojaApi.Data`** e **Projeto de inicialização = `LojaApi`**.
 
 ### Ao criar um projeto novo
-Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `LojaApi.csproj`, adicione-o
-às duas soluções (`LojaApi.sln` e `tests/LojaApi.Tests.sln`) e exclua a pasta dele da compilação do `LojaApi.csproj` (`Compile Remove`).
+Acrescente o `COPY` do `.csproj` dele no `Dockerfile` (o restore em camadas precisa), referencie-o no `src/Api/LojaApi.csproj` e adicione-o à solução (`LojaApi.sln`, na pasta `src`). Cada projeto fica na sua própria pasta de `src/`, então não precisa excluir nada da compilação dos outros.
 
 **Todos os módulos** têm as quatro camadas (Domain, Application, Infrastructure e Controllers): Bonificacoes, Chacara, Carteira, Servicos, Ajuda, Clientes, Fiscal, Turmas, Corretora, Equipe, Acessorios, Vendas, OrdemServico, Produtos, NfImportacao, Plataforma e Financeiro. Nenhum controller usa o `AppDbContext` diretamente. Um módulo novo ganha `Application/{Commands,Queries,Handlers,Interfaces,Dtos,Requests}/<Modulo>` (ou `Services`, no padrão antigo) e `Domain/AggregatesModel/<Modulo>Aggregate`.
 
 > **Cuidado com `Domain`:** o EF Core percorre as entidades em ordem alfabética do nome completo e o nome padrão das chaves
 > estrangeiras depende disso. Por isso o `AppDbContext` fixa, para toda entidade em `LojaApi.Domain.*`, o nome da FK como
 > `f_k_<tabela>_<tabela principal>_<colunas>` (igual ao que já está no banco). Ao criar um módulo novo, confira com
-> `dotnet ef dbcontext script --project src\Data --startup-project .` que o DDL não mudou.
+> `dotnet ef dbcontext script --project src\Data --startup-project src\Api` que o DDL não mudou.
 >
 > As entidades do Domain **não têm propriedade de navegação para `Loja`** (só `LojaId`): o Domain não enxerga o projeto Data.
 
@@ -147,7 +147,7 @@ if (erro != null) return Resultado.Invalido(erro);
 
 ## Como criar um novo módulo
 
-1. Crie `src/Domain/AggregatesModel/<Modulo>Aggregate`, `src/Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `src/Infrastructure/<Modulo>` (os controllers já estão em `src/Controllers/<Modulo>`).
+1. Crie `src/Domain/AggregatesModel/<Modulo>Aggregate`, `src/Application/{Services,Interfaces,Dtos,Requests}/<Modulo>` e `src/Api/Infrastructure/<Modulo>` (os controllers já estão em `src/Api/Controllers/<Modulo>`).
 2. Mova as entidades para `src/Domain/AggregatesModel/<Modulo>Aggregate` (namespace `LojaApi.Domain.<Modulo>`) e atualize os nomes no
    `AppDbContextModelSnapshot.cs`. **Não** altere tabelas/colunas.
 3. Para cada controller: crie o serviço de aplicação com a lógica (copie, não reescreva) e deixe o controller fino.
@@ -174,7 +174,7 @@ um relatório. Ele não altera código de produção.
 
 ## Estado atual
 
-Todo controller mora em `src/Controllers/<Modulo>` e é fino: lê a requisição, descobre a loja e chama um caso de uso (service ou handler).
+Todo controller mora em `src/Api/Controllers/<Modulo>` e é fino: lê a requisição, descobre a loja e chama um caso de uso (service ou handler).
 Todos os módulos já estão em camadas (Domain/Application/Infrastructure). Só **Chacara, Carteira e Servicos** (migrados antes) ainda
 consultam o banco direto no service; os demais usam repository (e, nas consultas pesadas, Dapper).
 
@@ -204,7 +204,7 @@ A migração para camadas (um PR por módulo, terminando pelo Financeiro) e a se
 
 1. Levar o padrão repository a Chacara, Carteira e Servicos, que ainda consultam o banco direto no service (e acrescentar os nomes deles na lista
    `ModulosComRepositorio` do teste de arquitetura).
-2. Trazer o `FinanceiroService` (fixos e rotinas em segundo plano) e os demais serviços de apoio de `src/Services` para o Application/Infrastructure, quando valer a pena.
+2. Trazer o `FinanceiroService` (fixos e rotinas em segundo plano) e os demais serviços de apoio de `src/Api/Services` para o Application/Infrastructure, quando valer a pena.
 
 ## Observação sobre as migrations
 

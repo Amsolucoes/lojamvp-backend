@@ -21,31 +21,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Os testes ficam em tests/ com projeto próprio: não podem entrar na compilação da API -->
-    <Compile Remove="tests/**" />
-    <None Remove="tests/**" />
-    <Content Remove="tests/**" />
-    <EmbeddedResource Remove="tests/**" />
+    <!-- Os testes (tests/LojaApi.Tests) enxergam os tipos internos da API -->
     <InternalsVisibleTo Include="LojaApi.Tests" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Camadas em projetos próprios (cada uma tem o seu .csproj dentro da pasta) -->
-    <Compile Remove="src/Domain/**" />
-    <None Remove="src/Domain/**" />
-    <Content Remove="src/Domain/**" />
-    <EmbeddedResource Remove="src/Domain/**" />
-    <Compile Remove="src/Data/**" />
-    <None Remove="src/Data/**" />
-    <Content Remove="src/Data/**" />
-    <EmbeddedResource Remove="src/Data/**" />
-    <Compile Remove="src/Application/**" />
-    <None Remove="src/Application/**" />
-    <Content Remove="src/Application/**" />
-    <EmbeddedResource Remove="src/Application/**" />
-    <ProjectReference Include="src/Domain/LojaApi.Domain.csproj" />
-    <ProjectReference Include="src/Application/LojaApi.Application.csproj" />
-    <ProjectReference Include="src/Data/LojaApi.Data.csproj" />
+    <!-- Camadas em projetos irmãos, cada um na sua pasta de src/ -->
+    <ProjectReference Include="..\Domain\LojaApi.Domain.csproj" />
+    <ProjectReference Include="..\Application\LojaApi.Application.csproj" />
+    <ProjectReference Include="..\Data\LojaApi.Data.csproj" />
   </ItemGroup>
 
 </Project>

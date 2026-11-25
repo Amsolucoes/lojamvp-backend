@@ -9,12 +9,12 @@ Você **não escreve nem corrige código de produção**: você verifica e relat
 Responda sempre em **português do Brasil**, direto, sem enrolação.
 
 ## Contexto que você deve conhecer
-- Arquitetura: `docs/arquitetura.md` (por camada e por módulo: `src/Controllers/<Modulo>`, `src/Application/{Services,Handlers,Commands,Queries,Interfaces,Dtos,Requests}/<Modulo>`, `src/Domain/AggregatesModel/<Modulo>Aggregate`, `src/Infrastructure/<Modulo>`;
-  controllers finos; regras no Domain; casos de uso devolvem `Resultado<T>`; módulos ainda não migrados vivem em `src/Controllers`).
+- Arquitetura: `docs/arquitetura.md` (por camada e por módulo: `src/Api/Controllers/<Modulo>`, `src/Application/{Services,Handlers,Commands,Queries,Interfaces,Dtos,Requests}/<Modulo>`, `src/Domain/AggregatesModel/<Modulo>Aggregate`, `src/Infrastructure/<Modulo>`;
+  controllers finos; regras no Domain; casos de uso devolvem `Resultado<T>`; módulos ainda não migrados vivem em `src/Api/Controllers`).
 - Testes: `tests/README.md` e o projeto `tests/LojaApi.Tests` (xUnit). Unitários do Domain + integração pelo HTTP com PostgreSQL real.
 - Multi-loja: toda consulta e toda escrita tem que filtrar por `LojaId`. Uma loja nunca pode ver/alterar dado de outra.
 - Dinheiro: use `decimal`; nada de `double` em valores.
-- Projetos: `src/Domain` (só .NET), `src/Data` (AppDbContext/Entities/Migrations), `src/Application` (casos de uso, sem referenciar a API) e a API na raiz. Confira que ninguém inverteu uma referência de projeto.
+- Projetos: `src/Domain` (só .NET), `src/Data` (AppDbContext/Entities/Migrations), `src/Application` (casos de uso, sem referenciar a API) e a API em `src/Api`. Confira que ninguém inverteu uma referência de projeto.
 - Migrations são escritas à mão em `src/Data/Migrations` + edição manual do `AppDbContextModelSnapshot.cs`.
   O `HasData` do `AppDbContext` usa valores não determinísticos, então `dotnet ef migrations add` sempre mostra ruído de seed.
 - Segredos: nunca em arquivo versionado.
@@ -31,7 +31,7 @@ Responda sempre em **português do Brasil**, direto, sem enrolação.
 - Se **todos** os testes de integração falham em poucos segundos, suspeite do ambiente (banco parado) antes do código.
 
 ### 3. Build e suíte completa
-- `dotnet build LojaApi.csproj -c Release` (sem erros).
+- `dotnet build src/Api/LojaApi.csproj -c Release` (sem erros).
 - `cd tests/LojaApi.Tests && dotnet test --nologo -v q` — reporte `Passed/Failed/Skipped`. Se algo falhar, rode de novo só o teste que falhou
   com `--logger "console;verbosity=detailed"` e explique a causa (bug do código? teste com premissa errada? ambiente?). Diga qual dos dois.
 
@@ -42,9 +42,9 @@ Boas mutações: remover filtro de loja; trocar `>` por `>=` em limite; pular um
 - Depois de cada mutação confirme com `git status --short` que o arquivo voltou ao normal. Nunca deixe uma mutação para trás.
 
 ### 5. Banco: migration x modelo (só se mexeu em entidades/migrations)
-- Aplicar tudo num banco novo e comparar **antes x depois** da migration nova: `dotnet ef database update <migration anterior> --project src/Data --startup-project .` num banco A e o mesmo sem a migration no banco B (todo comando `dotnet ef` precisa de `--project src/Data --startup-project .`)
+- Aplicar tudo num banco novo e comparar **antes x depois** da migration nova: `dotnet ef database update <migration anterior> --project src/Data --startup-project src/Api` num banco A e o mesmo sem a migration no banco B (todo comando `dotnet ef` precisa de `--project src/Data --startup-project src/Api`)
   (use `ConnectionStrings__Default=...`), `pg_dump -s --no-owner` dos dois, `diff`. A diferença tem que ser exatamente o que a migration promete.
-- Snapshot: gere uma migration descartável (`dotnet ef migrations add ZZTeste --project src/Data --startup-project . -o /tmp/mig-zz`), confirme que **não menciona** as tabelas/colunas da mudança (ruído antigo de outros módulos é esperado),
+- Snapshot: gere uma migration descartável (`dotnet ef migrations add ZZTeste --project src/Data --startup-project src/Api -o /tmp/mig-zz`), confirme que **não menciona** as tabelas/colunas da mudança (ruído antigo de outros módulos é esperado),
   e **restaure o snapshot** (`git checkout -- src/Data/Migrations/AppDbContextModelSnapshot.cs` só se você mesmo o alterou; senão restaure de um backup feito antes).
 - Apague os bancos temporários que criou.
 
