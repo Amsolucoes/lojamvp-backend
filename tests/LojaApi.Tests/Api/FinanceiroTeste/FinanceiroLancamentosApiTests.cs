@@ -508,4 +508,182 @@ public class FinanceiroLancamentosApiTests(ApiFixture api)
         Assert.Equal((400, "Escolha entre 1 e 24 parcelas."), await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { outro }, forma = "cartao", cartaoId = cartao, parcelas = 0 })));
         Assert.Equal("pendente", (await api.LancamentoNoBancoPorIdAsync(outro)).Status);
     }
+
+    // ── Pagar em lote: lacunas fixadas antes de mover as regras para o Domain ────────────────
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_no_cartao_parcelado_de_varias_contas_gera_um_grupo_por_conta_e_copia_categoria_e_observacao()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var cartao = await api.CartaoNoBancoAsync(loja.Id, conta);
+        var categoria = (await loja.Painel.Post($"{Rota}/categorias", new { nome = "Casa", tipo = "pagar" })).Json.GetProperty("id").GetGuid();
+        var a = (await loja.Painel.Post($"{Rota}/lancamentos/avulso", new { contaBancariaId = conta, tipo = "pagar", descricao = "Sofá", categoriaId = categoria, valor = 100m, vencimento = "2032-03-10", observacao = "da sala", jaPago = false })).Json.GetProperty("id").GetGuid();
+        var b = (await loja.Painel.Post($"{Rota}/lancamentos/avulso", new { contaBancariaId = conta, tipo = "pagar", descricao = "Mesa", categoriaId = (Guid?)null, valor = 60m, vencimento = "2032-03-11", observacao = (string?)null, jaPago = false })).Json.GetProperty("id").GetGuid();
+
+        var r = await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { a, b }, forma = "cartao", cartaoId = cartao, parcelas = 2, data = "2032-05-20" });
+
+        Assert.Equal((200, 2, 160m), (r.Codigo, r.Json.GetProperty("pagos").GetInt32(), r.Json.GetProperty("total").GetDecimal()));
+        Assert.Empty(await api.LancamentosDaLojaNoBancoAsync(loja.Id));
+        var compras = await api.LancamentosDeCartaoNoBancoAsync(loja.Id);
+        Assert.Equal(4, compras.Count);
+        var sofa = compras.Where(c => c.Descricao.StartsWith("Sofá")).OrderBy(c => c.NumeroParcela).ToList();
+        var mesa = compras.Where(c => c.Descricao.StartsWith("Mesa")).OrderBy(c => c.NumeroParcela).ToList();
+        Assert.Equal(["Sofá (1/2)", "Sofá (2/2)"], sofa.Select(c => c.Descricao));
+        Assert.Equal([50m, 50m], sofa.Select(c => c.Valor));
+        Assert.Equal([30m, 30m], mesa.Select(c => c.Valor));
+        Assert.Equal([Utc(2032, 5, 20), Utc(2032, 6, 20)], sofa.Select(c => c.DataCompra));
+        Assert.All(sofa, c => Assert.Equal((categoria, "da sala", cartao), (c.CategoriaId, c.Observacao, c.CartaoCreditoId)));
+        Assert.All(mesa, c => Assert.Equal(((Guid?)null, (string?)null), (c.CategoriaId, c.Observacao)));
+        Assert.Equal(2, compras.Select(c => c.GrupoParcelamentoId).Distinct().Count());
+        Assert.Single(sofa.Select(c => c.GrupoParcelamentoId).Distinct());
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_corta_em_150_caracteres_a_descricao_das_partes_e_do_juros()
+    {
+        var loja = await NovaAsync();
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var longa = new string('x', 150);
+        var id = await loja.AvulsoPelaApiAsync(c1, "pagar", longa, 100m);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new
+        {
+            ids = new[] { id }, forma = "conta", acrescimo = 4m,
+            divisoes = new object[] { new { contaBancariaId = c1, valor = 70m }, new { contaBancariaId = c2, valor = 30m } },
+        })).DeveSerSucesso();
+
+        var lancs = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal(3, lancs.Count);
+        Assert.All(lancs, l => Assert.Equal(150, l.Descricao.Length));
+        Assert.Equal(longa, lancs.Single(l => l.Id == id).Descricao);                                  // "xxx… (parte 1/2)" cortado em 150
+        Assert.Equal(("Juros/multa - " + longa)[..150], lancs.Single(l => l.Valor == 4m).Descricao);
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_dividido_com_soma_diferente_diz_o_valor_da_conta_e_nao_grava_nada()
+    {
+        var loja = await NovaAsync();
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var id = await loja.AvulsoPelaApiAsync(c1, "pagar", "Fornecedor", 100.5m);
+
+        var r = await Erro(loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new
+        {
+            ids = new[] { id }, forma = "conta",
+            divisoes = new object[] { new { contaBancariaId = c1, valor = 50m }, new { contaBancariaId = c2, valor = 40m } },
+        }));
+
+        Assert.Equal(400, r.Item1);
+        Assert.Matches(@"^A soma das partes deve ser igual ao valor da conta \(100[.,]50\)\.$", r.Item2);
+        Assert.Equal("pendente", (await api.LancamentoNoBancoPorIdAsync(id)).Status);
+        Assert.Single(await api.LancamentosDaLojaNoBancoAsync(loja.Id));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_na_conta_com_data_grava_o_juros_ao_meio_dia_e_acrescimo_com_mais_de_duas_casas_e_arredondado()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Água", 50m);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "conta", contaBancariaId = conta, data = "2032-05-20T23:59:00", acrescimo = 1.005m })).DeveSerSucesso();
+
+        var juros = Assert.Single(await api.LancamentosDaLojaNoBancoAsync(loja.Id), l => l.Id != id);
+        Assert.Equal((1.0m, Utc(2032, 5, 20), Utc(2032, 5, 20)), (juros.Valor, juros.Vencimento, juros.PagoEm));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_dividido_copia_vencimento_categoria_e_observacao_da_conta_para_as_outras_partes()
+    {
+        var loja = await NovaAsync();
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var categoria = (await loja.Painel.Post($"{Rota}/categorias", new { nome = "Fornecedores", tipo = "pagar" })).Json.GetProperty("id").GetGuid();
+        var id = (await loja.Painel.Post($"{Rota}/lancamentos/avulso", new { contaBancariaId = c1, tipo = "pagar", descricao = "Fornecedor", categoriaId = categoria, valor = 100m, vencimento = "2032-03-10", observacao = "nota 123", jaPago = false })).Json.GetProperty("id").GetGuid();
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new
+        {
+            ids = new[] { id }, forma = "conta", data = "2032-05-20",
+            divisoes = new object[] { new { contaBancariaId = c1, valor = 60m }, new { contaBancariaId = c2, valor = 40m } },
+        })).DeveSerSucesso();
+
+        var lancs = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal(2, lancs.Count);
+        Assert.All(lancs, l => Assert.Equal(("pagar", "avulsa", categoria, "nota 123", Utc(2032, 3, 10), "pago", Utc(2032, 5, 20)), (l.Tipo, l.Modo, l.CategoriaId, l.Observacao, l.Vencimento, l.Status, l.PagoEm)));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_com_acrescimo_reativa_a_categoria_Juros_inativa_em_vez_de_criar_outra()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var juros = (await loja.Painel.Post($"{Rota}/categorias", new { nome = "Juros", tipo = "pagar" })).Json.GetProperty("id").GetGuid();
+        await api.NoBancoAsync(db => db.CategoriasFinanceiras.Where(c => c.Id == juros).ExecuteUpdateAsync(s => s.SetProperty(c => c.Ativa, false)));
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Água", 50m);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "conta", contaBancariaId = conta, acrescimo = 2m })).DeveSerSucesso();
+
+        var categorias = (await api.CategoriasFinanceirasNoBancoAsync(loja.Id)).Where(c => c.Nome == "Juros").ToList();
+        var unica = Assert.Single(categorias);
+        Assert.Equal((juros, true), (unica.Id, unica.Ativa));
+        Assert.Equal(juros, Assert.Single(await api.LancamentosDaLojaNoBancoAsync(loja.Id), l => l.Id != id).CategoriaId);
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_com_acrescimo_cria_a_categoria_Juros_de_pagar_mesmo_que_so_exista_uma_de_receber()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var deReceber = (await loja.Painel.Post($"{Rota}/categorias", new { nome = "Juros", tipo = "receber" })).Json.GetProperty("id").GetGuid();
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Água", 50m);
+
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "conta", contaBancariaId = conta, acrescimo = 2m })).DeveSerSucesso();
+
+        var categorias = (await api.CategoriasFinanceirasNoBancoAsync(loja.Id)).Where(c => c.Nome == "Juros").ToList();
+        Assert.Equal(2, categorias.Count);
+        var nova = Assert.Single(categorias, c => c.Id != deReceber);
+        Assert.Equal(("pagar", true), (nova.Tipo, nova.Ativa));
+        Assert.Equal(nova.Id, Assert.Single(await api.LancamentosDaLojaNoBancoAsync(loja.Id), l => l.Id != id).CategoriaId);
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_dividido_arredonda_cada_parte_em_duas_casas_antes_de_conferir_a_soma()
+    {
+        var loja = await NovaAsync();
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var id = await loja.AvulsoPelaApiAsync(c1, "pagar", "Fornecedor", 20m);
+
+        // 10,004 + 9,998 = 20,002 (não fecha); arredondadas, 10,00 + 10,00 = 20,00 (fecha)
+        var r = await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new
+        {
+            ids = new[] { id }, forma = "conta",
+            divisoes = new object[] { new { contaBancariaId = c1, valor = 10.004m }, new { contaBancariaId = c2, valor = 9.998m } },
+        });
+
+        Assert.Equal(200, r.Codigo);
+        var lancs = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal([10m, 10m], lancs.OrderBy(l => l.Descricao).Select(l => l.Valor));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_no_cartao_com_acrescimo_e_sem_data_lanca_a_compra_do_juros_ao_meio_dia_de_hoje()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var cartao = await api.CartaoNoBancoAsync(loja.Id, conta);
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Compra", 80m);
+
+        var antes = DateTime.UtcNow.Date;
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "cartao", cartaoId = cartao, acrescimo = 5m })).DeveSerSucesso();
+        var depois = DateTime.UtcNow.Date;
+
+        var compras = await api.LancamentosDeCartaoNoBancoAsync(loja.Id);
+        var juros = Assert.Single(compras, c => c.Descricao.StartsWith("Juros/multa"));
+        var principal = Assert.Single(compras, c => !c.Descricao.StartsWith("Juros/multa"));
+        Assert.Contains(juros.DataCompra, new[] { antes.AddHours(12), depois.AddHours(12) });
+        Assert.Equal(juros.DataCompra, principal.DataCompra);
+    }
 }
