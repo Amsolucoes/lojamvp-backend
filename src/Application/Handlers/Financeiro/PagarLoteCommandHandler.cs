@@ -4,7 +4,7 @@ using LojaApi.Shared.Application;
 
 namespace LojaApi.Application.Financeiro;
 
-// Paga várias contas a pagar de uma vez.
+// Paga várias contas a pagar de uma vez. As regras (validações, descrições, parcelas) estão em PagamentoEmLoteRegras (Domain); aqui só se busca e grava.
 // Forma "conta": paga no débito/dinheiro, saindo da conta bancária escolhida.
 // Forma "cartao": vira compra no cartão de crédito (à vista ou parcelada), mantendo descrição, categoria e observação;
 // a conta sai de Contas a Pagar e passa a compor a fatura do cartão.
@@ -24,24 +24,26 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
         if (lancs.Count != ids.Count)
             return Resultado.Invalido("Alguma conta selecionada não está mais pendente. Atualize a lista e tente de novo.");
 
-        if (req.Acrescimo < 0) return Resultado.Invalido("O juros/multa não pode ser negativo.");
-        var acrescimo = Math.Round(req.Acrescimo, 2);
+        var erroAcrescimo = PagamentoEmLoteRegras.ValidarAcrescimo(req.Acrescimo);
+        if (erroAcrescimo is not null) return Resultado.Invalido(erroAcrescimo);
+        var acrescimo = PagamentoEmLoteRegras.ArredondarValor(req.Acrescimo);
 
         if (!LancamentosRegras.TentarNormalizarFormaPagamento(req.FormaPagamento, out var formaPagamento))
             return Resultado.Invalido("Forma de pagamento inválida. Use pix, boleto, débito, dinheiro, transferência ou outro.");
-        if (req.Forma != "conta") formaPagamento = null; // no cartão a forma já é o crédito
+        formaPagamento = PagamentoEmLoteRegras.FormaDePagamentoGravada(req.Forma, formaPagamento);
 
         var agora = DateTime.UtcNow;
-        var dataBase = LancamentosRegras.AoMeioDia(req.Data ?? agora);
+        var dataBase = PagamentoEmLoteRegras.DataBase(req.Data, agora);
+        var pagoEm = PagamentoEmLoteRegras.PagoEm(req.Data, agora);
         var total = lancs.Sum(l => l.Valor);
+        var descricoes = lancs.Select(l => l.Descricao).ToList();
 
         var divisoes = req.Divisoes ?? [];
-        if (divisoes.Count > 0 && req.Forma != "conta") return Resultado.Invalido("A divisão do pagamento só vale para pagar pela conta.");
+        var erroDivisao = PagamentoEmLoteRegras.ValidarDivisao(req.Forma, divisoes.Count, lancs.Count, lancs.FirstOrDefault()?.Modo);
+        if (erroDivisao is not null) return Resultado.Invalido(erroDivisao);
 
-        if (req.Forma == "conta" && divisoes.Count > 0)
+        if (req.Forma == PagamentoEmLoteRegras.FormaConta && divisoes.Count > 0)
         {
-            if (divisoes.Count < 2) return Resultado.Invalido("Para dividir, informe ao menos duas contas.");
-            if (lancs.Count != 1 || lancs[0].Modo != "avulsa") return Resultado.Invalido("Só é possível dividir o pagamento de uma conta avulsa por vez.");
             var original = lancs[0];
 
             var partes = new List<(Guid ContaId, decimal Valor)>();
@@ -49,24 +51,19 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
             {
                 var c = d.ContaBancariaId is { } id ? await financeiro.ObterContaAsync(id, lojaId) : null;
                 if (c is null) return Resultado.Invalido("Escolha a conta de cada parte do pagamento.");
-                var valor = Math.Round(d.Valor, 2);
-                if (valor <= 0) return Resultado.Invalido("O valor de cada parte deve ser maior que zero.");
+                var valor = PagamentoEmLoteRegras.ArredondarValor(d.Valor);
+                var erroParte = PagamentoEmLoteRegras.ValidarValorDaParte(valor);
+                if (erroParte is not null) return Resultado.Invalido(erroParte);
                 partes.Add((c.Id, valor));
             }
-            if (partes.Sum(x => x.Valor) != original.Valor)
-                return Resultado.Invalido($"A soma das partes deve ser igual ao valor da conta ({original.Valor:0.00}).");
+            var erroSoma = PagamentoEmLoteRegras.ValidarSomaDasPartes(partes.Select(x => x.Valor), original.Valor);
+            if (erroSoma is not null) return Resultado.Invalido(erroSoma);
 
-            var pagoEm = req.Data.HasValue ? dataBase : agora;
             var n = partes.Count;
             var descricaoBase = original.Descricao;
-            var descricaoJuros = DescricaoDoAcrescimo(lancs);
-            string Parte(int i)
-            {
-                var texto = $"{descricaoBase} (parte {i}/{n})";
-                return texto.Length <= 150 ? texto : texto[..150];
-            }
+            var descricaoJuros = PagamentoEmLoteRegras.DescricaoDoAcrescimo(descricoes);
 
-            original.Descricao = Parte(1);
+            original.Descricao = PagamentoEmLoteRegras.DescricaoDaParte(descricaoBase, 1, n);
             original.Valor = partes[0].Valor;
             original.ContaBancariaId = partes[0].ContaId;
             original.Status = "pago";
@@ -80,8 +77,8 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                     LojaId = lojaId,
                     ContaBancariaId = partes[i].ContaId,
                     Tipo = original.Tipo,
-                    Modo = "avulsa",
-                    Descricao = Parte(i + 1),
+                    Modo = PagamentoEmLoteRegras.ModoAvulsa,
+                    Descricao = PagamentoEmLoteRegras.DescricaoDaParte(descricaoBase, i + 1, n),
                     CategoriaId = original.CategoriaId,
                     Valor = partes[i].Valor,
                     Vencimento = original.Vencimento,
@@ -93,24 +90,9 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
             }
 
             if (acrescimo > 0)
-            {
-                repositorio.Adicionar(new LancamentoFinanceiro
-                {
-                    LojaId = lojaId,
-                    ContaBancariaId = partes[0].ContaId,
-                    Tipo = "pagar",
-                    Modo = "avulsa",
-                    Descricao = descricaoJuros,
-                    CategoriaId = (await ObterOuCriarCategoriaJurosAsync(lojaId)).Id,
-                    Valor = acrescimo,
-                    Vencimento = dataBase,
-                    Status = "pago",
-                    PagoEm = pagoEm,
-                    FormaPagamento = formaPagamento,
-                });
-            }
+                repositorio.Adicionar(await AcrescimoPagoNaContaAsync(lojaId, partes[0].ContaId, descricaoJuros, acrescimo, dataBase, pagoEm, formaPagamento));
         }
-        else if (req.Forma == "conta")
+        else if (req.Forma == PagamentoEmLoteRegras.FormaConta)
         {
             var conta = req.ContaBancariaId is { } contaId ? await financeiro.ObterContaAsync(contaId, lojaId) : null;
             if (conta is null) return Resultado.Invalido("Escolha a conta de onde sai o pagamento.");
@@ -119,73 +101,41 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
             {
                 l.ContaBancariaId = conta.Id;
                 l.Status = "pago";
-                l.PagoEm = req.Data.HasValue ? dataBase : agora;
+                l.PagoEm = pagoEm;
                 l.FormaPagamento = formaPagamento;
             }
 
             if (acrescimo > 0)
-            {
-                repositorio.Adicionar(new LancamentoFinanceiro
-                {
-                    LojaId = lojaId,
-                    ContaBancariaId = conta.Id,
-                    Tipo = "pagar",
-                    Modo = "avulsa",
-                    Descricao = DescricaoDoAcrescimo(lancs),
-                    CategoriaId = (await ObterOuCriarCategoriaJurosAsync(lojaId)).Id,
-                    Valor = acrescimo,
-                    Vencimento = dataBase,
-                    Status = "pago",
-                    PagoEm = req.Data.HasValue ? dataBase : agora,
-                    FormaPagamento = formaPagamento,
-                });
-            }
+                repositorio.Adicionar(await AcrescimoPagoNaContaAsync(lojaId, conta.Id, PagamentoEmLoteRegras.DescricaoDoAcrescimo(descricoes), acrescimo, dataBase, pagoEm, formaPagamento));
         }
-        else if (req.Forma == "cartao")
+        else if (req.Forma == PagamentoEmLoteRegras.FormaCartao)
         {
             var cartao = req.CartaoId is { } cartaoId ? await repositorio.ObterCartaoAsync(cartaoId, lojaId) : null;
             if (cartao is null) return Resultado.Invalido("Escolha o cartão de crédito.");
 
             var parcelas = req.Parcelas;
-            if (parcelas < 1 || parcelas > LancamentosRegras.MaxParcelasNoCartao) return Resultado.Invalido("Escolha entre 1 e 24 parcelas.");
+            var erroParcelas = PagamentoEmLoteRegras.ValidarParcelasNoCartao(parcelas);
+            if (erroParcelas is not null) return Resultado.Invalido(erroParcelas);
 
             foreach (var l in lancs)
             {
-                if (parcelas == 1)
+                var grupoId = parcelas > 1 ? Guid.NewGuid() : (Guid?)null;
+                foreach (var p in PagamentoEmLoteRegras.ParcelasDoCartao(l.Descricao, l.Valor, parcelas, dataBase))
                 {
                     repositorio.Adicionar(new LancamentoCartao
                     {
                         LojaId = lojaId,
                         CartaoCreditoId = cartao.Id,
-                        Descricao = l.Descricao,
-                        Valor = l.Valor,
-                        DataCompra = dataBase,
-                        Modo = "avulsa",
+                        Descricao = p.Descricao,
+                        Valor = p.Valor,
+                        DataCompra = p.DataCompra,
+                        Modo = p.Parcelada ? "parcelada" : PagamentoEmLoteRegras.ModoAvulsa,
+                        GrupoParcelamentoId = grupoId,
+                        NumeroParcela = p.NumeroParcela,
+                        TotalParcelas = p.TotalParcelas,
                         CategoriaId = l.CategoriaId,
                         Observacao = l.Observacao,
                     });
-                }
-                else
-                {
-                    var grupoId = Guid.NewGuid();
-                    var valores = LancamentosRegras.ValoresDasParcelasDoCartao(l.Valor, parcelas);
-                    for (int i = 0; i < parcelas; i++)
-                    {
-                        repositorio.Adicionar(new LancamentoCartao
-                        {
-                            LojaId = lojaId,
-                            CartaoCreditoId = cartao.Id,
-                            Descricao = $"{l.Descricao} ({i + 1}/{parcelas})",
-                            Valor = valores[i],
-                            DataCompra = dataBase.AddMonths(i),
-                            Modo = "parcelada",
-                            GrupoParcelamentoId = grupoId,
-                            NumeroParcela = i + 1,
-                            TotalParcelas = parcelas,
-                            CategoriaId = l.CategoriaId,
-                            Observacao = l.Observacao,
-                        });
-                    }
                 }
                 repositorio.Remover(l);
             }
@@ -196,10 +146,10 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
                 {
                     LojaId = lojaId,
                     CartaoCreditoId = cartao.Id,
-                    Descricao = DescricaoDoAcrescimo(lancs),
+                    Descricao = PagamentoEmLoteRegras.DescricaoDoAcrescimo(descricoes),
                     Valor = acrescimo,
                     DataCompra = dataBase,
-                    Modo = "avulsa",
+                    Modo = PagamentoEmLoteRegras.ModoAvulsa,
                     CategoriaId = (await ObterOuCriarCategoriaJurosAsync(lojaId)).Id,
                 });
             }
@@ -213,16 +163,26 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
         return Resultado.Ok(new { pagos = lancs.Count, total, forma = req.Forma });
     }
 
-    private static string DescricaoDoAcrescimo(List<LancamentoFinanceiro> lancs)
+    // Juros/multa pagos pela conta: um lançamento à parte, já pago, na categoria "Juros"
+    private async Task<LancamentoFinanceiro> AcrescimoPagoNaContaAsync(Guid lojaId, Guid contaId, string descricao, decimal valor, DateTime dataBase, DateTime pagoEm, string? formaPagamento) => new()
     {
-        var texto = lancs.Count == 1 ? $"Juros/multa - {lancs[0].Descricao}" : $"Juros/multa - {lancs.Count} contas";
-        return texto.Length <= 150 ? texto : texto[..150];
-    }
+        LojaId = lojaId,
+        ContaBancariaId = contaId,
+        Tipo = "pagar",
+        Modo = PagamentoEmLoteRegras.ModoAvulsa,
+        Descricao = descricao,
+        CategoriaId = (await ObterOuCriarCategoriaJurosAsync(lojaId)).Id,
+        Valor = valor,
+        Vencimento = dataBase,
+        Status = "pago",
+        PagoEm = pagoEm,
+        FormaPagamento = formaPagamento,
+    };
 
     // Usa a categoria "Juros" que a loja já tenha (de despesa, ou "ambos"); se não houver, cria
     private async Task<CategoriaFinanceira> ObterOuCriarCategoriaJurosAsync(Guid lojaId)
     {
-        var nome = FinanceiroRegras.NormalizarNomeCategoria(NomeCategoriaJuros);
+        var nome = FinanceiroRegras.NormalizarNomeCategoria(PagamentoEmLoteRegras.NomeCategoriaJuros);
         var existente = (await financeiro.ListarCategoriasDaLojaAsync(lojaId))
             .FirstOrDefault(c => FinanceiroRegras.CategoriaEquivalente(c.Nome, c.Tipo, nome, "pagar"));
         if (existente is not null)
@@ -236,10 +196,8 @@ public class PagarLoteCommandHandler(ILancamentosRepository repositorio, IFinanc
             }
         }
 
-        var nova = new CategoriaFinanceira { LojaId = lojaId, Nome = NomeCategoriaJuros, Tipo = "pagar", Icone = "💸" };
+        var nova = new CategoriaFinanceira { LojaId = lojaId, Nome = PagamentoEmLoteRegras.NomeCategoriaJuros, Tipo = "pagar", Icone = "💸" };
         financeiro.Adicionar(nova);
         return nova;
     }
-
-    private const string NomeCategoriaJuros = "Juros";
 }
