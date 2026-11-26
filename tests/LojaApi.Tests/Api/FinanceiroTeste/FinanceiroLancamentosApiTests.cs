@@ -647,4 +647,43 @@ public class FinanceiroLancamentosApiTests(ApiFixture api)
         Assert.Equal(("pagar", true), (nova.Tipo, nova.Ativa));
         Assert.Equal(nova.Id, Assert.Single(await api.LancamentosDaLojaNoBancoAsync(loja.Id), l => l.Id != id).CategoriaId);
     }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_dividido_arredonda_cada_parte_em_duas_casas_antes_de_conferir_a_soma()
+    {
+        var loja = await NovaAsync();
+        var c1 = await loja.ContaPelaApiAsync("Conta 1");
+        var c2 = await loja.ContaPelaApiAsync("Conta 2");
+        var id = await loja.AvulsoPelaApiAsync(c1, "pagar", "Fornecedor", 20m);
+
+        // 10,004 + 9,998 = 20,002 (não fecha); arredondadas, 10,00 + 10,00 = 20,00 (fecha)
+        var r = await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new
+        {
+            ids = new[] { id }, forma = "conta",
+            divisoes = new object[] { new { contaBancariaId = c1, valor = 10.004m }, new { contaBancariaId = c2, valor = 9.998m } },
+        });
+
+        Assert.Equal(200, r.Codigo);
+        var lancs = await api.LancamentosDaLojaNoBancoAsync(loja.Id);
+        Assert.Equal([10m, 10m], lancs.OrderBy(l => l.Descricao).Select(l => l.Valor));
+    }
+
+    [FatoIntegracao]
+    public async Task Pagar_lote_no_cartao_com_acrescimo_e_sem_data_lanca_a_compra_do_juros_ao_meio_dia_de_hoje()
+    {
+        var loja = await NovaAsync();
+        var conta = await loja.ContaPelaApiAsync();
+        var cartao = await api.CartaoNoBancoAsync(loja.Id, conta);
+        var id = await loja.AvulsoPelaApiAsync(conta, "pagar", "Compra", 80m);
+
+        var antes = DateTime.UtcNow.Date;
+        (await loja.Painel.Post($"{Rota}/lancamentos/pagar-lote", new { ids = new[] { id }, forma = "cartao", cartaoId = cartao, acrescimo = 5m })).DeveSerSucesso();
+        var depois = DateTime.UtcNow.Date;
+
+        var compras = await api.LancamentosDeCartaoNoBancoAsync(loja.Id);
+        var juros = Assert.Single(compras, c => c.Descricao.StartsWith("Juros/multa"));
+        var principal = Assert.Single(compras, c => !c.Descricao.StartsWith("Juros/multa"));
+        Assert.Contains(juros.DataCompra, new[] { antes.AddHours(12), depois.AddHours(12) });
+        Assert.Equal(juros.DataCompra, principal.DataCompra);
+    }
 }
