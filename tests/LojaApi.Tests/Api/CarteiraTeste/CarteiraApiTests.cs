@@ -636,6 +636,6 @@ public class CarteiraApiTests(ApiFixture api)
 
         var daA = (await a.Loja.Painel.Get("/api/carteira/devedores")).Json;
         Assert.Equal(100m, daA.GetProperty("total").GetDecimal());
-        Assert.Equal(["Da Loja A"], daA.GetProperty("clientes").EnumerateArray().Select(x => x.GetProperty("nome").GetString()));
+        Assert.Equal(["Da Loja A"], daA.GetProperty("clientes").EnumerateArray().Select(x => x.GetProperty("nome").GetString()!));
     }
 }

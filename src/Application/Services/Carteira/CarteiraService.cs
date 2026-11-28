@@ -1,30 +1,22 @@
-using LojaApi.Data;
 using LojaApi.Models;
 using LojaApi.Domain.Carteira;
 using LojaApi.Shared.Application;
-using Microsoft.EntityFrameworkCore;
 
 namespace LojaApi.Application.Carteira;
 
 // Carteira do cliente ("fiado"): compra agora, paga depois. O saldo é sempre calculado a partir dos lançamentos.
-public class CarteiraService(AppDbContext db)
+// As regras estão aqui e em RegrasCarteira (Domain); o acesso ao banco fica no ICarteiraRepository.
+public class CarteiraService(ICarteiraRepository repositorio)
 {
     private const string LojaNaoEncontrada = "Loja não encontrada.";
     private const string ClienteNaoEncontrado = "Cliente não encontrado.";
 
-    private Task<Cliente?> BuscarClienteAsync(Guid lojaId, Guid clienteId) =>
-        db.Clientes.FirstOrDefaultAsync(c => c.Id == clienteId && c.LojaId == lojaId);
+    private Task<Cliente?> BuscarClienteAsync(Guid lojaId, Guid clienteId) => repositorio.ObterClienteAsync(lojaId, clienteId);
 
-    public Task<decimal> SaldoAsync(Guid lojaId, Guid clienteId) =>
-        db.MovimentosCarteira
-            .Where(m => m.LojaId == lojaId && m.ClienteId == clienteId)
-            .SumAsync(m => m.Tipo == TipoMovimentoCarteira.Compra ? m.Valor : -m.Valor);
+    public Task<decimal> SaldoAsync(Guid lojaId, Guid clienteId) => repositorio.SaldoAsync(lojaId, clienteId);
 
     // Saldo pelo id do cliente (o id já é único em todas as lojas): usado na listagem/cadastro de clientes
-    public Task<decimal> SaldoPorClienteAsync(Guid clienteId) =>
-        db.MovimentosCarteira
-            .Where(m => m.ClienteId == clienteId)
-            .SumAsync(m => m.Tipo == TipoMovimentoCarteira.Compra ? m.Valor : -m.Valor);
+    public Task<decimal> SaldoPorClienteAsync(Guid clienteId) => repositorio.SaldoPorClienteAsync(clienteId);
 
     // ── Usado pela venda (o VendasController salva tudo junto, na mesma transação) ──
 
@@ -42,21 +34,21 @@ public class CarteiraService(AppDbContext db)
         if (erro != null) return Resultado<MovimentoCarteira>.Invalido(erro);
 
         var compra = MovimentoCarteira.DeCompra(lojaId, cliente.Id, vendaId, valor, data);
-        db.MovimentosCarteira.Add(compra);
+        repositorio.Adicionar(compra);
         return Resultado<MovimentoCarteira>.Ok(compra);
     }
 
     // Excluir a venda tira a compra da carteira — a não ser que o cliente já tenha pago e o saldo ficaria negativo.
     public async Task<string?> RemoverCompraDaVendaAsync(Guid lojaId, Guid vendaId)
     {
-        var compra = await db.MovimentosCarteira.FirstOrDefaultAsync(m => m.LojaId == lojaId && m.VendaId == vendaId);
+        var compra = await repositorio.ObterCompraDaVendaAsync(lojaId, vendaId);
         if (compra is null) return null;
 
         var saldo = await SaldoAsync(lojaId, compra.ClienteId);
         if (saldo - compra.Valor < 0)
             return "Não é possível excluir: esta venda foi lançada na carteira e o cliente já pagou parte do saldo. Desfaça o recebimento na carteira do cliente antes.";
 
-        db.MovimentosCarteira.Remove(compra);
+        repositorio.Remover(compra);
         return null;
     }
 
@@ -70,10 +62,7 @@ public class CarteiraService(AppDbContext db)
         var cliente = await BuscarClienteAsync(lojaId.Value, clienteId);
         if (cliente is null) return Resultado.NaoEncontrado(ClienteNaoEncontrado);
 
-        var movimentos = await db.MovimentosCarteira
-            .AsNoTracking()
-            .Where(m => m.LojaId == lojaId && m.ClienteId == clienteId)
-            .ToListAsync();
+        var movimentos = await repositorio.ListarMovimentosDoClienteAsync(lojaId.Value, clienteId);
         // Por dia e, dentro do dia, na ordem em que foram lançados (o pagamento fica gravado ao meio-dia,
         // mas a compra tem a hora exata; ordenar pela hora colocaria o pagamento antes de uma compra feita à tarde).
         movimentos = movimentos.OrderBy(m => m.Data.Date).ThenBy(m => m.CriadoEm).ToList();
@@ -113,22 +102,8 @@ public class CarteiraService(AppDbContext db)
     {
         if (lojaId is null) return Resultado.Invalido(LojaNaoEncontrada);
 
-        var saldos = await db.MovimentosCarteira
-            .Where(m => m.LojaId == lojaId)
-            .GroupBy(m => m.ClienteId)
-            .Select(g => new { ClienteId = g.Key, Saldo = g.Sum(m => m.Tipo == TipoMovimentoCarteira.Compra ? m.Valor : -m.Valor) })
-            .Where(x => x.Saldo > 0)
-            .ToListAsync();
-
-        var ids = saldos.Select(s => s.ClienteId).ToList();
-        var clientes = await db.Clientes.AsNoTracking()
-            .Where(c => c.LojaId == lojaId && ids.Contains(c.Id))
-            .Select(c => new { c.Id, c.Nome, c.Telefone, c.LimiteCarteira })
-            .ToListAsync();
-
-        var itens = saldos
-            .Join(clientes, s => s.ClienteId, c => c.Id,
-                (s, c) => new { clienteId = c.Id, c.Nome, c.Telefone, saldo = s.Saldo, limite = c.LimiteCarteira })
+        var itens = (await repositorio.ListarDevedoresAsync(lojaId.Value))
+            .Select(d => new { clienteId = d.ClienteId, d.Nome, d.Telefone, saldo = d.Saldo, limite = d.Limite })
             .OrderByDescending(x => x.saldo)
             .ToList();
 
@@ -141,10 +116,8 @@ public class CarteiraService(AppDbContext db)
     {
         if (lojaId is null) return Resultado.Invalido(LojaNaoEncontrada);
 
-        var movimentos = await db.MovimentosCarteira.AsNoTracking().Where(m => m.LojaId == lojaId).ToListAsync();
-        var nomes = await db.Clientes.AsNoTracking()
-            .Where(c => c.LojaId == lojaId && db.MovimentosCarteira.Any(m => m.ClienteId == c.Id))
-            .ToDictionaryAsync(c => c.Id, c => c.Nome);
+        var movimentos = await repositorio.ListarMovimentosDaLojaAsync(lojaId.Value);
+        var nomes = await repositorio.NomesDosClientesComMovimentoAsync(lojaId.Value);
 
         var vendas = new List<object>();
         var recebimentos = new List<object>();
@@ -192,7 +165,7 @@ public class CarteiraService(AppDbContext db)
         if (erro != null) return Resultado.Invalido(erro);
 
         cliente.LimiteCarteira = req.Limite;
-        await db.SaveChangesAsync();
+        await repositorio.SalvarAsync();
         return Resultado.Ok(new { limite = cliente.LimiteCarteira });
     }
 
@@ -222,7 +195,7 @@ public class CarteiraService(AppDbContext db)
         // Com o Financeiro ativo e uma conta escolhida, espelha a entrada no saldo da conta (igual ao reforço de caixa)
         if (req.ContaBancariaId.HasValue)
         {
-            var conta = await db.ContasBancarias.FirstOrDefaultAsync(c => c.Id == req.ContaBancariaId.Value && c.LojaId == lojaId);
+            var conta = await repositorio.ObterContaAsync(lojaId.Value, req.ContaBancariaId.Value);
             if (conta != null)
             {
                 var ajuste = new AjusteContaBancaria
@@ -230,16 +203,16 @@ public class CarteiraService(AppDbContext db)
                     LojaId = lojaId.Value, ContaBancariaId = conta.Id, Tipo = "entrada", Valor = req.Valor,
                     Observacao = $"Recebimento da carteira — {cliente.Nome}", CriadoEm = dataUtc,
                 };
-                db.AjustesContaBancaria.Add(ajuste);
+                repositorio.Adicionar(ajuste);
                 entradaCaixa.ContaBancariaId = conta.Id;
                 entradaCaixa.AjusteContaBancariaId = ajuste.Id;
             }
         }
-        db.MovimentosCaixa.Add(entradaCaixa);
+        repositorio.Adicionar(entradaCaixa);
 
         var pagamento = MovimentoCarteira.DePagamento(lojaId.Value, clienteId, req.Valor, req.FormaPagamento, req.Observacao, dataUtc, entradaCaixa.Id);
-        db.MovimentosCarteira.Add(pagamento);
-        await db.SaveChangesAsync();
+        repositorio.Adicionar(pagamento);
+        await repositorio.SalvarAsync();
 
         return Resultado.Ok(new { id = pagamento.Id, saldo = saldo - req.Valor, quitado = saldo - req.Valor <= 0 });
     }
@@ -249,22 +222,21 @@ public class CarteiraService(AppDbContext db)
     {
         if (lojaId is null) return Resultado.Invalido(LojaNaoEncontrada);
 
-        var pagamento = await db.MovimentosCarteira.FirstOrDefaultAsync(m =>
-            m.Id == movimentoId && m.LojaId == lojaId && m.ClienteId == clienteId && m.Tipo == TipoMovimentoCarteira.Pagamento);
+        var pagamento = await repositorio.ObterPagamentoAsync(lojaId.Value, clienteId, movimentoId);
         if (pagamento is null) return Resultado.NaoEncontrado("Recebimento não encontrado.");
 
         if (pagamento.MovimentoCaixaId.HasValue)
         {
-            var entrada = await db.MovimentosCaixa.FirstOrDefaultAsync(m => m.Id == pagamento.MovimentoCaixaId.Value && m.LojaId == lojaId);
+            var entrada = await repositorio.ObterEntradaDeCaixaAsync(lojaId.Value, pagamento.MovimentoCaixaId.Value);
             if (entrada != null)
             {
                 if (entrada.AjusteContaBancariaId.HasValue)
-                    await db.AjustesContaBancaria.Where(a => a.Id == entrada.AjusteContaBancariaId.Value && a.LojaId == lojaId).ExecuteDeleteAsync();
-                db.MovimentosCaixa.Remove(entrada);
+                    await repositorio.ExcluirAjusteDeContaAsync(lojaId.Value, entrada.AjusteContaBancariaId.Value);
+                repositorio.Remover(entrada);
             }
         }
-        db.MovimentosCarteira.Remove(pagamento);
-        await db.SaveChangesAsync();
+        repositorio.Remover(pagamento);
+        await repositorio.SalvarAsync();
 
         return Resultado.Ok(new { saldo = await SaldoAsync(lojaId.Value, clienteId) });
     }
