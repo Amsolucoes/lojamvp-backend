@@ -87,7 +87,7 @@ Nos módulos migrados a partir de **Ajuda, Clientes, Fiscal, Turmas, Corretora e
 Ganhos: o service pode ser testado com um repository falso (sem banco) e a regra não se mistura com a consulta. Um teste de arquitetura
 (`tests/LojaApi.Tests/Arquitetura/CamadasTests.cs`) **falha** se um service desses módulos voltar a receber o `AppDbContext`, se o Domain
 passar a depender de EF/ASP.NET ou se o Application passar a depender da API. Ao migrar um módulo novo, acrescente o nome dele na lista
-`ModulosComRepositorio` desse teste. **Chacara, Carteira e Servicos** (migrados antes) ainda consultam o banco direto no service.
+`ModulosComRepositorio` desse teste. **Chacara e Servicos** (migrados antes) ainda consultam o banco direto no service.
 
 ### Migrations (mudou de lugar)
 As migrations moram no projeto **Data**. Comandos do EF Core agora precisam dos dois projetos:
@@ -175,13 +175,13 @@ um relatório. Ele não altera código de produção.
 ## Estado atual
 
 Todo controller mora em `src/Api/Controllers/<Modulo>` e é fino: lê a requisição, descobre a loja e chama um caso de uso (service ou handler).
-Todos os módulos já estão em camadas (Domain/Application/Infrastructure). Só **Chacara, Carteira e Servicos** (migrados antes) ainda
+Todos os módulos já estão em camadas (Domain/Application/Infrastructure). Só **Chacara e Servicos** (migrados antes) ainda
 consultam o banco direto no service; os demais usam repository (e, nas consultas pesadas, Dapper).
 
 | Módulo | Controllers | Camadas |
 |---|---|---|
 | **Chacara** | reservas, site público, preços, horários, períodos, fotos, dados, painel | ✅ Domain/Application/Infrastructure/Controllers + testes |
-| **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application/Controllers + testes |
+| **Carteira** | carteira do cliente (fiado) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
 | **Financeiro** | Em 4 partes (o maior módulo, ~3.600 linhas): **1 ✅ contas bancárias (saldo, ajuste, transferência) e categorias**; **2 ✅ lançamentos (avulso, parcelado, parcelas, pagar em lote (regras em `PagamentoEmLoteRegras`, no Domain: acréscimo, divisão em contas, parcelas no cartão), editar, excluir, aviso), a receber unificado e fixos**; **3a ✅ cartões (cadastro, compras avulsa/parcelada, fixos do cartão, editar/excluir compra)**; **3b ✅ fatura do cartão (ver, pagamento antecipado, pagar total/parcial/parcelado/desfazer, faturas de referência) e a autocorreção de financiamentos**; **3c ✅ consultas de Contas a Pagar (`GET lancamentos`, `pagar-unificado`, `faturas-do-mes`), com Dapper**; **4a ✅ Planejamento (config, tetos por categoria, metas) e troca de categoria de gastos**; **4b ✅ relatórios (`resumo-mensal`, `balanco-por-categoria`, `balanco-detalhe`, `balanco-comparativo`, `resumo-anual`, `alertas-vencimento`, `cartoes-resumo`) e `GET planejamento`, com Dapper (`IRelatoriosConsultas`)** | ✅ Domain/Application (Command/Query + Handler)/Infrastructure/Controllers + testes. O `FinanceiroService` segue como está (usado pelos fixos, pelos serviços em segundo plano e pelo Equipe) e entra no Application pela porta `IGeradorDeLancamentosFixos` |
 | **Vendas** | Vendas, Trocas, MovimentosCaixa, OrigensVenda, Relatorios | ✅ Domain/Application (Command/Handler + repository)/Infrastructure/Controllers + testes (a venda usa a carteira, que ainda é um service) |
 | **Fiscal** | EmissaoFiscal (NFC-e; provedor entra pela porta `IProvedorFiscal`) | ✅ Domain/Application (service + repository)/Infrastructure/Controllers + testes |
@@ -202,7 +202,7 @@ consultam o banco direto no service; os demais usam repository (e, nas consultas
 
 A migração para camadas (um PR por módulo, terminando pelo Financeiro) e a separação em projetos (`Domain`, `Data`, `Application` e a API) estão **concluídas**. O que sobra:
 
-1. Levar o padrão repository a Chacara, Carteira e Servicos, que ainda consultam o banco direto no service (e acrescentar os nomes deles na lista
+1. Levar o padrão repository a Chacara e Servicos, que ainda consultam o banco direto no service (e acrescentar os nomes deles na lista
    `ModulosComRepositorio` do teste de arquitetura).
 2. Trazer o `FinanceiroService` (fixos e rotinas em segundo plano) e os demais serviços de apoio de `src/Api/Services` para o Application/Infrastructure, quando valer a pena.
 
