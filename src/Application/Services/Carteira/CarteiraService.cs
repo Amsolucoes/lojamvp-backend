@@ -52,8 +52,6 @@ public class CarteiraService(ICarteiraRepository repositorio)
         return null;
     }
 
-    public async Task<bool> TemSaldoAsync(Guid lojaId, Guid clienteId) => await SaldoAsync(lojaId, clienteId) > 0;
-
     // ── Consultas ────────────────────────────────────────────────────────────
 
     public async Task<Resultado<object>> ObterAsync(Guid? lojaId, Guid clienteId)

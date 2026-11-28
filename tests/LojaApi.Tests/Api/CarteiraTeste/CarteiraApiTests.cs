@@ -638,4 +638,33 @@ public class CarteiraApiTests(ApiFixture api)
         Assert.Equal(100m, daA.GetProperty("total").GetDecimal());
         Assert.Equal(["Da Loja A"], daA.GetProperty("clientes").EnumerateArray().Select(x => x.GetProperty("nome").GetString()!));
     }
+
+    [FatoIntegracao]
+    public async Task Desfazer_recebimento_nao_apaga_uma_compra_mesmo_usando_o_id_dela()
+    {
+        var c = await PrepararAsync();
+        await Vender(c);
+        var compra = (await Carteira(c)).GetProperty("movimentos").EnumerateArray().Single(m => m.GetProperty("tipo").GetString() == "compra").GetProperty("id").GetGuid();
+
+        var r = await c.Loja.Painel.Delete($"/api/clientes/{c.ClienteId}/carteira/pagamentos/{compra}");
+
+        Assert.Equal((404, "Recebimento não encontrado."), (r.Codigo, r.Erro));
+        Assert.Equal(100m, (await Carteira(c)).GetProperty("saldo").GetDecimal());
+    }
+
+    [FatoIntegracao]
+    public async Task Recebimento_fica_gravado_ao_meio_dia_do_dia_escolhido_no_caixa_e_na_carteira()
+    {
+        var c = await PrepararAsync();
+        await Vender(c);
+        var dia = DateTime.UtcNow.AddDays(-3).ToString("yyyy-MM-dd");
+
+        (await Receber(c, 25m, data: dia)).DeveSerSucesso();
+
+        var meioDia = DateTime.Parse(dia + "T12:00:00", null, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal);
+        var caixa = (await c.Loja.Painel.Get("/api/movimentos-caixa")).Json[0];
+        Assert.Equal(meioDia, caixa.GetProperty("data").GetDateTime().ToUniversalTime());
+        var pagamento = (await Carteira(c)).GetProperty("movimentos").EnumerateArray().Single(m => m.GetProperty("tipo").GetString() == "pagamento");
+        Assert.Equal(meioDia, pagamento.GetProperty("data").GetDateTime().ToUniversalTime());
+    }
 }
