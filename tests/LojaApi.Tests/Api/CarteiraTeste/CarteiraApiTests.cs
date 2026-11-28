@@ -492,4 +492,150 @@ public class CarteiraApiTests(ApiFixture api)
         Assert.Equal(401, (await c.Loja.Site.Get("/api/carteira/devedores")).Codigo);
         Assert.Equal(401, (await c.Loja.Site.Post($"/api/clientes/{c.ClienteId}/carteira/pagamentos", new { valor = 1, formaPagamento = "pix" })).Codigo);
     }
+
+    // ── Lacunas fixadas antes de mover o acesso ao banco para o repository ───────────────────
+
+    private static string[] Nomes(JsonElement e) => e.EnumerateObject().Select(x => x.Name).ToArray();
+
+    [FatoIntegracao]
+    public async Task Formato_das_respostas_da_carteira_nao_muda()
+    {
+        var c = await PrepararAsync();
+        await Vender(c, quantidade: 2);
+        var recebimento = await Receber(c, 50m, "pix", obs: "parcial");
+
+        var carteira = await Carteira(c);
+        Assert.Equal(["clienteId", "nome", "telefone", "saldo", "limite", "disponivel", "emAberto", "movimentos"], Nomes(carteira));
+        Assert.Equal(["vendaId", "data", "valor", "emAberto"], Nomes(carteira.GetProperty("emAberto")[0]));
+        Assert.Equal(["id", "tipo", "valor", "data", "vendaId", "formaPagamento", "observacao", "saldoApos"], Nomes(carteira.GetProperty("movimentos")[0]));
+        Assert.Equal(["id", "saldo", "quitado"], Nomes(recebimento.Json));
+
+        var devedores = (await c.Loja.Painel.Get("/api/carteira/devedores")).Json;
+        Assert.Equal(["total", "clientes"], Nomes(devedores));
+        Assert.Equal(["clienteId", "nome", "telefone", "saldo", "limite"], Nomes(devedores.GetProperty("clientes")[0]));
+
+        var mov = (await c.Loja.Painel.Get("/api/carteira/movimentacao")).Json;
+        Assert.Equal(["vendas", "recebimentos"], Nomes(mov));
+        var venda = mov.GetProperty("vendas")[0];
+        Assert.Equal(["vendaId", "clienteId", "valor", "emAberto", "pagamentos"], Nomes(venda));
+        Assert.Equal(["pagamentoId", "data", "forma", "valor"], Nomes(venda.GetProperty("pagamentos")[0]));
+        var rec = mov.GetProperty("recebimentos")[0];
+        Assert.Equal(["id", "movimentoCaixaId", "clienteId", "clienteNome", "forma", "valor", "data", "abateu"], Nomes(rec));
+        Assert.Equal(["vendaId", "valor"], Nomes(rec.GetProperty("abateu")[0]));
+
+        var limite = await c.Loja.Painel.Put($"/api/clientes/{c.ClienteId}/carteira/limite", new { limite = 500m });
+        Assert.Equal(["limite"], Nomes(limite.Json));
+    }
+
+    [FatoIntegracao]
+    public async Task Extrato_traz_forma_e_observacao_do_pagamento_e_a_venda_da_compra()
+    {
+        var c = await PrepararAsync();
+        var venda = (await Vender(c)).Json.GetProperty("id").GetGuid();
+        await Receber(c, 40m, "dinheiro", obs: "sinal");
+
+        var movs = (await Carteira(c)).GetProperty("movimentos").EnumerateArray().ToList();
+        var pagamento = movs[0];
+        Assert.Equal(("pagamento", 40m, "dinheiro", "sinal", 60m), (pagamento.GetProperty("tipo").GetString(), pagamento.GetProperty("valor").GetDecimal(), pagamento.GetProperty("formaPagamento").GetString(), pagamento.GetProperty("observacao").GetString(), pagamento.GetProperty("saldoApos").GetDecimal()));
+        Assert.Equal(JsonValueKind.Null, pagamento.GetProperty("vendaId").ValueKind);
+        var compra = movs[1];
+        Assert.Equal(("compra", venda, 100m), (compra.GetProperty("tipo").GetString(), compra.GetProperty("vendaId").GetGuid(), compra.GetProperty("saldoApos").GetDecimal()));
+    }
+
+    [FatoIntegracao]
+    public async Task Disponivel_e_o_limite_menos_o_saldo_e_nunca_fica_negativo()
+    {
+        var c = await PrepararAsync();
+        await Vender(c, quantidade: 1);   // deve 100
+        await c.Loja.Painel.Put($"/api/clientes/{c.ClienteId}/carteira/limite", new { limite = 250m });
+        Assert.Equal(150m, (await Carteira(c)).GetProperty("disponivel").GetDecimal());
+
+        await c.Loja.Painel.Put($"/api/clientes/{c.ClienteId}/carteira/limite", new { limite = 60m });   // limite abaixo da dívida
+        Assert.Equal(0m, (await Carteira(c)).GetProperty("disponivel").GetDecimal());
+
+        await c.Loja.Painel.Put($"/api/clientes/{c.ClienteId}/carteira/limite", new { limite = (decimal?)null });
+        Assert.Equal(JsonValueKind.Null, (await Carteira(c)).GetProperty("disponivel").ValueKind);
+    }
+
+    [FatoIntegracao]
+    public async Task Recebimento_escreve_a_forma_e_a_observacao_no_caixa_e_corta_em_300_caracteres()
+    {
+        var c = await PrepararAsync();
+        await Vender(c, quantidade: 5);
+        await Receber(c, 10m, "dinheiro");
+        await Receber(c, 10m, "credito", obs: "  parcela 1  ");
+        await Receber(c, 10m, "debito");
+        await Receber(c, 10m, "pix", obs: new string('x', 250));   // 250 cabe na carteira (limite 300), mas o texto do caixa passa de 300 e é cortado
+
+        var obs = (await c.Loja.Painel.Get("/api/movimentos-caixa")).Json.EnumerateArray().Select(m => m.GetProperty("observacao").GetString()!).ToList();
+        Assert.Contains("Recebimento da carteira — Maria da Carteira (Dinheiro)", obs);
+        Assert.Contains("Recebimento da carteira — Maria da Carteira (Crédito) — parcela 1", obs);
+        Assert.Contains("Recebimento da carteira — Maria da Carteira (Débito)", obs);
+        var longa = Assert.Single(obs, o => o.Contains("(Pix)"));
+        Assert.Equal(300, longa.Length);
+    }
+
+    [FatoIntegracao]
+    public async Task Operador_recebe_e_consulta_mas_nao_muda_limite_nem_desfaz_recebimento()
+    {
+        var c = await PrepararAsync();
+        await Vender(c, quantidade: 2);
+        var operador = await api.OperadorAsync(c.Loja);
+
+        Assert.Equal(200, (await operador.Get($"/api/clientes/{c.ClienteId}/carteira")).Codigo);
+        Assert.Equal(200, (await operador.Get("/api/carteira/devedores")).Codigo);
+        Assert.Equal(200, (await operador.Get("/api/carteira/movimentacao")).Codigo);
+        var recebido = await operador.Post($"/api/clientes/{c.ClienteId}/carteira/pagamentos", new { valor = 30m, formaPagamento = "pix", data = (string?)null, observacao = (string?)null, contaBancariaId = (Guid?)null });
+        Assert.Equal(200, recebido.Codigo);
+
+        Assert.Equal(403, (await operador.Put($"/api/clientes/{c.ClienteId}/carteira/limite", new { limite = 10m })).Codigo);
+        Assert.Equal(403, (await operador.Delete($"/api/clientes/{c.ClienteId}/carteira/pagamentos/{recebido.Json.GetProperty("id").GetGuid()}")).Codigo);
+        Assert.Equal(170m, (await Carteira(c)).GetProperty("saldo").GetDecimal());
+    }
+
+    [FatoIntegracao]
+    public async Task Desfazer_recebimento_de_outro_cliente_da_mesma_loja_nao_acha_o_pagamento()
+    {
+        var c = await PrepararAsync();
+        var outro = (await c.Loja.Painel.Post("/api/clientes", new { nome = "Outro Cliente", telefone = "67911110000" })).Json.GetProperty("id").GetGuid();
+        await Vender(c);
+        var pagamento = (await Receber(c, 100m)).Json.GetProperty("id").GetGuid();
+
+        var r = await c.Loja.Painel.Delete($"/api/clientes/{outro}/carteira/pagamentos/{pagamento}");
+
+        Assert.Equal((404, "Recebimento não encontrado."), (r.Codigo, r.Erro));
+        Assert.Equal(0m, (await Carteira(c)).GetProperty("saldo").GetDecimal());   // o pagamento continua valendo
+        Assert.Equal(1, (await c.Loja.Painel.Get("/api/movimentos-caixa")).Json.GetArrayLength());
+    }
+
+    [FatoIntegracao]
+    public async Task Cada_cliente_tem_a_sua_fila_o_pagamento_de_um_nao_quita_a_venda_de_outro()
+    {
+        var c = await PrepararAsync(nomeCliente: "Maria");
+        var joao = (await c.Loja.Painel.Post("/api/clientes", new { nome = "João", telefone = "67922220000" })).Json.GetProperty("id").GetGuid();
+        var vendaMaria = (await Vender(c)).Json.GetProperty("id").GetGuid();
+        var vendaJoao = (await Vender(c, cliente: joao)).Json.GetProperty("id").GetGuid();
+        await Receber(c, 100m);   // só a Maria paga
+
+        var mov = (await c.Loja.Painel.Get("/api/carteira/movimentacao")).Json;
+        var vendas = mov.GetProperty("vendas").EnumerateArray().ToDictionary(v => v.GetProperty("vendaId").GetGuid(), v => v.GetProperty("emAberto").GetDecimal());
+        Assert.Equal((0m, 100m), (vendas[vendaMaria], vendas[vendaJoao]));
+        var rec = mov.GetProperty("recebimentos").EnumerateArray().Single();
+        Assert.Equal(["Maria"], new[] { rec.GetProperty("clienteNome").GetString() });
+        Assert.Equal([vendaMaria], rec.GetProperty("abateu").EnumerateArray().Select(a => a.GetProperty("vendaId").GetGuid()));
+        Assert.Equal(["João"], (await c.Loja.Painel.Get("/api/carteira/devedores")).Json.GetProperty("clientes").EnumerateArray().Select(x => x.GetProperty("nome").GetString()));
+    }
+
+    [FatoIntegracao]
+    public async Task Devedores_de_uma_loja_nao_inclui_clientes_de_outra()
+    {
+        var a = await PrepararAsync(nomeCliente: "Da Loja A");
+        var b = await PrepararAsync(nomeCliente: "Da Loja B");
+        await Vender(a);
+        await Vender(b, quantidade: 3);
+
+        var daA = (await a.Loja.Painel.Get("/api/carteira/devedores")).Json;
+        Assert.Equal(100m, daA.GetProperty("total").GetDecimal());
+        Assert.Equal(["Da Loja A"], daA.GetProperty("clientes").EnumerateArray().Select(x => x.GetProperty("nome").GetString()));
+    }
 }
